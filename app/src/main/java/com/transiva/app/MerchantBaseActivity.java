@@ -8,6 +8,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -200,12 +201,37 @@ public class MerchantBaseActivity extends Activity {
     protected void open(Class<?> c){ startActivity(new Intent(this, c)); }
     protected void backMerchant(){ finish(); }
 
+    private void applyMerchantAuth(HttpURLConnection c) {
+        c.setRequestProperty("Accept", "application/json");
+        c.setRequestProperty("Cache-Control", "no-store");
+        c.setRequestProperty("X-Transiva-App", "Android-Merchant");
+        c.setRequestProperty("X-Android-SDK", String.valueOf(Build.VERSION.SDK_INT));
+        String token = "";
+        try { token = sessionManager == null ? "" : sessionManager.getToken().trim(); } catch(Exception ignored){}
+        if(!token.isEmpty()) {
+            c.setRequestProperty("Authorization", "Bearer " + token);
+            c.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
+        }
+    }
+
+    private String response(HttpURLConnection c) throws Exception {
+        int code = c.getResponseCode();
+        InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
+        String out = read(is);
+        if(code == 401 || code == 403) {
+            runOnUiThread(() -> {
+                toast("Sesi merchant berakhir atau akses ditolak. Silakan login ulang.");
+                logout();
+            });
+        }
+        return out;
+    }
+
     protected String get(String link) throws Exception {
         HttpURLConnection c = (HttpURLConnection)new URL(link).openConnection();
         c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setUseCaches(false);
-        c.setRequestProperty("Accept","application/json");
-        InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
-        String out = read(is); c.disconnect(); return out;
+        applyMerchantAuth(c);
+        String out = response(c); c.disconnect(); return out;
     }
 
     protected String postJson(String link, JSONObject payload) throws Exception {
@@ -213,11 +239,10 @@ public class MerchantBaseActivity extends Activity {
         c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setDoOutput(true); c.setUseCaches(false);
         c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type","application/json; charset=UTF-8");
-        c.setRequestProperty("Accept","application/json");
+        applyMerchantAuth(c);
         OutputStream os = c.getOutputStream();
         os.write(payload.toString().getBytes("UTF-8")); os.flush(); os.close();
-        InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
-        String out = read(is); c.disconnect(); return out;
+        String out = response(c); c.disconnect(); return out;
     }
 
     protected String postForm(String link, JSONObject fields, Uri fileUri, String fileField, String fileName) throws Exception {
@@ -226,6 +251,7 @@ public class MerchantBaseActivity extends Activity {
         c.setConnectTimeout(30000); c.setReadTimeout(30000); c.setDoOutput(true); c.setUseCaches(false);
         c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        applyMerchantAuth(c);
         OutputStream os = c.getOutputStream();
         java.util.Iterator<String> keys = fields.keys();
         while(keys.hasNext()){
@@ -246,8 +272,7 @@ public class MerchantBaseActivity extends Activity {
         }
         write(os, "--"+boundary+"--\r\n");
         os.flush(); os.close();
-        InputStream is = c.getResponseCode() >= 400 ? c.getErrorStream() : c.getInputStream();
-        String out = read(is); c.disconnect(); return out;
+        String out = response(c); c.disconnect(); return out;
     }
 
     private void write(OutputStream os, String s) throws Exception { os.write(s.getBytes("UTF-8")); }

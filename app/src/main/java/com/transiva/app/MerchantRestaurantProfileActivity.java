@@ -89,10 +89,9 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         final String u = username();
         new Thread(() -> {
             try{
-                JSONObject dash = new JSONObject(get(BASE + "getMerchantDashboard.php?username=" + enc(u) + "&v=" + System.currentTimeMillis()));
-                restaurantId = dash.optString("restaurant_id", "");
-                if(restaurantId.isEmpty()) restaurantId = dash.optString("id", "");
-                JSONObject prof = new JSONObject(get(BASE + "get_restaurant_profile.php?id=" + enc(restaurantId) + "&v=" + System.currentTimeMillis()));
+                JSONObject prof = new JSONObject(get(BASE + "get_restaurant_profile.php?v=" + System.currentTimeMillis()));
+                JSONObject restaurant = prof.optJSONObject("restaurant");
+                restaurantId = restaurant == null ? "" : restaurant.optString("id", "");
                 runOnUiThread(() -> show(prof));
             }catch(Exception e){ runOnUiThread(() -> statusText.setText("Gagal memuat profil merchant."));}
         }).start();
@@ -162,7 +161,9 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if(raw == null) return "";
         String url = raw.trim();
         if(url.isEmpty() || "null".equalsIgnoreCase(url)) return "";
-        if(url.startsWith("http://") || url.startsWith("https://")) return url;
+        if(url.startsWith("http://transiva.my.id/")) return url.replace("http://transiva.my.id/", "https://transiva.my.id/");
+        if(url.startsWith("https://")) return url;
+        if(url.startsWith("http://")) return "";
         if(url.startsWith("/")) return "https://transiva.my.id" + url;
         return "https://transiva.my.id/" + url;
     }
@@ -174,7 +175,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         save.setEnabled(false); save.setText("Menyimpan...");
         new Thread(() -> {
             try{
-                JSONObject f = new JSONObject(); f.put("id", restaurantId); f.put("name", name);
+                JSONObject f = new JSONObject(); f.put("name", name);
                 JSONObject res = new JSONObject(postForm(BASE + "update_restaurant_profile.php", f, bannerUri, "banner", "merchant_banner.jpg"));
                 runOnUiThread(() -> {
                     save.setEnabled(true); save.setText("💾 Simpan Profil Merchant");

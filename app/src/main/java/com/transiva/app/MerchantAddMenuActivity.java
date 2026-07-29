@@ -25,16 +25,25 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private Uri imageUri = null;
     private final List<GrossupRule> grossupRules = new ArrayList<>();
     private volatile boolean grossupLoaded = false;
+    private boolean editMode = false;
+    private String editMenuId = "";
+    private String existingImage = "";
 
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
+        editMode = getIntent().getBooleanExtra("edit_mode", false);
+        editMenuId = getIntent().getStringExtra("menu_id");
+        if(editMenuId == null) editMenuId = "";
+        existingImage = getIntent().getStringExtra("image");
+        if(existingImage == null) existingImage = "";
         build();
+        prefillEditData();
         loadGrossupRules();
     }
 
     private void build(){
         root = new LinearLayout(this); setContentView(page(root));
-        root.addView(title("Tambah Menu"));
+        root.addView(title(editMode ? "Edit Menu" : "Tambah Menu"));
         root.addView(sub("Preview di bawah mengikuti tampilan yang akan muncul di aplikasi customer"));
 
         root.addView(label("Nama Menu"));
@@ -63,7 +72,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         fileText = sub("Gambar belum dipilih. Jika kosong, server memakai default.");
         root.addView(fileText);
 
-        Button save = btn("Simpan Menu");
+        Button save = btn(editMode ? "Simpan Perubahan" : "Simpan Menu");
         save.setOnClickListener(v -> save(save));
         root.addView(save);
 
@@ -71,6 +80,18 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         back.setOnClickListener(v -> finish());
         root.addView(back);
 
+        updatePreview();
+    }
+
+
+    private void prefillEditData(){
+        if(!editMode) return;
+        nameInput.setText(getIntent().getStringExtra("name"));
+        categoryInput.setText(getIntent().getStringExtra("category"));
+        long original = getIntent().getLongExtra("original_price", 0L);
+        if(original <= 0) original = getIntent().getLongExtra("price", 0L);
+        if(original > 0) priceInput.setText(String.valueOf(original));
+        fileText.setText(existingImage.isEmpty() ? "Gambar lama tidak tersedia. Pilih gambar jika ingin mengganti." : "Gambar lama dipertahankan. Pilih gambar baru untuk mengganti.");
         updatePreview();
     }
 
@@ -223,7 +244,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         final long finalAppPrice = appPrice;
         final Uri finalImageUri = imageUri;
 
-        save.setEnabled(false); save.setText("Mengupload...");
+        save.setEnabled(false); save.setText(editMode ? "Menyimpan perubahan..." : "Mengupload...");
         new Thread(() -> {
             try{
                 JSONObject f = new JSONObject();
@@ -232,14 +253,19 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 f.put("original_price", finalOriginal);
                 f.put("grossup_fee", finalFee);
                 f.put("category", finalCat);
-                f.put("username", username()); f.put("user_id", userId());
-                JSONObject res = new JSONObject(postForm(BASE + "add_food_menu.php", f, finalImageUri, "image", "menu.jpg"));
+                if(editMode) {
+                    f.put("menu_id", editMenuId);
+                    f.put("id", editMenuId);
+                    f.put("action", "update");
+                }
+                String endpoint = editMode ? BASE + "merchant_update_menu.php" : BASE + "add_food_menu.php";
+                JSONObject res = new JSONObject(postForm(endpoint, f, finalImageUri, "image", "menu.jpg"));
                 runOnUiThread(() -> {
-                    save.setEnabled(true); save.setText("Simpan Menu");
-                    if(res.optBoolean("success", false)){ toast(res.optString("message","Menu berhasil disimpan")); finish(); }
-                    else alert("Gagal", res.optString("message","Gagal menyimpan menu"));
+                    save.setEnabled(true); save.setText(editMode ? "Simpan Perubahan" : "Simpan Menu");
+                    if(res.optBoolean("success", false)){ toast(res.optString("message", editMode ? "Menu berhasil diperbarui" : "Menu berhasil disimpan")); finish(); }
+                    else alert("Gagal", res.optString("message", editMode ? "Gagal memperbarui menu" : "Gagal menyimpan menu"));
                 });
-            }catch(Exception e){ runOnUiThread(() -> { save.setEnabled(true); save.setText("Simpan Menu"); alert("Error","Server error / koneksi gagal."); }); }
+            }catch(Exception e){ runOnUiThread(() -> { save.setEnabled(true); save.setText(editMode ? "Simpan Perubahan" : "Simpan Menu"); alert("Error","Server error / koneksi gagal."); }); }
         }).start();
     }
 

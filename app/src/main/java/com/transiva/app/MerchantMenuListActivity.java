@@ -33,7 +33,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         list.removeAllViews(); list.addView(card("Memuat menu..."));
         new Thread(() -> {
             try{
-                String link = BASE + "merchant_get_menus.php?user_id=" + uid + "&v=" + System.currentTimeMillis();
+                String link = BASE + "merchant_get_menus.php?v=" + System.currentTimeMillis();
                 JSONObject res = new JSONObject(get(link));
                 runOnUiThread(() -> show(res));
             }catch(Exception e){ runOnUiThread(() -> { list.removeAllViews(); list.addView(card("Gagal memuat menu. Pastikan user_id tersimpan setelah login.")); });}
@@ -100,16 +100,25 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         loadMenuImage(img, fallback, image);
 
         LinearLayout r = row();
+        Button edit = outlineBtn("Edit");
         Button status = active == 1 ? outlineBtn("Nonaktifkan") : btn("Aktifkan");
         Button del = outlineBtn("Hapus");
-        LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, dp(48), 1f);
-        a.setMargins(0,0,dp(6),0);
-        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(0, dp(48), 1f);
-        dlp.setMargins(dp(6),0,0,0);
-        r.addView(status, a);
-        r.addView(del, dlp);
-        box.addView(r);
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, dp(48), 1f); ep.setMargins(0,0,dp(4),0);
+        LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, dp(48), 1f); a.setMargins(dp(4),0,dp(4),0);
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(0, dp(48), 1f); dlp.setMargins(dp(4),0,0,0);
+        r.addView(edit, ep); r.addView(status, a); r.addView(del, dlp); box.addView(r);
 
+        edit.setOnClickListener(v -> {
+            android.content.Intent intent = new android.content.Intent(this, MerchantAddMenuActivity.class);
+            intent.putExtra("edit_mode", true);
+            intent.putExtra("menu_id", id);
+            intent.putExtra("name", name);
+            intent.putExtra("category", category);
+            intent.putExtra("price", m.optLong("price",0));
+            intent.putExtra("original_price", m.optLong("original_price", m.optLong("merchant_price",0)));
+            intent.putExtra("image", image);
+            startActivity(intent);
+        });
         status.setOnClickListener(v -> updateStatus(id, active == 1 ? 0 : 1));
         del.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
                 .setTitle("Hapus Menu")
@@ -149,7 +158,9 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         if(raw == null) return "";
         String url = raw.trim();
         if(url.isEmpty() || "null".equalsIgnoreCase(url)) return "";
-        if(url.startsWith("http://") || url.startsWith("https://")) return url;
+        if(url.startsWith("http://transiva.my.id/")) return url.replace("http://transiva.my.id/", "https://transiva.my.id/");
+        if(url.startsWith("https://")) return url;
+        if(url.startsWith("http://")) return "";
         if(url.startsWith("/")) return "https://transiva.my.id" + url;
         return "https://transiva.my.id/" + url;
     }
@@ -157,7 +168,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
     private void updateStatus(String menuId, int active){
         new Thread(() -> {
             try{
-                JSONObject f = new JSONObject(); f.put("user_id", userId()); f.put("menu_id", menuId); f.put("is_active", active);
+                JSONObject f = new JSONObject(); f.put("menu_id", menuId); f.put("is_active", active);
                 JSONObject r = new JSONObject(postForm(BASE + "merchant_update_menu_status.php", f, null, "", ""));
                 runOnUiThread(() -> { toast(r.optString("message", r.optBoolean("success")?"Berhasil":"Gagal")); load(); });
             }catch(Exception e){ runOnUiThread(() -> alert("Error","Gagal update status menu."));}
@@ -167,7 +178,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
     private void deleteMenu(String menuId){
         new Thread(() -> {
             try{
-                JSONObject f = new JSONObject(); f.put("user_id", userId()); f.put("menu_id", menuId);
+                JSONObject f = new JSONObject(); f.put("menu_id", menuId);
                 JSONObject r = new JSONObject(postForm(BASE + "merchant_delete_menu.php", f, null, "", ""));
                 runOnUiThread(() -> { toast(r.optString("message", r.optBoolean("success")?"Berhasil":"Gagal")); load(); });
             }catch(Exception e){ runOnUiThread(() -> alert("Error","Gagal hapus menu."));}

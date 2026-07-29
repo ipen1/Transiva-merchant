@@ -228,8 +228,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         if(u.isEmpty()){ alert("Sesi", "Silakan login ulang."); return; }
         new Thread(() -> {
             try {
-                String dash = get(BASE + "getMerchantDashboard.php?username=" + enc(u) + "&v=" + System.currentTimeMillis());
-                String orders = get(BASE + "getMerchantOrders.php?username=" + enc(u) + "&v=" + System.currentTimeMillis());
+                String dash = get(BASE + "getMerchantDashboard.php?v=" + System.currentTimeMillis());
+                String orders = get(BASE + "getMerchantOrders.php?v=" + System.currentTimeMillis());
                 runOnUiThread(() -> { showDash(dash); checkOrders(orders); });
             } catch(Exception e){ runOnUiThread(() -> descText.setText("Koneksi gagal")); }
         }).start();
@@ -285,7 +285,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         new Thread(() -> {
             try {
                 JSONObject p = new JSONObject();
-                p.put("username", u);
                 p.put("is_open", next);
                 JSONObject r = new JSONObject(postJson(BASE + "updateRestaurantStatus.php", p));
                 runOnUiThread(() -> {

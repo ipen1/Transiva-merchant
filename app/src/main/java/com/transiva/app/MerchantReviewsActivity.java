@@ -23,7 +23,7 @@ public class MerchantReviewsActivity extends MerchantBaseActivity {
         list.removeAllViews(); list.addView(card("Memuat ulasan..."));
         new Thread(() -> {
             try{
-                JSONObject res = new JSONObject(get(BASE + "getMerchantReviews.php?username=" + enc(username()) + "&v=" + System.currentTimeMillis()));
+                JSONObject res = new JSONObject(get(BASE + "getMerchantReviews.php?v=" + System.currentTimeMillis()));
                 runOnUiThread(() -> show(res));
             }catch(Exception e){ runOnUiThread(() -> { list.removeAllViews(); list.addView(card("Koneksi gagal.")); });}
         }).start();
