@@ -18,6 +18,8 @@
         <activity android:name=".MerchantDashboardActivity" android:exported="false"/>
         <activity android:name=".MerchantAddMenuActivity" android:exported="false"/>
         <activity android:name=".MerchantMenuListActivity" android:exported="false"/>
+        <activity android:name=".MerchantCategoriesActivity" android:exported="false"/>
+        <activity android:name=".MerchantOperationsActivity" android:exported="false"/>
         <activity android:name=".MerchantOrdersActivity" android:exported="false"/>
         <activity android:name=".MerchantRestaurantProfileActivity" android:exported="false"/>
         <activity android:name=".MerchantReviewsActivity" android:exported="false"/>
