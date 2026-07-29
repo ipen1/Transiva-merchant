@@ -105,7 +105,11 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
 
         LinearLayout r3 = row(); grid.addView(r3);
         tile(r3, "🏪", "Profil Merchant", () -> open(MerchantRestaurantProfileActivity.class));
-        tile(r3, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
+        tile(r3, "🕒", "Operasional", () -> open(MerchantOperationsActivity.class));
+
+        LinearLayout r4 = row(); grid.addView(r4);
+        tile(r4, "🗂️", "Kategori", () -> open(MerchantCategoriesActivity.class));
+        tile(r4, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
 
         Button refresh = outlineBtn("↻  Refresh Dashboard");
         refresh.setOnClickListener(v -> loadAll());
@@ -215,8 +219,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         stopAuto();
         firstLoad = true;
         loadAll();
-        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 5000); };
-        handler.postDelayed(autoTask, 5000);
+        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 30000); };
+        handler.postDelayed(autoTask, 30000);
     }
 
     private void stopAuto(){

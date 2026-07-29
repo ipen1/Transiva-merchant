@@ -45,9 +45,9 @@ public final class MerchantBottomNavigation {
 
     public static ActiveItem resolve(Activity activity) {
         if (activity instanceof MerchantOrdersActivity) return ActiveItem.ORDERS;
-        if (activity instanceof MerchantMenuListActivity || activity instanceof MerchantAddMenuActivity) return ActiveItem.MENU;
+        if (activity instanceof MerchantMenuListActivity || activity instanceof MerchantAddMenuActivity || activity instanceof MerchantCategoriesActivity) return ActiveItem.MENU;
         if (activity instanceof MerchantReviewsActivity) return ActiveItem.REVIEWS;
-        if (activity instanceof MerchantSettingsActivity || activity instanceof MerchantRestaurantProfileActivity) return ActiveItem.SETTINGS;
+        if (activity instanceof MerchantSettingsActivity || activity instanceof MerchantRestaurantProfileActivity || activity instanceof MerchantOperationsActivity) return ActiveItem.SETTINGS;
         return ActiveItem.HOME;
     }
 

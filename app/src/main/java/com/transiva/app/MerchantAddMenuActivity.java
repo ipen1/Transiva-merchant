@@ -19,7 +19,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private static final String GROSSUP_ENDPOINT = BASE + "get_transfood_grossup_rules.php";
 
     private LinearLayout root;
-    private EditText nameInput, priceInput, categoryInput;
+    private EditText nameInput, priceInput, categoryInput, descriptionInput, stockInput, variantsInput, toppingsInput;
+    private CheckBox trackStockInput;
     private TextView originalText, fileText, previewName, previewPrice, previewCategory, previewIcon;
     private ImageView previewImage;
     private Uri imageUri = null;
@@ -58,6 +59,22 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         categoryInput = input("Makanan / Minuman", InputType.TYPE_CLASS_TEXT);
         root.addView(categoryInput);
 
+        Button manageCategory = outlineBtn("Kelola Kategori");
+        manageCategory.setOnClickListener(v -> open(MerchantCategoriesActivity.class));
+        root.addView(manageCategory);
+
+        root.addView(label("Deskripsi Menu"));
+        descriptionInput = input("Contoh: Nasi goreng dengan ayam dan telur", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        root.addView(descriptionInput);
+
+        trackStockInput = new CheckBox(this); trackStockInput.setText("Gunakan stok terbatas / tandai habis otomatis"); root.addView(trackStockInput);
+        stockInput = input("Jumlah stok, contoh: 25", InputType.TYPE_CLASS_NUMBER); root.addView(stockInput);
+
+        root.addView(label("Varian (satu per baris: Nama|Tambahan Harga)"));
+        variantsInput = input("Regular|0\nLarge|7000", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE); variantsInput.setMinLines(3); variantsInput.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(96))); root.addView(variantsInput);
+        root.addView(label("Topping (satu per baris: Nama|Tambahan Harga)"));
+        toppingsInput = input("Telur|5000\nAyam|8000", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE); toppingsInput.setMinLines(3); toppingsInput.setLayoutParams(new LinearLayout.LayoutParams(-1, dp(96))); root.addView(toppingsInput);
+
         originalText = card("Harga Asli: Rp 0\nFee Gross Up: memuat...\nHarga Tampil: Rp 0");
         root.addView(originalText);
 
@@ -88,6 +105,10 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         if(!editMode) return;
         nameInput.setText(getIntent().getStringExtra("name"));
         categoryInput.setText(getIntent().getStringExtra("category"));
+        descriptionInput.setText(getIntent().getStringExtra("description"));
+        trackStockInput.setChecked(getIntent().getIntExtra("track_stock",0)==1);
+        stockInput.setText(String.valueOf(getIntent().getIntExtra("stock",0)));
+        applyOptionsJson(getIntent().getStringExtra("options_json"));
         long original = getIntent().getLongExtra("original_price", 0L);
         if(original <= 0) original = getIntent().getLongExtra("price", 0L);
         if(original > 0) priceInput.setText(String.valueOf(original));
@@ -201,6 +222,32 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         previewPrice.setText(rupiah(appPrice));
     }
 
+    private void applyOptionsJson(String raw){
+        if(raw == null || raw.trim().isEmpty()) return;
+        try{
+            JSONArray groups = new JSONArray(raw); StringBuilder vars = new StringBuilder(), tops = new StringBuilder();
+            for(int i=0;i<groups.length();i++){
+                JSONObject g=groups.optJSONObject(i); if(g==null) continue; String type=g.optString("type",""); JSONArray items=g.optJSONArray("items"); if(items==null) continue;
+                StringBuilder target="topping".equals(type)?tops:vars;
+                for(int j=0;j<items.length();j++){JSONObject it=items.optJSONObject(j);if(it==null)continue;if(target.length()>0)target.append("\n");target.append(it.optString("name","")).append("|").append(it.optLong("price",0));}
+            }
+            variantsInput.setText(vars.toString()); toppingsInput.setText(tops.toString());
+        }catch(Exception ignored){}
+    }
+
+    private JSONArray buildOptions(){
+        JSONArray groups=new JSONArray();
+        try{
+            groups.put(optionGroup("variant","Varian",variantsInput.getText().toString()));
+            groups.put(optionGroup("topping","Topping",toppingsInput.getText().toString()));
+        }catch(Exception ignored){}
+        return groups;
+    }
+    private JSONObject optionGroup(String type,String label,String raw) throws Exception{
+        JSONObject g=new JSONObject(); g.put("type",type); g.put("label",label); JSONArray items=new JSONArray();
+        for(String line:raw.split("\n")){line=line.trim();if(line.isEmpty())continue;String[] p=line.split("\\|",2);JSONObject it=new JSONObject();it.put("name",p[0].trim());long price=0;if(p.length>1)try{price=Long.parseLong(p[1].trim());}catch(Exception ignored){}it.put("price",Math.max(0,price));items.put(it);}g.put("items",items);return g;
+    }
+
     private void chooseImage(){
         Intent i = new Intent(Intent.ACTION_GET_CONTENT);
         i.setType("image/*");
@@ -253,6 +300,11 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 f.put("original_price", finalOriginal);
                 f.put("grossup_fee", finalFee);
                 f.put("category", finalCat);
+                f.put("description", descriptionInput.getText().toString().trim());
+                f.put("track_stock", trackStockInput.isChecked() ? 1 : 0);
+                int stock = 0; try{ stock = Integer.parseInt(stockInput.getText().toString().trim()); }catch(Exception ignored){}
+                f.put("stock", Math.max(0, stock));
+                f.put("options_json", buildOptions().toString());
                 if(editMode) {
                     f.put("menu_id", editMenuId);
                     f.put("id", editMenuId);

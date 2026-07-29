@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.text.InputType;
 import android.view.Gravity;
 import android.widget.*;
 import java.io.InputStream;
@@ -13,175 +14,24 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MerchantMenuListActivity extends MerchantBaseActivity {
-    private LinearLayout root, list;
-
-    @Override protected void onCreate(Bundle b){ super.onCreate(b); build(); load(); }
-
-    private void build(){
-        root = new LinearLayout(this); setContentView(page(root));
-        root.addView(title("Daftar Menu"));
-        root.addView(sub("Aktifkan, nonaktifkan, atau hapus menu restoran"));
-        list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); root.addView(list);
-        Button add = btn("➕ Tambah Menu Baru"); add.setOnClickListener(v -> open(MerchantAddMenuActivity.class)); root.addView(add);
-        Button back = outlineBtn("← Kembali"); back.setOnClickListener(v -> finish()); root.addView(back);
-    }
-
-    @Override protected void onResume(){ super.onResume(); load(); }
-
-    private void load(){
-        final int uid = userId();
-        list.removeAllViews(); list.addView(card("Memuat menu..."));
-        new Thread(() -> {
-            try{
-                String link = BASE + "merchant_get_menus.php?v=" + System.currentTimeMillis();
-                JSONObject res = new JSONObject(get(link));
-                runOnUiThread(() -> show(res));
-            }catch(Exception e){ runOnUiThread(() -> { list.removeAllViews(); list.addView(card("Gagal memuat menu. Pastikan user_id tersimpan setelah login.")); });}
-        }).start();
-    }
-
-    private void show(JSONObject data){
-        list.removeAllViews();
-        if(!data.optBoolean("success", false)){ list.addView(card(data.optString("message","Gagal mengambil menu"))); return; }
-        JSONArray arr = data.optJSONArray("menus"); if(arr == null) arr = data.optJSONArray("data");
-        if(arr == null || arr.length()==0){ list.addView(card("Belum ada menu.")); return; }
-        for(int i=0;i<arr.length();i++){ JSONObject m = arr.optJSONObject(i); if(m != null) list.addView(menuCard(m)); }
-    }
-
-    private LinearLayout menuCard(JSONObject m){
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(12),dp(12),dp(12),dp(12));
-        box.setBackground(round(Color.WHITE, dp(20)));
-        box.setElevation(dp(2));
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1,-2);
-        lp.setMargins(0,0,0,dp(12));
-        box.setLayoutParams(lp);
-
-        String id = s(m,"id","menu_id");
-        int active = m.optInt("is_active", m.optInt("active", 1));
-        String name = s(m,"name","menu_name","food_name");
-        String category = s(m,"category","type");
-        String image = s(m,"image","photo","foto","image_url","menu_image","food_image");
-
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(0,0,0,dp(10));
-
-        FrameLayout imageWrap = new FrameLayout(this);
-        imageWrap.setBackground(round(Color.parseColor("#EEF6FF"), dp(18)));
-
-        ImageView img = new ImageView(this);
-        img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        imageWrap.addView(img, new FrameLayout.LayoutParams(-1, -1));
-
-        TextView fallback = tv("🍽️", 30, BLUE, true);
-        fallback.setGravity(Gravity.CENTER);
-        imageWrap.addView(fallback, new FrameLayout.LayoutParams(-1, -1));
-
-        LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(dp(92), dp(92));
-        imgLp.setMargins(0,0,dp(12),0);
-        top.addView(imageWrap, imgLp);
-
-        LinearLayout info = new LinearLayout(this);
-        info.setOrientation(LinearLayout.VERTICAL);
-        info.setGravity(Gravity.CENTER_VERTICAL);
-
-        info.addView(tv(name.isEmpty() ? "Tanpa nama" : name, 17, NAVY, true));
-        info.addView(tv(category.isEmpty() ? "Menu" : category, 13, MUTED, false));
-        info.addView(tv(rupiah(m.optLong("price",0)), 15, BLUE, true));
-        info.addView(tv(active == 1 ? "🟢 Aktif" : "🔴 Tidak tersedia", 13, active == 1 ? Color.parseColor("#16803A") : Color.parseColor("#B42318"), true));
-
-        top.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
-        box.addView(top);
-
-        loadMenuImage(img, fallback, image);
-
-        LinearLayout r = row();
-        Button edit = outlineBtn("Edit");
-        Button status = active == 1 ? outlineBtn("Nonaktifkan") : btn("Aktifkan");
-        Button del = outlineBtn("Hapus");
-        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(0, dp(48), 1f); ep.setMargins(0,0,dp(4),0);
-        LinearLayout.LayoutParams a = new LinearLayout.LayoutParams(0, dp(48), 1f); a.setMargins(dp(4),0,dp(4),0);
-        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(0, dp(48), 1f); dlp.setMargins(dp(4),0,0,0);
-        r.addView(edit, ep); r.addView(status, a); r.addView(del, dlp); box.addView(r);
-
-        edit.setOnClickListener(v -> {
-            android.content.Intent intent = new android.content.Intent(this, MerchantAddMenuActivity.class);
-            intent.putExtra("edit_mode", true);
-            intent.putExtra("menu_id", id);
-            intent.putExtra("name", name);
-            intent.putExtra("category", category);
-            intent.putExtra("price", m.optLong("price",0));
-            intent.putExtra("original_price", m.optLong("original_price", m.optLong("merchant_price",0)));
-            intent.putExtra("image", image);
-            startActivity(intent);
-        });
-        status.setOnClickListener(v -> updateStatus(id, active == 1 ? 0 : 1));
-        del.setOnClickListener(v -> new android.app.AlertDialog.Builder(this)
-                .setTitle("Hapus Menu")
-                .setMessage("Yakin ingin menghapus menu ini?")
-                .setNegativeButton("Batal", null)
-                .setPositiveButton("Hapus", (d,w) -> deleteMenu(id)).show());
-        return box;
-    }
-
-    private void loadMenuImage(ImageView imageView, TextView fallback, String rawUrl){
-        String url = normalizeImageUrl(rawUrl);
-        if(url.isEmpty()) return;
-
-        new Thread(() -> {
-            try{
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(15000);
-                conn.setUseCaches(true);
-                conn.setRequestProperty("User-Agent", "Transiva-Android");
-                InputStream is = conn.getInputStream();
-                Bitmap bitmap = BitmapFactory.decodeStream(is);
-                is.close();
-                conn.disconnect();
-
-                if(bitmap != null){
-                    runOnUiThread(() -> {
-                        fallback.setVisibility(android.view.View.GONE);
-                        imageView.setImageBitmap(bitmap);
-                    });
-                }
-            }catch(Exception ignored){}
-        }).start();
-    }
-
-    private String normalizeImageUrl(String raw){
-        if(raw == null) return "";
-        String url = raw.trim();
-        if(url.isEmpty() || "null".equalsIgnoreCase(url)) return "";
-        if(url.startsWith("http://transiva.my.id/")) return url.replace("http://transiva.my.id/", "https://transiva.my.id/");
-        if(url.startsWith("https://")) return url;
-        if(url.startsWith("http://")) return "";
-        if(url.startsWith("/")) return "https://transiva.my.id" + url;
-        return "https://transiva.my.id/" + url;
-    }
-
-    private void updateStatus(String menuId, int active){
-        new Thread(() -> {
-            try{
-                JSONObject f = new JSONObject(); f.put("menu_id", menuId); f.put("is_active", active);
-                JSONObject r = new JSONObject(postForm(BASE + "merchant_update_menu_status.php", f, null, "", ""));
-                runOnUiThread(() -> { toast(r.optString("message", r.optBoolean("success")?"Berhasil":"Gagal")); load(); });
-            }catch(Exception e){ runOnUiThread(() -> alert("Error","Gagal update status menu."));}
-        }).start();
-    }
-
-    private void deleteMenu(String menuId){
-        new Thread(() -> {
-            try{
-                JSONObject f = new JSONObject(); f.put("menu_id", menuId);
-                JSONObject r = new JSONObject(postForm(BASE + "merchant_delete_menu.php", f, null, "", ""));
-                runOnUiThread(() -> { toast(r.optString("message", r.optBoolean("success")?"Berhasil":"Gagal")); load(); });
-            }catch(Exception e){ runOnUiThread(() -> alert("Error","Gagal hapus menu."));}
-        }).start();
-    }
+    private LinearLayout root,list; private EditText search; private Spinner statusFilter; private JSONArray cached=new JSONArray();
+    @Override protected void onCreate(Bundle b){super.onCreate(b);build();load();}
+    @Override protected void onResume(){super.onResume();load();}
+    private void build(){root=new LinearLayout(this);setContentView(page(root));root.addView(title("Daftar Menu"));root.addView(sub("Cari, filter, kelola stok, kategori, dan ketersediaan menu"));
+        search=input("🔎 Cari nama atau kategori",InputType.TYPE_CLASS_TEXT);search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int b,int c){render();}public void afterTextChanged(android.text.Editable e){}});root.addView(search);
+        statusFilter=new Spinner(this);statusFilter.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Semua menu","Aktif","Habis / nonaktif"}));statusFilter.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int pos,long id){render();}public void onNothingSelected(android.widget.AdapterView<?> p){}});root.addView(statusFilter);
+        LinearLayout actions=row();Button add=btn("＋ Menu");Button cats=outlineBtn("Kategori");actions.addView(add,new LinearLayout.LayoutParams(0,dp(48),1));actions.addView(cats,new LinearLayout.LayoutParams(0,dp(48),1));root.addView(actions);add.setOnClickListener(v->open(MerchantAddMenuActivity.class));cats.setOnClickListener(v->open(MerchantCategoriesActivity.class));
+        list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);root.addView(list);Button back=outlineBtn("← Kembali");back.setOnClickListener(v->finish());root.addView(back);}
+    private void load(){if(list==null)return;list.removeAllViews();list.addView(card("Memuat menu..."));new Thread(()->{try{JSONObject r=new JSONObject(get(BASE+"merchant_get_menus.php?v="+System.currentTimeMillis()));runOnUiThread(()->{cached=r.optJSONArray("menus");if(cached==null)cached=new JSONArray();render();});}catch(Exception e){runOnUiThread(()->{list.removeAllViews();list.addView(card("Gagal memuat menu."));});}}).start();}
+    private void render(){if(list==null)return;list.removeAllViews();String q=search==null?"":search.getText().toString().trim().toLowerCase();int filter=statusFilter==null?0:statusFilter.getSelectedItemPosition();int shown=0;for(int i=0;i<cached.length();i++){JSONObject m=cached.optJSONObject(i);if(m==null)continue;String name=s(m,"name","menu_name","food_name"),cat=s(m,"category","type");int active=m.optInt("is_active",1);boolean sold=m.optBoolean("is_sold_out",false)||(m.optInt("track_stock",0)==1&&m.optInt("stock",0)<=0);if(!q.isEmpty()&&!name.toLowerCase().contains(q)&&!cat.toLowerCase().contains(q))continue;if(filter==1&&(active!=1||sold))continue;if(filter==2&&(active==1&&!sold))continue;list.addView(menuCard(m));shown++;}if(shown==0)list.addView(card("Tidak ada menu sesuai filter."));}
+    private LinearLayout menuCard(JSONObject m){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(12),dp(12),dp(12),dp(12));box.setBackground(round(Color.WHITE,dp(20)));box.setElevation(dp(2));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(12));box.setLayoutParams(lp);String id=s(m,"id","menu_id"),name=s(m,"name","menu_name","food_name"),cat=s(m,"category","type"),image=s(m,"image","photo","image_url");int active=m.optInt("is_active",1),track=m.optInt("track_stock",0),stock=m.optInt("stock",0);boolean sold=m.optBoolean("is_sold_out",false)||(track==1&&stock<=0);
+        LinearLayout top=new LinearLayout(this);top.setOrientation(LinearLayout.HORIZONTAL);top.setGravity(Gravity.CENTER_VERTICAL);FrameLayout iw=new FrameLayout(this);iw.setBackground(round(Color.parseColor("#EEF6FF"),dp(18)));ImageView img=new ImageView(this);img.setScaleType(ImageView.ScaleType.CENTER_CROP);iw.addView(img,new FrameLayout.LayoutParams(-1,-1));TextView fallback=tv("🍽️",30,BLUE,true);fallback.setGravity(Gravity.CENTER);iw.addView(fallback,new FrameLayout.LayoutParams(-1,-1));LinearLayout.LayoutParams ilp=new LinearLayout.LayoutParams(dp(92),dp(92));ilp.setMargins(0,0,dp(12),0);top.addView(iw,ilp);LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);info.addView(tv(name.isEmpty()?"Tanpa nama":name,17,NAVY,true));info.addView(tv(cat.isEmpty()?"Menu":cat,13,MUTED,false));info.addView(tv(rupiah(m.optLong("price",0)),15,BLUE,true));String state=sold?"🔴 Habis":(active==1?"🟢 Tersedia":"🔴 Nonaktif");info.addView(tv(state,13,sold||active!=1?Color.parseColor("#B42318"):Color.parseColor("#16803A"),true));if(track==1)info.addView(tv("Stok: "+stock,12,MUTED,false));top.addView(info,new LinearLayout.LayoutParams(0,-2,1));box.addView(top);loadMenuImage(img,fallback,image);
+        LinearLayout r=row();Button edit=outlineBtn("Edit");Button stockBtn=outlineBtn(track==1?"Stok":"Atur Stok");Button status=active==1?outlineBtn("Nonaktif"):btn("Aktifkan");r.addView(edit,new LinearLayout.LayoutParams(0,dp(48),1));r.addView(stockBtn,new LinearLayout.LayoutParams(0,dp(48),1));r.addView(status,new LinearLayout.LayoutParams(0,dp(48),1));box.addView(r);Button del=outlineBtn("Hapus Menu");box.addView(del);
+        edit.setOnClickListener(v->{android.content.Intent it=new android.content.Intent(this,MerchantAddMenuActivity.class);it.putExtra("edit_mode",true);it.putExtra("menu_id",id);it.putExtra("name",name);it.putExtra("category",cat);it.putExtra("price",m.optLong("price",0));it.putExtra("original_price",m.optLong("original_price",m.optLong("merchant_price",0)));it.putExtra("image",image);it.putExtra("description",m.optString("description",""));it.putExtra("track_stock",track);it.putExtra("stock",stock);JSONArray opts=m.optJSONArray("options");if(opts!=null)it.putExtra("options_json",opts.toString());startActivity(it);});stockBtn.setOnClickListener(v->stockDialog(id,track,stock));status.setOnClickListener(v->updateStatus(id,active==1?0:1));del.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Hapus Menu").setMessage("Yakin ingin menghapus menu ini?").setNegativeButton("Batal",null).setPositiveButton("Hapus",(d,w)->deleteMenu(id)).show());return box;}
+    private void stockDialog(String id,int track,int stock){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);CheckBox cb=new CheckBox(this);cb.setText("Aktifkan stok terbatas");cb.setChecked(track==1);EditText in=new EditText(this);in.setInputType(InputType.TYPE_CLASS_NUMBER);in.setHint("Jumlah stok");in.setText(String.valueOf(stock));v.addView(cb);v.addView(in);new android.app.AlertDialog.Builder(this).setTitle("Stok Menu").setView(v).setNegativeButton("Batal",null).setPositiveButton("Simpan",(d,w)->{int n=0;try{n=Integer.parseInt(in.getText().toString().trim());}catch(Exception ignored){}updateStock(id,cb.isChecked(),n);}).show();}
+    private void updateStock(String id,boolean track,int stock){new Thread(()->{try{JSONObject p=new JSONObject();p.put("menu_id",id);p.put("track_stock",track?1:0);p.put("stock",Math.max(0,stock));JSONObject r=new JSONObject(postJson(BASE+"merchant_update_stock.php",p));runOnUiThread(()->{toast(r.optString("message","Stok diperbarui"));load();});}catch(Exception e){runOnUiThread(()->alert("Error","Gagal memperbarui stok."));}}).start();}
+    private void loadMenuImage(ImageView iv,TextView fallback,String raw){String url=normalizeImageUrl(raw);if(url.isEmpty())return;new Thread(()->{try{HttpURLConnection c=(HttpURLConnection)new URL(url).openConnection();c.setConnectTimeout(15000);c.setReadTimeout(15000);InputStream is=c.getInputStream();Bitmap b=BitmapFactory.decodeStream(is);is.close();c.disconnect();if(b!=null)runOnUiThread(()->{fallback.setVisibility(android.view.View.GONE);iv.setImageBitmap(b);});}catch(Exception ignored){}}).start();}
+    private String normalizeImageUrl(String raw){if(raw==null)return"";String u=raw.trim();if(u.isEmpty()||"null".equalsIgnoreCase(u))return"";if(u.startsWith("http://transiva.my.id/"))return u.replace("http://transiva.my.id/","https://transiva.my.id/");if(u.startsWith("https://"))return u;if(u.startsWith("http://"))return"";if(u.startsWith("/"))return"https://transiva.my.id"+u;return"https://transiva.my.id/"+u;}
+    private void updateStatus(String id,int active){new Thread(()->{try{JSONObject f=new JSONObject();f.put("menu_id",id);f.put("is_active",active);JSONObject r=new JSONObject(postForm(BASE+"merchant_update_menu_status.php",f,null,"",""));runOnUiThread(()->{toast(r.optString("message","Berhasil"));load();});}catch(Exception e){runOnUiThread(()->alert("Error","Gagal update status menu."));}}).start();}
+    private void deleteMenu(String id){new Thread(()->{try{JSONObject f=new JSONObject();f.put("menu_id",id);JSONObject r=new JSONObject(postForm(BASE+"merchant_delete_menu.php",f,null,"",""));runOnUiThread(()->{toast(r.optString("message","Berhasil"));load();});}catch(Exception e){runOnUiThread(()->alert("Error","Gagal hapus menu."));}}).start();}
 }
