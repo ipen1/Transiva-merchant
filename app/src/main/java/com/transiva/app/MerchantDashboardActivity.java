@@ -14,7 +14,7 @@ import java.util.HashSet;
 
 public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout root, grid, ordersTile;
-    private TextView nameText, statusText, descText, todayText, ratingText, reviewText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
+    private TextView nameText, statusText, descText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
     private Button storeStatusBtn;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final HashSet<String> notifiedOrders = new HashSet<>();
@@ -82,6 +82,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         todayText = stat(stats, "Hari Ini", "0");
         ratingText = stat(stats, "Rating", "0.0 ⭐");
         reviewText = stat(stats, "Ulasan", "0");
+        revenueText = stat(stats, "Omzet Hari Ini", "Rp 0");
 
         storeStatusBtn = btn("Memuat...");
         storeStatusBtn.setOnClickListener(v -> toggleStore());
@@ -108,8 +109,12 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         tile(r3, "🕒", "Operasional", () -> open(MerchantOperationsActivity.class));
 
         LinearLayout r4 = row(); grid.addView(r4);
-        tile(r4, "🗂️", "Kategori", () -> open(MerchantCategoriesActivity.class));
-        tile(r4, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
+        tile(r4, "💰", "Keuangan", () -> open(MerchantFinanceActivity.class));
+        tile(r4, "📊", "Analitik", () -> open(MerchantAnalyticsActivity.class));
+
+        LinearLayout r5 = row(); grid.addView(r5);
+        tile(r5, "🗂️", "Kategori", () -> open(MerchantCategoriesActivity.class));
+        tile(r5, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
 
         Button refresh = outlineBtn("↻  Refresh Dashboard");
         refresh.setOnClickListener(v -> loadAll());
@@ -248,6 +253,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             todayText.setText(String.valueOf(d.optInt("today_orders", 0)));
             ratingText.setText(String.format(java.util.Locale.US, "%.1f ⭐", d.optDouble("rating", 0)));
             reviewText.setText(d.optInt("review_count", 0) + " ulasan");
+            if(revenueText != null) revenueText.setText(rupiah(d.optLong("today_revenue", 0)));
             storeStatusBtn.setText(open ? "🔴 Tutup Restoran" : "🟢 Buka Restoran");
             storeStatusBtn.setTag(open ? "1" : "0");
         } catch(Exception e){ descText.setText("Dashboard belum terbaca"); }

@@ -1,46 +1,18 @@
 package com.transiva.app;
 
-import android.os.Bundle;
 import android.graphics.Color;
+import android.os.Bundle;
+import android.text.InputType;
 import android.widget.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MerchantReviewsActivity extends MerchantBaseActivity {
-    private LinearLayout root, list;
-
-    @Override protected void onCreate(Bundle b){ super.onCreate(b); build(); load(); }
-
-    private void build(){
-        root = new LinearLayout(this); setContentView(page(root));
-        root.addView(title("Rating & Ulasan"));
-        root.addView(sub("Ulasan customer untuk restoran kamu"));
-        list = new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); root.addView(list);
-        Button back = outlineBtn("← Kembali"); back.setOnClickListener(v -> finish()); root.addView(back);
-    }
-
-    private void load(){
-        list.removeAllViews(); list.addView(card("Memuat ulasan..."));
-        new Thread(() -> {
-            try{
-                JSONObject res = new JSONObject(get(BASE + "getMerchantReviews.php?v=" + System.currentTimeMillis()));
-                runOnUiThread(() -> show(res));
-            }catch(Exception e){ runOnUiThread(() -> { list.removeAllViews(); list.addView(card("Koneksi gagal.")); });}
-        }).start();
-    }
-
-    private void show(JSONObject res){
-        list.removeAllViews();
-        if(!res.optBoolean("success", false)){ list.addView(card(res.optString("message","Gagal memuat ulasan"))); return; }
-        JSONObject sum = res.optJSONObject("restaurant");
-        if(sum != null) list.addView(card("⭐ Rating Restoran\n" + String.format(java.util.Locale.US, "%.1f", sum.optDouble("rating",0)) + " dari " + sum.optInt("review_count",0) + " ulasan"));
-        JSONArray arr = res.optJSONArray("reviews");
-        if(arr == null || arr.length()==0){ list.addView(card("Belum ada ulasan.\nUlasan customer akan tampil di sini.")); return; }
-        for(int i=0;i<arr.length();i++){
-            JSONObject r = arr.optJSONObject(i); if(r == null) continue;
-            int rating = Math.max(0, Math.min(5, r.optInt("rating",0)));
-            String stars = new String(new char[rating]).replace("\0","★") + new String(new char[5-rating]).replace("\0","☆");
-            list.addView(card("Order #" + s(r,"order_id","id") + "\n" + stars + "\n" + s(r,"review","comment") + "\nDriver: " + (s(r,"driver","driver_name").isEmpty() ? "-" : s(r,"driver","driver_name"))));
-        }
-    }
+    private LinearLayout root,list;
+    @Override protected void onCreate(Bundle b){super.onCreate(b);build();load();}
+    private void build(){root=new LinearLayout(this);setContentView(page(root));root.addView(title("Rating & Ulasan"));root.addView(sub("Baca dan balas ulasan customer untuk restoran kamu"));list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);root.addView(list);Button refresh=outlineBtn("↻ Refresh ulasan");refresh.setOnClickListener(v->load());root.addView(refresh);}
+    private void load(){list.removeAllViews();list.addView(card("Memuat ulasan..."));new Thread(()->{try{JSONObject res=new JSONObject(get(BASE+"getMerchantReviews.php?v="+System.currentTimeMillis()));runOnUiThread(()->show(res));}catch(Exception e){runOnUiThread(()->{list.removeAllViews();list.addView(card("Koneksi gagal."));});}}).start();}
+    private void show(JSONObject res){list.removeAllViews();if(!res.optBoolean("success",false)){list.addView(card(res.optString("message","Gagal memuat ulasan")));return;}JSONObject sum=res.optJSONObject("restaurant");if(sum!=null)list.addView(card("⭐ "+String.format(java.util.Locale.US,"%.1f",sum.optDouble("rating",0))+" / 5\n"+sum.optInt("review_count",0)+" ulasan customer"));JSONArray arr=res.optJSONArray("reviews");if(arr==null||arr.length()==0){list.addView(card("Belum ada ulasan."));return;}for(int i=0;i<arr.length();i++){JSONObject r=arr.optJSONObject(i);if(r==null)continue;reviewCard(r);}}
+    private void reviewCard(JSONObject r){LinearLayout box=new LinearLayout(this);box.setOrientation(LinearLayout.VERTICAL);box.setPadding(dp(16),dp(14),dp(16),dp(14));box.setBackground(round(Color.WHITE,dp(18)));box.setElevation(dp(2));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(12));box.setLayoutParams(lp);int rating=Math.max(0,Math.min(5,r.optInt("rating",0)));String stars=new String(new char[rating]).replace("\0","★")+new String(new char[5-rating]).replace("\0","☆");String customer=s(r,"customer_name");if(customer.isEmpty())customer="Customer";box.addView(tv(stars,17,Color.parseColor("#F59E0B"),true));box.addView(tv(r.optString("review",""),14,TEXT,false));box.addView(tv(customer+"  •  Order #"+s(r,"order_id","id"),11,MUTED,false));String existing=r.optString("merchant_reply","").trim();if(!existing.isEmpty()){TextView reply=tv("Balasan Anda:\n"+existing,12,BLUE,false);reply.setPadding(0,dp(10),0,dp(4));box.addView(reply);}EditText input=input(existing.isEmpty()?"Tulis balasan ulasan...":"Perbarui balasan...",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);input.setMinLines(2);input.setMaxLines(4);input.setSingleLine(false);if(!existing.isEmpty())input.setText(existing);box.addView(input);Button send=btn(existing.isEmpty()?"Balas Ulasan":"Perbarui Balasan");send.setOnClickListener(v->saveReply(r.optInt("id",0),input,send));box.addView(send);list.addView(box);}
+    private void saveReply(int orderDbId,EditText input,Button button){String reply=input.getText().toString().trim();if(reply.isEmpty()){toast("Balasan tidak boleh kosong");return;}button.setEnabled(false);new Thread(()->{try{JSONObject p=new JSONObject();p.put("order_db_id",orderDbId);p.put("reply",reply);JSONObject res=new JSONObject(postJson(BASE+"merchant_review_reply.php",p));runOnUiThread(()->{button.setEnabled(true);toast(res.optString("message",res.optBoolean("success")?"Tersimpan":"Gagal"));if(res.optBoolean("success"))load();});}catch(Exception e){runOnUiThread(()->{button.setEnabled(true);alert("Error","Koneksi gagal");});}}).start();}
 }
