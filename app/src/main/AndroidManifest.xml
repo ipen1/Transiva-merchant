@@ -23,6 +23,8 @@
         <activity android:name=".MerchantOrdersActivity" android:exported="false"/>
         <activity android:name=".MerchantRestaurantProfileActivity" android:exported="false"/>
         <activity android:name=".MerchantReviewsActivity" android:exported="false"/>
+        <activity android:name=".MerchantFinanceActivity" android:exported="false"/>
+        <activity android:name=".MerchantAnalyticsActivity" android:exported="false"/>
         <activity android:name=".MerchantSettingsActivity" android:exported="false"/>
         <activity android:name=".UpdateDownloadActivity" android:exported="false"/>
         <service android:name=".TransivaFirebaseService" android:exported="false">
