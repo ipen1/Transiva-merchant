@@ -445,6 +445,7 @@ public class PinActivity extends Activity {
                     DeviceIdentityManager.getInstallationUuid(this)
             );
             conn.setRequestProperty("X-Transiva-Client", "Android-Native");
+            conn.setRequestProperty("X-App-Scope", "merchant");
 
             if (payload != null) {
                 conn.setDoOutput(true);
