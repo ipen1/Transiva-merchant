@@ -3,6 +3,9 @@ package com.transiva.app;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -14,12 +17,18 @@ import java.util.HashSet;
 
 public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout root, grid, ordersTile;
-    private TextView nameText, statusText, descText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
+    private TextView nameText, statusText, descText, networkText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
     private Button storeStatusBtn;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final HashSet<String> notifiedOrders = new HashSet<>();
     private boolean firstLoad = true;
     private Runnable autoTask;
+    private boolean realtimeRegistered = false;
+    private final BroadcastReceiver realtimeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            loadAll();
+        }
+    };
 
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
@@ -28,12 +37,20 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
 
     @Override protected void onResume(){
         super.onResume();
+        if(!realtimeRegistered){
+            MerchantRealtime.register(this, realtimeReceiver);
+            realtimeRegistered = true;
+        }
         startAuto();
     }
 
     @Override protected void onPause(){
         super.onPause();
         stopAuto();
+        if(realtimeRegistered){
+            try { unregisterReceiver(realtimeReceiver); } catch(Exception ignored){}
+            realtimeRegistered = false;
+        }
     }
 
     private void build(){
@@ -76,6 +93,9 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         statusCard.addView(tv("Status Restoran", 13, MUTED, false));
         statusCard.addView(statusText);
         statusCard.addView(descText);
+        networkText = tv("● Menghubungkan ke server...", 12, Color.parseColor("#B54708"), true);
+        networkText.setPadding(0, dp(8), 0, 0);
+        statusCard.addView(networkText);
 
         LinearLayout stats = row();
         statusCard.addView(stats);
@@ -224,8 +244,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         stopAuto();
         firstLoad = true;
         loadAll();
-        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 30000); };
-        handler.postDelayed(autoTask, 30000);
+        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 45000); };
+        handler.postDelayed(autoTask, 45000);
     }
 
     private void stopAuto(){
@@ -235,12 +255,30 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private void loadAll(){
         final String u = username();
         if(u.isEmpty()){ alert("Sesi", "Silakan login ulang."); return; }
+        if(networkText != null){
+            networkText.setText(MerchantConnectivity.isOnline(this) ? "● Menghubungkan..." : "● Tidak ada koneksi internet");
+            networkText.setTextColor(Color.parseColor(MerchantConnectivity.isOnline(this) ? "#B54708" : "#D92D20"));
+        }
         new Thread(() -> {
             try {
                 String dash = get(BASE + "getMerchantDashboard.php?v=" + System.currentTimeMillis());
                 String orders = get(BASE + "getMerchantOrders.php?v=" + System.currentTimeMillis());
-                runOnUiThread(() -> { showDash(dash); checkOrders(orders); });
-            } catch(Exception e){ runOnUiThread(() -> descText.setText("Koneksi gagal")); }
+                runOnUiThread(() -> {
+                    if(networkText != null){
+                        networkText.setText("● Online • server terhubung");
+                        networkText.setTextColor(Color.parseColor("#16803A"));
+                    }
+                    showDash(dash);
+                    checkOrders(orders);
+                });
+            } catch(Exception e){
+                runOnUiThread(() -> {
+                    if(networkText != null){
+                        networkText.setText("● Menghubungkan kembali... data terakhir tetap ditampilkan");
+                        networkText.setTextColor(Color.parseColor("#D92D20"));
+                    }
+                });
+            }
         }).start();
     }
 
