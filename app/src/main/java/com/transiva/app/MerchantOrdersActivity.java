@@ -340,8 +340,24 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
 
         box.addView(tv("Total: " + rupiah(price), 16, NAVY, true));
-        if (!historyMode) addActions(box, actionId, displayId, status);
+        if (!historyMode) {
+            addActions(box, actionId, displayId, status);
+            if (!driver.isEmpty()) addDriverChat(box, o, actionId, displayId, driver);
+        }
         return box;
+    }
+
+
+    private void addDriverChat(LinearLayout box, JSONObject order, String actionId, String displayId, String driverName) {
+        Button chat = outlineBtn("💬 Chat Driver");
+        chat.setOnClickListener(v -> {
+            Intent i = new Intent(this, MerchantDriverChatActivity.class);
+            i.putExtra("order_id", displayId);
+            i.putExtra("order_db_id", actionId);
+            i.putExtra("driver_name", driverName);
+            startActivity(i);
+        });
+        box.addView(chat);
     }
 
     private String orderAge(JSONObject o) {
