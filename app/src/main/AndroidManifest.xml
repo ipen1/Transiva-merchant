@@ -23,6 +23,7 @@
         <activity android:name=".MerchantCategoriesActivity" android:exported="false"/>
         <activity android:name=".MerchantOperationsActivity" android:exported="false"/>
         <activity android:name=".MerchantOrdersActivity" android:exported="false" android:showWhenLocked="true" android:turnScreenOn="true"/>
+        <activity android:name=".MerchantDriverChatActivity" android:exported="false" android:screenOrientation="portrait" android:windowSoftInputMode="adjustResize"/>
         <activity android:name=".MerchantRestaurantProfileActivity" android:exported="false"/>
         <activity android:name=".MerchantReviewsActivity" android:exported="false"/>
         <activity android:name=".MerchantFinanceActivity" android:exported="false"/>
