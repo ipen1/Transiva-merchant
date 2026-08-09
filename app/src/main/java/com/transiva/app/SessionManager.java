@@ -83,6 +83,18 @@ public class SessionManager {
             }
 
             String role = clean.optString("role", "customer");
+            String authToken = clean.optString("token", "").trim();
+            if (authToken.isEmpty() || !SecureTokenStore.save(appContext, authToken)) {
+                markLoggedOut("secure_token_store_failed");
+                return false;
+            }
+
+            JSONObject storedUser = new JSONObject(clean.toString());
+            storedUser.remove("token");
+            storedUser.remove("access_token");
+            storedUser.remove("auth_token");
+            storedUser.remove("api_token");
+            storedUser.remove("session_token");
 
             SharedPreferences.Editor e = prefs.edit();
 
@@ -95,8 +107,8 @@ public class SessionManager {
             e.putString("session_message", "Session aktif");
             e.putString("native_session_message", "Session aktif");
 
-            e.putString("raw_user", clean.toString());
-            e.putString("raw_session", clean.toString());
+            e.putString("raw_user", storedUser.toString());
+            e.putString("raw_session", storedUser.toString());
 
             e.putString("id", clean.optString("id", ""));
             e.putString("user_id", clean.optString("user_id", ""));
@@ -104,7 +116,11 @@ public class SessionManager {
             e.putString("name", clean.optString("name", ""));
             e.putString("role", role);
             e.putString("phone", clean.optString("phone", ""));
-            e.putString("token", clean.optString("token", ""));
+            e.remove("token");
+            e.remove("access_token");
+            e.remove("auth_token");
+            e.remove("api_token");
+            e.remove("session_token");
             e.putString("restaurant_id", clean.optString("restaurant_id", ""));
             e.putString("balance", clean.optString("balance", "0"));
             e.putString("driver_type", clean.optString("driver_type", "bike"));
@@ -244,6 +260,7 @@ public class SessionManager {
 
             e.apply();
 
+            SecureTokenStore.clear(appContext);
             clearLegacyOnlineFlags();
             TransivaSession.logout(appContext, safe(reason));
 
@@ -601,37 +618,65 @@ public class SessionManager {
     }
 
     public String getToken() {
-        String token = firstNonEmpty(
+        String secure = SecureTokenStore.get(appContext);
+        if (!secure.isEmpty()) return secure;
+
+        // One-time migration from older plaintext sessions. After successful
+        // migration all plaintext token copies are removed immediately.
+        String legacyToken = firstNonEmpty(
                 prefs.getString("token", ""),
                 prefs.getString("access_token", ""),
                 prefs.getString("auth_token", ""),
                 prefs.getString("api_token", ""),
-                prefs.getString("session_token", "")
+                prefs.getString("session_token", ""),
+                tokenFromJson(prefs.getString("raw_user", "")),
+                tokenFromJson(prefs.getString("raw_session", "")),
+                legacyPrefs.getString("token", ""),
+                legacyPrefs.getString("access_token", ""),
+                legacyPrefs.getString("auth_token", ""),
+                legacyPrefs.getString("api_token", ""),
+                legacyPrefs.getString("session_token", ""),
+                tokenFromJson(legacyPrefs.getString("user_json", ""))
         );
 
-        if (token.isEmpty()) {
-            token = tokenFromJson(prefs.getString("raw_user", ""));
+        if (!legacyToken.isEmpty() && SecureTokenStore.save(appContext, legacyToken)) {
+            removePlaintextTokens();
+            return legacyToken;
         }
-        if (token.isEmpty()) {
-            token = tokenFromJson(prefs.getString("raw_session", ""));
-        }
-        if (token.isEmpty()) {
-            token = firstNonEmpty(
-                    legacyPrefs.getString("token", ""),
-                    legacyPrefs.getString("access_token", ""),
-                    legacyPrefs.getString("auth_token", ""),
-                    legacyPrefs.getString("api_token", ""),
-                    legacyPrefs.getString("session_token", "")
-            );
-        }
-        if (token.isEmpty()) {
-            token = tokenFromJson(legacyPrefs.getString("user_json", ""));
-        }
+        return "";
+    }
 
-        if (!token.isEmpty() && !token.equals(prefs.getString("token", ""))) {
-            prefs.edit().putString("token", token).apply();
-        }
-        return token;
+    private void removePlaintextTokens() {
+        try {
+            prefs.edit()
+                    .remove("token").remove("access_token").remove("auth_token")
+                    .remove("api_token").remove("session_token")
+                    .apply();
+            legacyPrefs.edit()
+                    .remove("token").remove("access_token").remove("auth_token")
+                    .remove("api_token").remove("session_token")
+                    .apply();
+
+            sanitizeStoredJson(prefs, "raw_user");
+            sanitizeStoredJson(prefs, "raw_session");
+            sanitizeStoredJson(legacyPrefs, "user_json");
+        } catch (Exception ignored) {}
+    }
+
+    private void sanitizeStoredJson(SharedPreferences target, String key) {
+        try {
+            String raw = target.getString(key, "");
+            if (raw == null || raw.trim().isEmpty()) return;
+            JSONObject obj = new JSONObject(raw);
+            JSONObject holder = obj.optJSONObject("user");
+            JSONObject clean = holder != null ? holder : obj;
+            clean.remove("token");
+            clean.remove("access_token");
+            clean.remove("auth_token");
+            clean.remove("api_token");
+            clean.remove("session_token");
+            target.edit().putString(key, obj.toString()).apply();
+        } catch (Exception ignored) {}
     }
 
     private String tokenFromJson(String json) {

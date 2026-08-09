@@ -401,6 +401,7 @@ public class LoginActivity extends Activity {
             connection.setConnectTimeout(TIMEOUT_MS);
             connection.setReadTimeout(TIMEOUT_MS);
             connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(false);
             connection.setDoInput(true);
             connection.setDoOutput(true);
             connection.setRequestProperty(
@@ -415,6 +416,8 @@ public class LoginActivity extends Activity {
                     "X-Transiva-Client",
                     "Android-Native"
             );
+            connection.setRequestProperty("X-App-Scope", "merchant");
+            connection.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
 
             JSONObject payload = new JSONObject();
             payload.put("username", username);
@@ -424,6 +427,7 @@ public class LoginActivity extends Activity {
                     Build.MANUFACTURER + " " + Build.MODEL
             );
             payload.put("platform", "android_native");
+            payload.put("app_scope", "merchant");
             payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
             payload.put("manufacturer", Build.MANUFACTURER);
             payload.put("model", Build.MODEL);
@@ -641,6 +645,8 @@ public class LoginActivity extends Activity {
                         "Accept",
                         "application/json"
                 );
+                connection.setInstanceFollowRedirects(false);
+                MerchantApiClient.applySecurity(this, connection);
 
                 JSONObject payload = new JSONObject();
                 payload.put("user_id", userId);
@@ -648,7 +654,6 @@ public class LoginActivity extends Activity {
                 payload.put("username", username);
                 payload.put("role", role);
                 payload.put("fcm_token", fcmToken.trim());
-                payload.put("token", fcmToken.trim());
                 payload.put("platform", "android_native");
             payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
             payload.put("manufacturer", Build.MANUFACTURER);

@@ -41,7 +41,10 @@ public class SplashActivity extends Activity {
 
         setContentView(layout);
 
-        new Handler(Looper.getMainLooper()).postDelayed(this::routeNext, SPLASH_DELAY);
+        new Handler(Looper.getMainLooper()).postDelayed(
+                () -> RootSecurityGuard.checkBeforeContinue(this, this::routeNext),
+                SPLASH_DELAY
+        );
     }
 
     private void routeNext() {

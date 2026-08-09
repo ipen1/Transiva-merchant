@@ -47,6 +47,8 @@ public class MerchantBaseActivity extends Activity {
     @Override protected void onResume(){
         super.onResume();
         MerchantAppSettings.apply(this);
+        RootSecurityGuard.protect(this);
+        SessionValidationClient.validate(this);
     }
 
     protected String username(){
@@ -247,16 +249,10 @@ public class MerchantBaseActivity extends Activity {
     }
 
     private HttpURLConnection openConnection(String link) throws Exception {
-        URL url = new URL(link);
-        if(!"https".equalsIgnoreCase(url.getProtocol())) {
-            throw new SSLException("Merchant API wajib menggunakan HTTPS");
-        }
-        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        HttpURLConnection c = MerchantApiClient.open(this, link);
         c.setConnectTimeout(20000);
         c.setReadTimeout(25000);
-        c.setUseCaches(false);
         c.setDoInput(true);
-        applyMerchantAuth(c);
         return c;
     }
 

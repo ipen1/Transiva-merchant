@@ -73,13 +73,15 @@ public class ApiClient {
                 conn.setConnectTimeout(CONNECT_TIMEOUT);
                 conn.setReadTimeout(READ_TIMEOUT);
                 conn.setUseCaches(false);
+                conn.setInstanceFollowRedirects(false);
                 conn.setDoInput(true);
 
                 conn.setRequestProperty("Accept", "application/json");
                 conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 conn.setRequestProperty("Cache-Control", "no-store");
                 conn.setRequestProperty("X-Transiva-Channel", CHANNEL_NAME);
-                conn.setRequestProperty("X-Transiva-App", "Android-Hybrid");
+                conn.setRequestProperty("X-Transiva-App", "Android-Merchant");
+                conn.setRequestProperty("X-App-Scope", "merchant");
                 conn.setRequestProperty("X-Android-SDK", String.valueOf(Build.VERSION.SDK_INT));
 
                 String sessionToken = new SessionManager(activity).getToken().trim();

@@ -28,8 +28,19 @@ public final class TransivaSession {
     public static void saveUser(Context context, JSONObject user) {
         if (context == null || user == null) return;
         SharedPreferences.Editor e = prefs(context).edit();
+        JSONObject safeUser;
+        try {
+            safeUser = new JSONObject(user.toString());
+            safeUser.remove("token");
+            safeUser.remove("access_token");
+            safeUser.remove("auth_token");
+            safeUser.remove("api_token");
+            safeUser.remove("session_token");
+        } catch (Exception ignored) {
+            safeUser = new JSONObject();
+        }
         e.putBoolean(KEY_LOGGED_IN, true);
-        e.putString(KEY_USER_JSON, user.toString());
+        e.putString(KEY_USER_JSON, safeUser.toString());
         e.putInt(KEY_ID, user.optInt("id", 0));
         e.putString(KEY_USERNAME, user.optString("username", ""));
         e.putString(KEY_ROLE, user.optString("role", "customer"));
