@@ -436,6 +436,9 @@ public class PinActivity extends Activity {
 
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("Cache-Control", "no-store");
+            // Paksa koneksi TLS baru agar endpoint PIN tidak memakai pooled connection
+            // lama setelah sertifikat/CDN Transiva berubah.
+            conn.setRequestProperty("Connection", "close");
             conn.setRequestProperty("Authorization", "Bearer " + safe(session.getToken()).trim());
             conn.setRequestProperty(
                     "X-Device-UUID",

@@ -17,7 +17,11 @@ import org.json.JSONObject;
 import java.io.*;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.net.URL;
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLException;
 import java.net.URLEncoder;
 import java.text.NumberFormat;
 import java.util.Locale;
@@ -204,6 +208,8 @@ public class MerchantBaseActivity extends Activity {
     private void applyMerchantAuth(HttpURLConnection c) {
         c.setRequestProperty("Accept", "application/json");
         c.setRequestProperty("Cache-Control", "no-store");
+        // Hindari reuse koneksi TLS lama setelah sertifikat/CDN server berubah.
+        c.setRequestProperty("Connection", "close");
         c.setRequestProperty("X-Transiva-App", "Android-Merchant");
         c.setRequestProperty("X-Android-SDK", String.valueOf(Build.VERSION.SDK_INT));
         String token = "";
@@ -218,31 +224,79 @@ public class MerchantBaseActivity extends Activity {
         int code = c.getResponseCode();
         InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
         String out = read(is);
-        if(code == 401 || code == 403) {
-            runOnUiThread(() -> {
-                toast("Sesi merchant berakhir atau akses ditolak. Silakan login ulang.");
-                logout();
-            });
+
+        // Jangan otomatis logout hanya karena HTTP 403. Beberapa endpoint dapat
+        // memakai 403 untuk izin fitur/merchant, bukan berarti token sesi mati.
+        if(code == 401) {
+            String apiCode = "";
+            try { apiCode = new JSONObject(out).optString("code", ""); } catch(Exception ignored){}
+            final String finalCode = apiCode;
+            if(finalCode.isEmpty()
+                    || "UNAUTHORIZED".equalsIgnoreCase(finalCode)
+                    || "SESSION_EXPIRED".equalsIgnoreCase(finalCode)
+                    || "SESSION_REVOKED".equalsIgnoreCase(finalCode)
+                    || "INVALID_TOKEN".equalsIgnoreCase(finalCode)) {
+                runOnUiThread(() -> {
+                    toast("Sesi merchant berakhir. Silakan login ulang.");
+                    logout();
+                });
+            }
         }
         return out;
     }
 
-    protected String get(String link) throws Exception {
-        HttpURLConnection c = (HttpURLConnection)new URL(link).openConnection();
-        c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setUseCaches(false);
+    private HttpURLConnection openConnection(String link) throws Exception {
+        URL url = new URL(link);
+        if(!"https".equalsIgnoreCase(url.getProtocol())) {
+            throw new SSLException("Merchant API wajib menggunakan HTTPS");
+        }
+        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        c.setConnectTimeout(20000);
+        c.setReadTimeout(25000);
+        c.setUseCaches(false);
+        c.setDoInput(true);
         applyMerchantAuth(c);
-        String out = response(c); c.disconnect(); return out;
+        return c;
+    }
+
+    protected String get(String link) throws Exception {
+        Exception last = null;
+        // GET aman diulang. Retry membantu saat koneksi pooled/TLS lama putus
+        // setelah perubahan sertifikat, CDN, DNS, atau jaringan seluler.
+        for(int attempt = 0; attempt < 2; attempt++) {
+            HttpURLConnection c = null;
+            try {
+                c = openConnection(link);
+                c.setRequestMethod("GET");
+                return response(c);
+            } catch(SocketTimeoutException | UnknownHostException | SSLException e) {
+                last = e;
+                if(attempt == 0) {
+                    try { Thread.sleep(350L); } catch(InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                }
+            } finally {
+                if(c != null) c.disconnect();
+            }
+        }
+        throw last == null ? new IOException("Koneksi merchant gagal") : last;
     }
 
     protected String postJson(String link, JSONObject payload) throws Exception {
-        HttpURLConnection c = (HttpURLConnection)new URL(link).openConnection();
-        c.setConnectTimeout(20000); c.setReadTimeout(20000); c.setDoOutput(true); c.setUseCaches(false);
-        c.setRequestMethod("POST");
-        c.setRequestProperty("Content-Type","application/json; charset=UTF-8");
-        applyMerchantAuth(c);
-        OutputStream os = c.getOutputStream();
-        os.write(payload.toString().getBytes("UTF-8")); os.flush(); os.close();
-        String out = response(c); c.disconnect(); return out;
+        HttpURLConnection c = null;
+        try {
+            c = openConnection(link);
+            c.setDoOutput(true);
+            c.setRequestMethod("POST");
+            c.setRequestProperty("Content-Type","application/json; charset=UTF-8");
+            OutputStream os = c.getOutputStream();
+            os.write(payload.toString().getBytes("UTF-8")); os.flush(); os.close();
+            return response(c);
+        } finally {
+            if(c != null) c.disconnect();
+        }
     }
 
     protected String postForm(String link, JSONObject fields, Uri fileUri, String fileField, String fileName) throws Exception {
