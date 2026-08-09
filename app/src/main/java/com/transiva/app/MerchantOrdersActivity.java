@@ -4,6 +4,9 @@ import android.app.AlertDialog;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Build;
+import android.content.Intent;
+import android.view.WindowManager;
 import android.graphics.Color;
 import android.view.Gravity;
 import android.widget.*;
@@ -12,7 +15,40 @@ import org.json.JSONObject;
 
 public class MerchantOrdersActivity extends MerchantBaseActivity {
     private LinearLayout root, list; private final Handler handler=new Handler(Looper.getMainLooper()); private Runnable task; private boolean firstLoad=true,updating=false; private String focusOrderId=""; private JSONArray cached=new JSONArray(); private boolean historyMode=false; private Spinner periodSpinner;
-    @Override protected void onCreate(Bundle b){super.onCreate(b);focusOrderId=getIntent().getStringExtra("order_id");if(focusOrderId==null)focusOrderId="";build();}
+    @Override protected void onCreate(Bundle b){
+        super.onCreate(b);
+        handleUrgentIntent(getIntent());
+        focusOrderId=getIntent().getStringExtra("order_id");
+        if(focusOrderId==null)focusOrderId="";
+        build();
+    }
+
+    @Override protected void onNewIntent(Intent intent){
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleUrgentIntent(intent);
+        String id=intent==null?"":intent.getStringExtra("order_id");
+        if(id!=null && !id.trim().isEmpty()) focusOrderId=id.trim();
+        if(list!=null) load();
+    }
+
+    /**
+     * Membuat layar order dapat muncul di atas lock screen untuk notifikasi urgent
+     * (order baru / driver tiba). Tidak membuka kunci perangkat secara paksa.
+     */
+    private void handleUrgentIntent(Intent intent){
+        if(intent==null || !intent.getBooleanExtra("wake_screen",false)) return;
+        if(Build.VERSION.SDK_INT>=27){
+            setShowWhenLocked(true);
+            setTurnScreenOn(true);
+        }else{
+            getWindow().addFlags(
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            );
+        }
+    }
     @Override protected void onResume(){super.onResume();start();} @Override protected void onPause(){super.onPause();stop();}
     private void build(){root=new LinearLayout(this);setContentView(page(root));root.addView(title("Pesanan Merchant"));root.addView(sub("Proses pesanan aktif, estimasi masak, dan riwayat order"));LinearLayout tabs=row();Button active=btn("Aktif");Button hist=outlineBtn("Riwayat");tabs.addView(active,new LinearLayout.LayoutParams(0,dp(48),1));tabs.addView(hist,new LinearLayout.LayoutParams(0,dp(48),1));root.addView(tabs);active.setOnClickListener(v->{historyMode=false;periodSpinner.setVisibility(Spinner.GONE);render();});hist.setOnClickListener(v->{historyMode=true;periodSpinner.setVisibility(Spinner.VISIBLE);render();});periodSpinner=new Spinner(this);periodSpinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Hari ini","7 hari","30 hari","Semua"}));periodSpinner.setVisibility(Spinner.GONE);periodSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onItemSelected(android.widget.AdapterView<?> p,android.view.View v,int pos,long id){if(historyMode)render();}public void onNothingSelected(android.widget.AdapterView<?> p){}});root.addView(periodSpinner);list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);root.addView(list);Button back=outlineBtn("← Kembali");back.setOnClickListener(v->finish());root.addView(back);}
     private void start(){stop();firstLoad=true;load();task=()->{if(!updating)load();handler.postDelayed(task,15000);};handler.postDelayed(task,15000);} private void stop(){if(task!=null)handler.removeCallbacks(task);} 
