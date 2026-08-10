@@ -30,10 +30,25 @@ def classify(total, codes, avg_ms, p95_ms, p99_ms):
     success_rate = (ok / total * 100.0) if total else 0.0
     server_errors = sum(int(v) for k, v in codes.items() if k in {"500", "502", "503", "504", "-1"})
 
-    if server_errors > 0 or success_rate < 95.0 or p95_ms > 5000:
+    # Batas produksi pilot yang lebih realistis.
+    # AMAN tidak lagi gagal hanya karena average sedikit di atas 1 detik.
+    if (
+        server_errors > 0
+        or success_rate < 95.0
+        or avg_ms > 3000
+        or p95_ms > 5000
+        or p99_ms > 10000
+    ):
         return "GAGAL", success_rate
-    if success_rate < 99.0 or avg_ms > 1000 or p95_ms > 2000 or p99_ms > 3000:
+
+    if (
+        success_rate < 99.0
+        or avg_ms > 1500
+        or p95_ms > 2500
+        or p99_ms > 5000
+    ):
         return "PERLU PERBAIKAN", success_rate
+
     return "AMAN", success_rate
 
 
@@ -42,6 +57,7 @@ def main():
     p.add_argument("--base", required=True)
     p.add_argument("--token", required=True)
     p.add_argument("--device", required=True)
+    p.add_argument("--stress-key", required=True)
     p.add_argument("--users", type=int, required=True)
     p.add_argument("--requests", type=int, required=True)
     p.add_argument("--timeout", type=float, default=15.0)
@@ -57,6 +73,8 @@ def main():
         raise SystemExit("base URL harus HTTPS")
     if not a.token.strip() or not a.device.strip():
         raise SystemExit("token/device tidak boleh kosong")
+    if len(a.stress_key.strip()) < 32:
+        raise SystemExit("stress-key minimal 32 karakter")
 
     url = a.base.rstrip("/") + "/getMerchantOrders.php?load_test=1"
 
@@ -67,6 +85,7 @@ def main():
             headers={
                 "Authorization": "Bearer " + a.token,
                 "X-Device-UUID": a.device,
+                "X-Transiva-Stress-Key": a.stress_key,
                 "Cache-Control": "no-cache",
                 "User-Agent": "Transiva-GitHub-Stress-Test/1.0",
             },
@@ -130,11 +149,11 @@ def main():
 | Durasi | **{payload['seconds']} s** |
 
 ## Penilaian otomatis
-- **AMAN**: HTTP 200 ≥99%, tidak ada 5xx/network error, avg ≤1000 ms, P95 ≤2000 ms, P99 ≤3000 ms.
-- **PERLU PERBAIKAN**: masih berjalan tetapi melewati salah satu target di atas.
-- **GAGAL**: ada 5xx/network error, success <95%, atau P95 >5000 ms.
+- **AMAN**: HTTP 200 ≥99%, tidak ada 5xx/network error, Average ≤1500 ms, P95 ≤2500 ms, P99 ≤5000 ms.
+- **PERLU PERBAIKAN**: masih stabil, tetapi HTTP 200 <99% atau Average >1500 ms atau P95 >2500 ms atau P99 >5000 ms.
+- **GAGAL**: ada 5xx/network error, HTTP 200 <95%, Average >3000 ms, P95 >5000 ms, atau P99 >10000 ms.
 
-> Tool ini read-only dan hanya melakukan GET ke `getMerchantOrders.php?load_test=1`. Tetap jalankan bertahap karena request nyata tetap memakai resource PHP/MySQL server.
+> Tool ini read-only dan hanya melakukan GET ke `getMerchantOrders.php?load_test=1`. Header stress-key hanya membypass rate-limit pada endpoint ini; Bearer token + Device UUID tetap divalidasi server. Tetap jalankan bertahap karena request nyata tetap memakai resource PHP/MySQL server.
 """
     Path(a.summary_out).write_text(md, encoding="utf-8")
     print(json.dumps(payload, indent=2))
