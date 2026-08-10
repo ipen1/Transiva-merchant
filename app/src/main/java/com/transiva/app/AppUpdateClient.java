@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 /** Pemeriksa update APK Transiva yang dihosting sendiri. */
 public final class AppUpdateClient {
     public static final String UPDATE_ENDPOINT = "https://transiva.my.id/server/getVersion.php";
+    private static final String APP_ROLE = "merchant";
 
     public interface Callback {
         void onResult(AppUpdateInfo info, boolean updateAvailable);
@@ -28,7 +29,7 @@ public final class AppUpdateClient {
         new Thread(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(UPDATE_ENDPOINT + "?t=" + System.currentTimeMillis()).openConnection();
+                connection = (HttpURLConnection) new URL(UPDATE_ENDPOINT + "?app=" + APP_ROLE + "&t=" + System.currentTimeMillis()).openConnection();
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(20000);
                 connection.setReadTimeout(20000);
@@ -44,8 +45,14 @@ public final class AppUpdateClient {
                     throw new IllegalStateException(json.optString("message", "Informasi pembaruan tidak tersedia."));
                 }
                 AppUpdateInfo info = AppUpdateInfo.fromJson(json);
+                if (!APP_ROLE.equalsIgnoreCase(info.app.trim())) {
+                    throw new SecurityException("Server mengirim update untuk aplikasi lain. Update dibatalkan.");
+                }
+                if (!context.getPackageName().equals(info.packageName.trim())) {
+                    throw new SecurityException("Package update tidak cocok dengan Transiva Merchant. Update dibatalkan.");
+                }
                 if (info.versionCode <= 0 || info.apkUrl.trim().isEmpty()) {
-                    throw new IllegalStateException("Konfigurasi update server belum lengkap.");
+                    throw new IllegalStateException("Konfigurasi update server Merchant belum lengkap.");
                 }
                 callback.onResult(info, info.versionCode > installedVersionCode(context));
             } catch (Exception e) {
