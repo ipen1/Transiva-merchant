@@ -1,0 +1,135 @@
+name: Transiva Merchant Stress Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      load_level:
+        description: "Pilih jumlah concurrent users"
+        required: true
+        default: "10"
+        type: choice
+        options:
+          - "10"
+          - "25"
+          - "50"
+          - "100"
+          - "200"
+      high_load_confirmation:
+        description: "Untuk 100/200, ketik: SAYA PAHAM"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transiva-production-stress-test
+  cancel-in-progress: false
+
+jobs:
+  stress-test:
+    name: "Stress Test ${{ inputs.load_level }} concurrent"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate secrets and safety guard
+        shell: bash
+        env:
+          USERS: ${{ inputs.load_level }}
+          CONFIRMATION: ${{ inputs.high_load_confirmation }}
+          TRANSIVA_TOKEN: ${{ secrets.TRANSIVA_MERCHANT_TOKEN }}
+          TRANSIVA_DEVICE: ${{ secrets.TRANSIVA_DEVICE_UUID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$TRANSIVA_TOKEN" ]; then
+            echo "::error::Secret TRANSIVA_MERCHANT_TOKEN belum dibuat."
+            exit 1
+          fi
+
+          if [ -z "$TRANSIVA_DEVICE" ]; then
+            echo "::error::Secret TRANSIVA_DEVICE_UUID belum dibuat."
+            exit 1
+          fi
+
+          if { [ "$USERS" = "100" ] || [ "$USERS" = "200" ]; } && [ "$CONFIRMATION" != "SAYA PAHAM" ]; then
+            echo "::error::Untuk load 100/200, isi high_load_confirmation dengan tepat: SAYA PAHAM"
+            exit 1
+          fi
+
+      - name: Select request count
+        id: config
+        shell: bash
+        env:
+          USERS: ${{ inputs.load_level }}
+        run: |
+          set -euo pipefail
+          case "$USERS" in
+            10)  REQUESTS=100 ;;
+            25)  REQUESTS=250 ;;
+            50)  REQUESTS=500 ;;
+            100) REQUESTS=1000 ;;
+            200) REQUESTS=2000 ;;
+            *) echo "Invalid level"; exit 1 ;;
+          esac
+          echo "requests=$REQUESTS" >> "$GITHUB_OUTPUT"
+
+      - name: Run read-only stress test
+        id: run_test
+        continue-on-error: true
+        shell: bash
+        env:
+          TRANSIVA_TOKEN: ${{ secrets.TRANSIVA_MERCHANT_TOKEN }}
+          TRANSIVA_DEVICE: ${{ secrets.TRANSIVA_DEVICE_UUID }}
+          USERS: ${{ inputs.load_level }}
+          REQUESTS: ${{ steps.config.outputs.requests }}
+        run: |
+          set +e
+          python3 tools/merchant_load_test_ci.py \
+            --base "https://transiva.my.id/" \
+            --token "$TRANSIVA_TOKEN" \
+            --device "$TRANSIVA_DEVICE" \
+            --users "$USERS" \
+            --requests "$REQUESTS" \
+            --json-out stress-result.json \
+            --summary-out stress-summary.md
+          TEST_EXIT=$?
+          echo "exit_code=$TEST_EXIT" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Publish test summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f stress-summary.md ]; then
+            cat stress-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "# ❌ Stress test tidak menghasilkan laporan" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: transiva-stress-result-${{ inputs.load_level }}-users
+          path: |
+            stress-result.json
+            stress-summary.md
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Mark workflow failed when test is GAGAL
+        if: always()
+        shell: bash
+        env:
+          TEST_EXIT: ${{ steps.run_test.outputs.exit_code }}
+        run: |
+          if [ "${TEST_EXIT:-1}" != "0" ]; then
+            echo "::error::Stress test dinilai GAGAL. Buka Job Summary untuk detail."
+            exit 1
+          fi
