@@ -133,9 +133,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         refresh.setOnClickListener(v -> loadAll());
         root.addView(refresh);
 
-        Button logout = outlineBtn("Keluar");
-        logout.setOnClickListener(v -> logout());
-        root.addView(logout);
     }
 
     private TextView stat(LinearLayout parent, String label, String value){
