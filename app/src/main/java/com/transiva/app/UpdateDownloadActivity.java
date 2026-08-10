@@ -3,6 +3,7 @@ package com.transiva.app;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -257,6 +258,8 @@ public class UpdateDownloadActivity extends Activity {
                         throw new SecurityException("Verifikasi APK gagal. File tidak akan dipasang.");
                     }
                 }
+                main.post(() -> statusView.setText("Memastikan APK adalah Transiva Merchant..."));
+                verifyDownloadedApk(output);
                 downloadedApk = output;
                 main.post(this::downloadFinished);
             } catch (Exception e) {
@@ -317,6 +320,28 @@ public class UpdateDownloadActivity extends Activity {
             startActivity(intent);
         } catch (Exception e) {
             Toast.makeText(this, "Installer tidak dapat dibuka: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void verifyDownloadedApk(File apk) throws Exception {
+        PackageInfo archive = getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+        if (archive == null || archive.packageName == null) {
+            //noinspection ResultOfMethodCallIgnored
+            apk.delete();
+            throw new SecurityException("File yang diunduh bukan APK Android yang valid.");
+        }
+        String expectedPackage = getPackageName();
+        if (!expectedPackage.equals(archive.packageName)) {
+            //noinspection ResultOfMethodCallIgnored
+            apk.delete();
+            throw new SecurityException("APK yang diunduh bukan Transiva Merchant. Pemasangan dibatalkan.");
+        }
+        long archiveVersion = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? archive.getLongVersionCode() : archive.versionCode;
+        if (updateInfo != null && archiveVersion != updateInfo.versionCode) {
+            //noinspection ResultOfMethodCallIgnored
+            apk.delete();
+            throw new SecurityException("Versi APK tidak sesuai dengan informasi update server.");
         }
     }
 

@@ -4,6 +4,8 @@ import org.json.JSONObject;
 
 /** Model informasi versi aplikasi dari server. */
 public final class AppUpdateInfo {
+    public final String app;
+    public final String packageName;
     public final int versionCode;
     public final String versionName;
     public final String title;
@@ -13,9 +15,11 @@ public final class AppUpdateInfo {
     public final long fileSize;
     public final boolean forceUpdate;
 
-    private AppUpdateInfo(int versionCode, String versionName, String title,
+    private AppUpdateInfo(String app, String packageName, int versionCode, String versionName, String title,
                           String message, String apkUrl, String sha256,
                           long fileSize, boolean forceUpdate) {
+        this.app = app;
+        this.packageName = packageName;
         this.versionCode = versionCode;
         this.versionName = versionName;
         this.title = title;
@@ -30,6 +34,8 @@ public final class AppUpdateInfo {
         JSONObject data = root.optJSONObject("data");
         if (data == null) data = root;
         return new AppUpdateInfo(
+                data.optString("app", ""),
+                data.optString("package_name", data.optString("packageName", "")),
                 data.optInt("version_code", data.optInt("versionCode", 0)),
                 data.optString("version_name", data.optString("versionName", "")),
                 data.optString("title", "Pembaruan Transiva tersedia"),
