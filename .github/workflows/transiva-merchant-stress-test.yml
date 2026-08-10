@@ -44,6 +44,7 @@ jobs:
           CONFIRMATION: ${{ inputs.high_load_confirmation }}
           TRANSIVA_TOKEN: ${{ secrets.TRANSIVA_MERCHANT_TOKEN }}
           TRANSIVA_DEVICE: ${{ secrets.TRANSIVA_DEVICE_UUID }}
+          TRANSIVA_STRESS_KEY: ${{ secrets.TRANSIVA_STRESS_KEY }}
         run: |
           set -euo pipefail
 
@@ -54,6 +55,11 @@ jobs:
 
           if [ -z "$TRANSIVA_DEVICE" ]; then
             echo "::error::Secret TRANSIVA_DEVICE_UUID belum dibuat."
+            exit 1
+          fi
+
+          if [ -z "$TRANSIVA_STRESS_KEY" ] || [ "${#TRANSIVA_STRESS_KEY}" -lt 32 ]; then
+            echo "::error::Secret TRANSIVA_STRESS_KEY belum dibuat atau kurang dari 32 karakter."
             exit 1
           fi
 
@@ -86,6 +92,7 @@ jobs:
         env:
           TRANSIVA_TOKEN: ${{ secrets.TRANSIVA_MERCHANT_TOKEN }}
           TRANSIVA_DEVICE: ${{ secrets.TRANSIVA_DEVICE_UUID }}
+          TRANSIVA_STRESS_KEY: ${{ secrets.TRANSIVA_STRESS_KEY }}
           USERS: ${{ inputs.load_level }}
           REQUESTS: ${{ steps.config.outputs.requests }}
         run: |
@@ -94,6 +101,7 @@ jobs:
             --base "https://transiva.my.id/" \
             --token "$TRANSIVA_TOKEN" \
             --device "$TRANSIVA_DEVICE" \
+            --stress-key "$TRANSIVA_STRESS_KEY" \
             --users "$USERS" \
             --requests "$REQUESTS" \
             --json-out stress-result.json \
