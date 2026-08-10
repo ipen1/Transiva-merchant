@@ -300,8 +300,17 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         trackStockInput.setChecked(getIntent().getIntExtra("track_stock", 0) == 1);
         stockInput.setText(String.valueOf(getIntent().getIntExtra("stock", 0)));
         applyOptionsJson(getIntent().getStringExtra("options_json"));
+        long displayPrice = getIntent().getLongExtra("price", 0L);
         long original = getIntent().getLongExtra("original_price", 0L);
-        if (original <= 0) original = getIntent().getLongExtra("price", 0L);
+        long storedGrossup = Math.max(0L, getIntent().getLongExtra("grossup_fee", 0L));
+
+        // Proteksi edit menu: field merchant harus selalu berisi harga sebelum gross-up.
+        // Jika payload lama tidak konsisten, turunkan kembali dari harga tampil - gross-up.
+        if (storedGrossup > 0 && displayPrice > storedGrossup &&
+                (original <= 0 || original + storedGrossup != displayPrice)) {
+            original = displayPrice - storedGrossup;
+        }
+        if (original <= 0) original = displayPrice;
         if (original > 0) priceInput.setText(String.valueOf(original));
         fileText.setText(existingImage.isEmpty() ? "Gambar lama tidak tersedia. Pilih gambar jika ingin mengganti." : "Gambar lama dipertahankan. Pilih gambar baru untuk mengganti.");
         updatePreview();
