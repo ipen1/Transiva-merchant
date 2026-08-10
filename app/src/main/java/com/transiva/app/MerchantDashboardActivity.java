@@ -116,25 +116,18 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         grid.setOrientation(LinearLayout.VERTICAL);
         root.addView(grid);
 
+        // Dashboard hanya menampilkan shortcut operasional yang tidak diduplikasi.
         LinearLayout r1 = row(); grid.addView(r1);
         tile(r1, "🍟", "Tambah Menu", () -> open(MerchantAddMenuActivity.class));
-        tile(r1, "📋", "Daftar Menu", () -> open(MerchantMenuListActivity.class));
+        ordersTile = orderTile(r1);
 
         LinearLayout r2 = row(); grid.addView(r2);
-        ordersTile = orderTile(r2);
         tile(r2, "⭐", "Rating & Ulasan", () -> open(MerchantReviewsActivity.class));
+        tile(r2, "🕒", "Operasional", () -> open(MerchantOperationsActivity.class));
 
         LinearLayout r3 = row(); grid.addView(r3);
-        tile(r3, "🏪", "Profil Merchant", () -> open(MerchantRestaurantProfileActivity.class));
-        tile(r3, "🕒", "Operasional", () -> open(MerchantOperationsActivity.class));
-
-        LinearLayout r4 = row(); grid.addView(r4);
-        tile(r4, "💰", "Keuangan", () -> open(MerchantFinanceActivity.class));
-        tile(r4, "📊", "Analitik", () -> open(MerchantAnalyticsActivity.class));
-
-        LinearLayout r5 = row(); grid.addView(r5);
-        tile(r5, "🗂️", "Kategori", () -> open(MerchantCategoriesActivity.class));
-        tile(r5, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
+        tile(r3, "💰", "Keuangan", () -> open(MerchantFinanceActivity.class));
+        tile(r3, "📊", "Analitik", () -> open(MerchantAnalyticsActivity.class));
 
         Button refresh = outlineBtn("↻  Refresh Dashboard");
         refresh.setOnClickListener(v -> loadAll());

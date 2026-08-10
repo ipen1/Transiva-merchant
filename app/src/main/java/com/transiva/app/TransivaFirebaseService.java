@@ -22,6 +22,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
     private static final String CHANNEL_ORDER = "transiva_merchant_order_v3";
     private static final String CHANNEL_ARRIVAL = "transiva_merchant_arrival_v3";
     private static final String CHANNEL_NORMAL = "transiva_merchant_general_v3";
+    private static final String CHANNEL_CHAT = "transiva_merchant_driver_chat_v1";
     private static final long DEDUPE_WINDOW_MS = 8000L;
 
     @Override
@@ -50,7 +51,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .toLowerCase(Locale.US);
         boolean incomingOrder = isIncomingOrder(signal);
         boolean driverArrived = isDriverArrived(signal);
-        boolean urgent = incomingOrder || driverArrived;
+        boolean merchantDriverChat = isMerchantDriverChat(signal);
+        boolean urgent = incomingOrder || driverArrived || merchantDriverChat;
 
         if (incomingOrder && (title.equals("Transiva Merchant") || title.isEmpty())) {
             title = "🔔 Pesanan Baru Masuk";
@@ -70,7 +72,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
 
         // Refresh visible screens immediately. Polling remains only as a fallback.
-        MerchantRealtime.publish(this, incomingOrder ? "new_order" : (driverArrived ? "driver_arrived" : "update"), orderId);
+        MerchantRealtime.publish(this, incomingOrder ? "new_order" : (driverArrived ? "driver_arrived" : (merchantDriverChat ? "merchant_driver_chat" : "update")), orderId);
 
         String dedupeKey = (orderId + "|" + type + "|" + status + "|" + title).toLowerCase(Locale.US);
         if (isDuplicate(dedupeKey)) return;
@@ -78,7 +80,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         createChannels();
         if (urgent) wakeScreenBriefly();
 
-        Intent target = targetIntent(type, status);
+        Intent target = targetIntent(type, status, signal);
         target.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         target.putExtra("notification_type", type);
         target.putExtra("notification_status", status);
@@ -98,7 +100,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 this, requestCode, target,
                 PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0));
 
-        String channelId = incomingOrder ? CHANNEL_ORDER : (driverArrived ? CHANNEL_ARRIVAL : CHANNEL_NORMAL);
+        String channelId = incomingOrder ? CHANNEL_ORDER : (driverArrived ? CHANNEL_ARRIVAL : (merchantDriverChat ? CHANNEL_CHAT : CHANNEL_NORMAL));
         Uri sound = incomingOrder ? rawUri(R.raw.order_new)
                 : (driverArrived ? rawUri(R.raw.order_taken) : rawUri(R.raw.order_notif));
 
@@ -111,7 +113,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .setContentIntent(contentIntent)
                 .setPriority(urgent ? NotificationCompat.PRIORITY_MAX : NotificationCompat.PRIORITY_HIGH)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setCategory(urgent ? NotificationCompat.CATEGORY_CALL : NotificationCompat.CATEGORY_STATUS)
+                .setCategory(merchantDriverChat ? NotificationCompat.CATEGORY_MESSAGE : (urgent ? NotificationCompat.CATEGORY_CALL : NotificationCompat.CATEGORY_STATUS))
                 .setSound(sound)
                 .setVibrate(urgent ? new long[]{0, 450, 180, 450, 180, 700} : new long[]{0, 250});
         if (urgent) b.setFullScreenIntent(contentIntent, true);
@@ -143,8 +145,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         } catch (Exception ignored) { }
     }
 
-    private Intent targetIntent(String type, String status) {
-        String low = ((type == null ? "" : type) + " " + (status == null ? "" : status)).toLowerCase(Locale.US);
+    private Intent targetIntent(String type, String status, String signal) {
+        String low = ((type == null ? "" : type) + " " + (status == null ? "" : status) + " " + (signal == null ? "" : signal)).toLowerCase(Locale.US);
+        if (isMerchantDriverChat(low)) return new Intent(this, MerchantDriverChatActivity.class);
         if (low.contains("review")) return new Intent(this, MerchantReviewsActivity.class);
         if (low.contains("menu") && !low.contains("order")) return new Intent(this, MerchantMenuListActivity.class);
         return new Intent(this, MerchantOrdersActivity.class);
@@ -160,6 +163,13 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 || signal.contains("menunggu merchant")
                 || signal.contains("merchant_pending")
                 || (signal.contains("order") && signal.contains("pending")));
+    }
+
+    private boolean isMerchantDriverChat(String signal) {
+        if (signal == null) return false;
+        String low = signal.toLowerCase(Locale.US);
+        return low.contains("merchant_driver_chat") || low.contains("driver_merchant_chat")
+                || (low.contains("chat") && low.contains("merchant") && low.contains("driver"));
     }
 
     private boolean isDriverArrived(String signal) {
@@ -202,6 +212,15 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         arrival.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         arrival.setSound(rawUri(R.raw.order_taken), attrs);
         nm.createNotificationChannel(arrival);
+
+        NotificationChannel chat = new NotificationChannel(CHANNEL_CHAT, "Chat Driver", NotificationManager.IMPORTANCE_HIGH);
+        chat.setDescription("Pesan penting antara merchant dan driver");
+        chat.enableVibration(true);
+        chat.setVibrationPattern(new long[]{0, 350, 120, 350, 120, 500});
+        chat.enableLights(true);
+        chat.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+        chat.setSound(rawUri(R.raw.order_notif), attrs);
+        nm.createNotificationChannel(chat);
 
         NotificationChannel normal = new NotificationChannel(CHANNEL_NORMAL, "Notifikasi Merchant", NotificationManager.IMPORTANCE_DEFAULT);
         normal.setDescription("Pembaruan umum Transiva Merchant");
