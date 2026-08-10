@@ -1,6 +1,9 @@
 package com.transiva.app;
 
 import android.graphics.Color;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,7 +20,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MerchantDriverChatActivity extends MerchantBaseActivity {
-    private static final long REFRESH_MS = 2500L;
+    private static final long ACTIVE_REFRESH_MS = 8000L;
+    private static final long IDLE_REFRESH_MS = 15000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private LinearLayout messages;
     private ScrollView scroll;
@@ -26,11 +30,27 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private TextView status;
     private String orderId = "", orderDbId = "", driverName = "Driver";
     private int lastId = 0;
-    private boolean loading = false, sending = false, stopped = false;
+    private int quietPolls = 0;
+    private boolean loading = false, sending = false, stopped = false, realtimeRegistered = false;
+
+    private final BroadcastReceiver realtimeReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            String reason = intent == null ? "" : safe(intent.getStringExtra(MerchantRealtime.EXTRA_REASON));
+            String pushedOrder = intent == null ? "" : safe(intent.getStringExtra(MerchantRealtime.EXTRA_ORDER_ID));
+            if ("merchant_driver_chat".equals(reason) && (pushedOrder.isEmpty() || pushedOrder.equals(orderId) || pushedOrder.equals(orderDbId))) {
+                quietPolls = 0;
+                load(false);
+            }
+        }
+    };
 
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
-            if (!stopped) { load(false); main.postDelayed(this, REFRESH_MS); }
+            if (!stopped) {
+                load(false);
+                long delay = quietPolls >= 3 ? IDLE_REFRESH_MS : ACTIVE_REFRESH_MS;
+                main.postDelayed(this, delay);
+            }
         }
     };
 
@@ -48,8 +68,19 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         load(true);
     }
 
-    @Override protected void onResume() { super.onResume(); stopped = false; main.removeCallbacks(refresh); main.postDelayed(refresh, REFRESH_MS); }
-    @Override protected void onPause() { super.onPause(); stopped = true; main.removeCallbacks(refresh); }
+    @Override protected void onResume() {
+        super.onResume();
+        stopped = false;
+        if (!realtimeRegistered) { MerchantRealtime.register(this, realtimeReceiver); realtimeRegistered = true; }
+        main.removeCallbacks(refresh);
+        main.postDelayed(refresh, ACTIVE_REFRESH_MS);
+    }
+    @Override protected void onPause() {
+        super.onPause();
+        stopped = true;
+        main.removeCallbacks(refresh);
+        if (realtimeRegistered) { try { unregisterReceiver(realtimeReceiver); } catch (Exception ignored) {} realtimeRegistered = false; }
+    }
 
     private void build() {
         LinearLayout page = new LinearLayout(this);
@@ -108,7 +139,10 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private void apply(JSONObject r, boolean initial) {
         if (!r.optBoolean("success",false)) { status.setText(r.optString("message","Chat belum tersedia")); return; }
         status.setText(r.optBoolean("ended",false)?"Riwayat chat • order selesai":"Online • chat merchant ↔ driver");
-        JSONArray a=r.optJSONArray("messages"); if(a!=null) for(int i=0;i<a.length();i++){ JSONObject m=a.optJSONObject(i); if(m==null)continue; addMessage(m); lastId=Math.max(lastId,m.optInt("id",0)); }
+        JSONArray a=r.optJSONArray("messages");
+        int received = a == null ? 0 : a.length();
+        if (received > 0) quietPolls = 0; else quietPolls = Math.min(10, quietPolls + 1);
+        if(a!=null) for(int i=0;i<a.length();i++){ JSONObject m=a.optJSONObject(i); if(m==null)continue; addMessage(m); lastId=Math.max(lastId,m.optInt("id",0)); }
         if(initial && messages.getChildCount()==0){ TextView empty=tv("Belum ada pesan. Gunakan Quick Chat atau ketik pesan ke driver.",12,MUTED,false); empty.setGravity(Gravity.CENTER); empty.setPadding(dp(20),dp(40),dp(20),dp(20)); messages.addView(empty); }
         if(r.optBoolean("ended",false)){ input.setEnabled(false); send.setEnabled(false); }
         scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));

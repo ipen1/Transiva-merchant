@@ -75,7 +75,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         root.addView(accountCard);
 
         TextView securityNote = tv(
-                "Untuk keamanan, perubahan username/password wajib dikonfirmasi dengan password saat ini. Setelah berhasil, seluruh sesi lama akan dikeluarkan dan Anda perlu login kembali.",
+                "Untuk keamanan, perubahan username dikonfirmasi dengan password saat ini. Perubahan password memerlukan password saat ini + PIN 6 angka. Setelah berhasil, seluruh sesi lama akan dikeluarkan dan Anda perlu login kembali.",
                 11, MUTED, false);
         LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
         noteLp.setMargins(dp(4), dp(12), dp(4), dp(4));
@@ -183,9 +183,9 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String newUsername = username.getText().toString().trim().toLowerCase();
             String current = currentPassword.getText().toString();
-            if (!newUsername.matches("^[a-z0-9._-]{3,32}$")) { username.setError("Username tidak valid"); return; }
+            if (!MerchantSecurityRules.isUsernameValid(newUsername)) { username.setError("Username tidak valid"); return; }
             if (current.isEmpty()) { currentPassword.setError("Wajib diisi"); return; }
-            submitCredentials(dialog, newUsername, "", "", current);
+            submitCredentials(dialog, newUsername, "", "", current, "");
         }));
         dialog.show();
     }
@@ -197,11 +197,13 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         EditText confirm = secureInput("Ulangi password baru",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        EditText securityPin = secureInput("PIN keamanan 6 angka",
+                InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Ubah Password")
-                .setMessage("Password baru minimal 8 karakter dan harus mengandung huruf serta angka.")
-                .setView(dialogForm(current, next, confirm))
+                .setMessage("Masukkan password saat ini dan PIN keamanan. Password baru minimal 8 karakter dan harus mengandung huruf serta angka.")
+                .setView(dialogForm(current, next, confirm, securityPin))
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Simpan", null)
                 .create();
@@ -215,7 +217,9 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
             }
             if (!newPass.equals(conf)) { confirm.setError("Konfirmasi tidak sama"); return; }
             if (newPass.equals(oldPass)) { next.setError("Harus berbeda dari password lama"); return; }
-            submitCredentials(dialog, "", newPass, conf, oldPass);
+            String pin = securityPin.getText().toString().trim();
+            if (!MerchantSecurityRules.isPinValid(pin)) { securityPin.setError("PIN harus tepat 6 angka"); return; }
+            submitCredentials(dialog, "", newPass, conf, oldPass, pin);
         }));
         dialog.show();
     }
@@ -268,7 +272,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
     }
 
     private void submitCredentials(AlertDialog dialog, String username, String newPassword,
-                                   String confirmPassword, String currentPassword) {
+                                   String confirmPassword, String currentPassword, String securityPin) {
         Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         save.setEnabled(false);
         save.setText("Menyimpan...");
@@ -280,6 +284,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
                 if (!newPassword.isEmpty()) {
                     body.put("new_password", newPassword);
                     body.put("confirm_password", confirmPassword);
+                    body.put("security_pin", securityPin);
                 }
                 JSONObject result = new JSONObject(postJson(CHANGE_CREDENTIALS_URL, body));
                 runOnUiThread(() -> {
