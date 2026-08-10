@@ -33,13 +33,17 @@ android {
         release {
             signingConfig signingConfigs.release
             debuggable false
+            // Keep R8 off for the 17 Aug pilot until a signed release regression pass is complete.
+            // Rules are prepared in proguard-rules.pro so hardening can be enabled safely afterward.
             minifyEnabled false
             shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
     implementation 'androidx.activity:activity:1.9.3'
 
     implementation 'androidx.camera:camera-view:1.4.1'
