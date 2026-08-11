@@ -64,15 +64,62 @@ def main():
 
     url=a.base.rstrip("/")+"/getMerchantOrders.php?load_test=1"
 
+    common_headers={
+        "Authorization":"Bearer "+a.token,
+        "X-Device-UUID":a.device,
+        "X-Transiva-Stress-Key":a.stress_key,
+        "X-App-Scope":"merchant",
+        "Cache-Control":"no-cache",
+        "User-Agent":"Transiva-GitHub-Stress-Test/5.0",
+    }
+
+    # V5 preflight: pastikan bypass benar-benar aktif sebelum mengirim ratusan request.
+    # Ini mencegah false test: 240 request sukses lalu sisanya 429 karena secret mismatch.
+    pre_req=urllib.request.Request(url, method="GET", headers=common_headers)
+    pre_code=-1; pre_body=""; pre_headers={}; pre_err=""
+    try:
+        with urllib.request.urlopen(pre_req, timeout=a.timeout) as r:
+            pre_code=int(r.status); pre_body=safe_body(r.read())
+            pre_headers={k.lower():v for k,v in r.headers.items() if k.lower().startswith("x-transiva-")}
+    except urllib.error.HTTPError as e:
+        pre_code=int(e.code); pre_err="HTTPError"
+        try: pre_body=safe_body(e.read())
+        except Exception: pre_body=""
+        pre_headers={k.lower():v for k,v in e.headers.items() if k.lower().startswith("x-transiva-")} if e.headers else {}
+    except Exception as e:
+        pre_err=type(e).__name__; pre_body=str(e)[:MAX_BODY_CHARS]
+
+    bypass=(pre_headers.get("x-transiva-ratelimit", "").lower()=="stress-test-bypass"
+            and pre_headers.get("x-transiva-stress-auth", "").lower()=="valid")
+    if pre_code != 200 or not bypass:
+        jcode,msg=parse_json_code_message(pre_body)
+        payload={
+            "status":"GAGAL", "phase":"preflight", "endpoint":url,
+            "http":pre_code, "code":jcode or "STRESS_BYPASS_NOT_ACTIVE",
+            "message":msg or "Bypass rate-limit stress test belum aktif.",
+            "headers":pre_headers, "body":pre_body,
+        }
+        Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+        md=f"""# ❌ Transiva Merchant Stress Test V5 — GAGAL PREFLIGHT
+
+Stress test **tidak dijalankan**, sehingga server tidak dibanjiri request yang hasilnya menyesatkan.
+
+| Parameter | Hasil |
+|---|---|
+| HTTP preflight | **{pre_code}** |
+| Code | `{payload['code']}` |
+| Message | {payload['message']} |
+| X-Transiva-RateLimit | `{pre_headers.get('x-transiva-ratelimit','tidak ada')}` |
+| X-Transiva-Stress-Auth | `{pre_headers.get('x-transiva-stress-auth','tidak ada')}` |
+
+Pastikan `TRANSIVA_STRESS_TEST_KEY` di `transiva-env.php` sama persis dengan GitHub Secret `TRANSIVA_STRESS_KEY`, lalu pastikan `rate_limiter.php` V5 sudah terpasang.
+"""
+        Path(a.summary_out).write_text(md,encoding="utf-8")
+        print(json.dumps(payload,indent=2,ensure_ascii=False))
+        return 2
+
     def once(i):
-        req=urllib.request.Request(url, method="GET", headers={
-            "Authorization":"Bearer "+a.token,
-            "X-Device-UUID":a.device,
-            "X-Transiva-Stress-Key":a.stress_key,
-            "X-App-Scope":"merchant",
-            "Cache-Control":"no-cache",
-            "User-Agent":"Transiva-GitHub-Stress-Test/3.0",
-        })
+        req=urllib.request.Request(url, method="GET", headers=common_headers)
         t0=time.perf_counter(); code=-1; body=""; err_type=""
         headers={}
         try:
@@ -107,7 +154,7 @@ def main():
     Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
     icon={"AMAN":"✅","PERLU PERBAIKAN":"⚠️","GAGAL":"❌"}[status]
-    md=f"""# {icon} Transiva Merchant Stress Test V3 — {status}
+    md=f"""# {icon} Transiva Merchant Stress Test V5 — {status}
 
 | Parameter | Hasil |
 |---|---:|
@@ -135,7 +182,7 @@ def main():
             md += f"| {d['request']} | {d['http']} | {d['ms']} | `{d.get('code','')}` | {msg} |\n"
     else:
         md += "\n## Diagnostik\nTidak ada request gagal.\n"
-    md += "\n> V3 tetap memvalidasi Bearer token + Device UUID. Pada stress request dengan secret valid, hanya UPDATE `native_api_tokens.last_used_at` yang dilewati untuk menghindari contention satu token.\n"
+    md += "\n> V5 tetap memvalidasi Bearer token + Device UUID. Pada stress request dengan secret valid, hanya UPDATE `native_api_tokens.last_used_at` yang dilewati untuk menghindari contention satu token.\n"
     Path(a.summary_out).write_text(md,encoding="utf-8")
     print(json.dumps(payload,indent=2,ensure_ascii=False))
     return 2 if status=="GAGAL" else 0
