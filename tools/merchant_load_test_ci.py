@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Transiva Merchant read-only stress test V3.
+"""Transiva Merchant read-only burst test V7.
 
-Authenticated GET only. Captures bounded diagnostic samples for non-200/network errors.
-It never changes order state and never writes credentials to artifacts.
+Uses the normal authenticated Merchant Orders endpoint and deliberately stays below
+Transiva's production fixed-window rate limit (240 requests / 60 seconds).
+No stress bypass secret is required.
 """
 from __future__ import annotations
 import argparse, concurrent.futures, json, math, statistics, sys, time
@@ -12,6 +13,7 @@ from pathlib import Path
 
 MAX_ERROR_SAMPLES = 20
 MAX_BODY_CHARS = 1200
+MAX_REQUESTS = 200
 
 
 def percentile(values, q):
@@ -33,8 +35,7 @@ def classify(total, codes, avg_ms, p95_ms, p99_ms):
 
 
 def safe_body(raw: bytes) -> str:
-    text = raw.decode("utf-8", errors="replace").strip()
-    return text[:MAX_BODY_CHARS]
+    return raw.decode("utf-8", errors="replace").strip()[:MAX_BODY_CHARS]
 
 
 def parse_json_code_message(body: str):
@@ -49,70 +50,60 @@ def parse_json_code_message(body: str):
 
 def main():
     p=argparse.ArgumentParser()
-    p.add_argument("--base", required=True); p.add_argument("--token", required=True)
-    p.add_argument("--device", required=True); p.add_argument("--stress-key", required=True)
-    p.add_argument("--users", type=int, required=True); p.add_argument("--requests", type=int, required=True)
+    p.add_argument("--base", required=True)
+    p.add_argument("--token", required=True)
+    p.add_argument("--device", required=True)
+    p.add_argument("--users", type=int, required=True)
+    p.add_argument("--requests", type=int, required=True)
     p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--json-out", default="stress-result.json")
     p.add_argument("--summary-out", default="stress-summary.md")
     a=p.parse_args()
+
     if not (1 <= a.users <= 200): raise SystemExit("users harus 1..200")
-    if not (1 <= a.requests <= 5000): raise SystemExit("requests harus 1..5000")
+    if not (1 <= a.requests <= MAX_REQUESTS): raise SystemExit(f"requests harus 1..{MAX_REQUESTS}")
     if not a.base.lower().startswith("https://"): raise SystemExit("base URL harus HTTPS")
     if not a.token.strip() or not a.device.strip(): raise SystemExit("token/device tidak boleh kosong")
-    if len(a.stress_key.strip()) < 32: raise SystemExit("stress-key minimal 32 karakter")
 
-    url=a.base.rstrip("/")+"/getMerchantOrders.php?load_test=1"
-
+    # V7 intentionally uses the normal production endpoint. This avoids all special
+    # bypass/preflight behavior and measures a real app read request.
+    url=a.base.rstrip("/")+"/getMerchantOrders.php"
     common_headers={
         "Authorization":"Bearer "+a.token,
         "X-Device-UUID":a.device,
-        "X-Transiva-Stress-Key":a.stress_key,
         "X-App-Scope":"merchant",
         "Cache-Control":"no-cache",
-        "User-Agent":"Transiva-GitHub-Stress-Test/5.0",
+        "User-Agent":"Transiva-GitHub-Burst-Test/7.0",
     }
 
-    # V5 preflight: pastikan bypass benar-benar aktif sebelum mengirim ratusan request.
-    # Ini mencegah false test: 240 request sukses lalu sisanya 429 karena secret mismatch.
+    # One normal authenticated preflight. It is included in the safety reasoning:
+    # max 200 load requests + 1 preflight = 201, still below 240/window.
     pre_req=urllib.request.Request(url, method="GET", headers=common_headers)
-    pre_code=-1; pre_body=""; pre_headers={}; pre_err=""
     try:
         with urllib.request.urlopen(pre_req, timeout=a.timeout) as r:
-            pre_code=int(r.status); pre_body=safe_body(r.read())
-            pre_headers={k.lower():v for k,v in r.headers.items() if k.lower().startswith("x-transiva-")}
+            pre_code=int(r.status)
+            pre_body=safe_body(r.read())
     except urllib.error.HTTPError as e:
-        pre_code=int(e.code); pre_err="HTTPError"
+        pre_code=int(e.code)
         try: pre_body=safe_body(e.read())
         except Exception: pre_body=""
-        pre_headers={k.lower():v for k,v in e.headers.items() if k.lower().startswith("x-transiva-")} if e.headers else {}
     except Exception as e:
-        pre_err=type(e).__name__; pre_body=str(e)[:MAX_BODY_CHARS]
+        pre_code=-1; pre_body=str(e)[:MAX_BODY_CHARS]
 
-    bypass=(pre_headers.get("x-transiva-ratelimit", "").lower()=="stress-test-bypass"
-            and pre_headers.get("x-transiva-stress-auth", "").lower()=="valid")
-    if pre_code != 200 or not bypass:
+    if pre_code != 200:
         jcode,msg=parse_json_code_message(pre_body)
-        payload={
-            "status":"GAGAL", "phase":"preflight", "endpoint":url,
-            "http":pre_code, "code":jcode or "STRESS_BYPASS_NOT_ACTIVE",
-            "message":msg or "Bypass rate-limit stress test belum aktif.",
-            "headers":pre_headers, "body":pre_body,
-        }
+        payload={"status":"GAGAL","phase":"preflight","endpoint":url,"http":pre_code,
+                 "code":jcode or "PREFLIGHT_FAILED","message":msg or pre_body[:300]}
         Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
-        md=f"""# ❌ Transiva Merchant Stress Test V5 — GAGAL PREFLIGHT
-
-Stress test **tidak dijalankan**, sehingga server tidak dibanjiri request yang hasilnya menyesatkan.
+        md=f"""# ❌ Transiva Merchant Burst Test V7 — GAGAL PREFLIGHT
 
 | Parameter | Hasil |
 |---|---|
 | HTTP preflight | **{pre_code}** |
 | Code | `{payload['code']}` |
 | Message | {payload['message']} |
-| X-Transiva-RateLimit | `{pre_headers.get('x-transiva-ratelimit','tidak ada')}` |
-| X-Transiva-Stress-Auth | `{pre_headers.get('x-transiva-stress-auth','tidak ada')}` |
 
-Pastikan `TRANSIVA_STRESS_TEST_KEY` di `transiva-env.php` sama persis dengan GitHub Secret `TRANSIVA_STRESS_KEY`, lalu pastikan `rate_limiter.php` V5 sudah terpasang.
+Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst test tidak dijalankan.
 """
         Path(a.summary_out).write_text(md,encoding="utf-8")
         print(json.dumps(payload,indent=2,ensure_ascii=False))
@@ -121,23 +112,21 @@ Pastikan `TRANSIVA_STRESS_TEST_KEY` di `transiva-env.php` sama persis dengan Git
     def once(i):
         req=urllib.request.Request(url, method="GET", headers=common_headers)
         t0=time.perf_counter(); code=-1; body=""; err_type=""
-        headers={}
         try:
             with urllib.request.urlopen(req, timeout=a.timeout) as r:
                 code=int(r.status); body=safe_body(r.read())
-                headers={k.lower():v for k,v in r.headers.items() if k.lower().startswith("x-transiva-")}
         except urllib.error.HTTPError as e:
             code=int(e.code); err_type="HTTPError"
             try: body=safe_body(e.read())
             except Exception: body=""
-            headers={k.lower():v for k,v in e.headers.items() if k.lower().startswith("x-transiva-")} if e.headers else {}
         except Exception as e:
             code=-1; err_type=type(e).__name__; body=str(e)[:MAX_BODY_CHARS]
         ms=(time.perf_counter()-t0)*1000.0
         diag=None
         if code != 200:
             jcode,msg=parse_json_code_message(body)
-            diag={"request":i+1,"http":code,"ms":round(ms,1),"error_type":err_type,"code":jcode,"message":msg,"body":body,"headers":headers}
+            diag={"request":i+1,"http":code,"ms":round(ms,1),"error_type":err_type,
+                  "code":jcode,"message":msg,"body":body}
         return code,ms,diag
 
     start=time.perf_counter()
@@ -146,20 +135,23 @@ Pastikan `TRANSIVA_STRESS_TEST_KEY` di `transiva-env.php` sama persis dengan Git
     elapsed=max(time.perf_counter()-start,0.001)
     codes=Counter(str(c) for c,_,_ in results); times=[ms for _,ms,_ in results]
     errors=[d for _,_,d in results if d is not None][:MAX_ERROR_SAMPLES]
-    avg_ms=statistics.mean(times) if times else 0.0; p95=percentile(times,.95); p99=percentile(times,.99)
+    avg_ms=statistics.mean(times) if times else 0.0
+    p95=percentile(times,.95); p99=percentile(times,.99)
     status,success_rate=classify(a.requests,codes,avg_ms,p95,p99)
-    payload={"status":status,"endpoint":url,"requests":a.requests,"concurrency":a.users,"seconds":round(elapsed,2),
-             "rps":round(a.requests/elapsed,2),"success_rate_pct":round(success_rate,2),"http_codes":dict(sorted(codes.items())),
-             "avg_ms":round(avg_ms,1),"p95_ms":round(p95,1),"p99_ms":round(p99,1),"error_samples":errors}
+    payload={"status":status,"endpoint":url,"requests":a.requests,"concurrency":a.users,
+             "seconds":round(elapsed,2),"rps":round(a.requests/elapsed,2),
+             "success_rate_pct":round(success_rate,2),"http_codes":dict(sorted(codes.items())),
+             "avg_ms":round(avg_ms,1),"p95_ms":round(p95,1),"p99_ms":round(p99,1),
+             "error_samples":errors,"test_mode":"production-rate-limit-safe-burst"}
     Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
     icon={"AMAN":"✅","PERLU PERBAIKAN":"⚠️","GAGAL":"❌"}[status]
-    md=f"""# {icon} Transiva Merchant Stress Test V5 — {status}
+    md=f"""# {icon} Transiva Merchant Burst Test V7 — {status}
 
 | Parameter | Hasil |
 |---|---:|
 | Concurrent users | **{a.users}** |
-| Total requests | **{a.requests}** |
+| Total load requests | **{a.requests}** |
 | HTTP 200 success | **{success_rate:.2f}%** |
 | Throughput | **{payload['rps']} req/s** |
 | Average | **{payload['avg_ms']} ms** |
@@ -170,19 +162,22 @@ Pastikan `TRANSIVA_STRESS_TEST_KEY` di `transiva-env.php` sama persis dengan Git
 
 ## Penilaian otomatis
 - **AMAN**: HTTP 200 ≥99%, tidak ada 5xx/network error, Average ≤1500 ms, P95 ≤2500 ms, P99 ≤5000 ms.
-- **PERLU PERBAIKAN**: HTTP 200 <99% atau Average >1500 ms atau P95 >2500 ms atau P99 >5000 ms, tetapi belum melewati batas GAGAL.
+- **PERLU PERBAIKAN**: masih berjalan tetapi melewati salah satu target AMAN.
 - **GAGAL**: ada 5xx/network error, HTTP 200 <95%, Average >3000 ms, P95 >5000 ms, atau P99 >10000 ms.
+
+## Mode pengujian V7
+V7 **tidak memakai bypass rate limit** dan tidak membutuhkan `TRANSIVA_STRESS_KEY`. Tool memakai endpoint produksi normal dan membatasi maksimum **200 load request + 1 preflight**, sehingga tetap di bawah limiter default 240 request/60 detik.
+
+Untuk 50/100/200 concurrent, ini adalah **burst test satu gelombang**, bukan sustained-load test berulang selama satu menit.
 """
     if errors:
         md += "\n## Diagnostik request gagal\n"
-        md += "Artifact `stress-result.json` menyimpan maksimal 20 sampel error. Token, UUID, dan stress key **tidak** ditulis ke artifact.\n\n"
         md += "| Req | HTTP | ms | code | message |\n|---:|---:|---:|---|---|\n"
         for d in errors[:10]:
             msg=(d.get("message") or d.get("body") or d.get("error_type") or "").replace("|","\\|").replace("\n"," ")[:160]
             md += f"| {d['request']} | {d['http']} | {d['ms']} | `{d.get('code','')}` | {msg} |\n"
     else:
         md += "\n## Diagnostik\nTidak ada request gagal.\n"
-    md += "\n> V5 tetap memvalidasi Bearer token + Device UUID. Pada stress request dengan secret valid, hanya UPDATE `native_api_tokens.last_used_at` yang dilewati untuk menghindari contention satu token.\n"
     Path(a.summary_out).write_text(md,encoding="utf-8")
     print(json.dumps(payload,indent=2,ensure_ascii=False))
     return 2 if status=="GAGAL" else 0
