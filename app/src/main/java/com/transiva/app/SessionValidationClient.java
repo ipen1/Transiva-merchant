@@ -42,7 +42,7 @@ public final class SessionValidationClient {
             } finally {
                 if (conn != null) conn.disconnect();
             }
-        }, "transiva-merchant-session-validate").start();
+        });
     }
 
     private static String read(InputStream stream) throws Exception {
