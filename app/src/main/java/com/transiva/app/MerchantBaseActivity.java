@@ -51,6 +51,12 @@ public class MerchantBaseActivity extends Activity {
         SessionValidationClient.validate(this);
     }
 
+    @Override protected void onDestroy(){
+        // P2: only GET/read work is lifecycle-cancellable. Submitted writes are never cancelled.
+        MerchantNetworkExecutor.cancelReads(this);
+        super.onDestroy();
+    }
+
     protected String username(){
         try { String v = sessionManager.getUsername(); if(v != null && !v.trim().isEmpty()) return v.trim(); } catch(Exception ignored){}
         return getSharedPreferences("transiva_fcm", MODE_PRIVATE).getString("username", "");

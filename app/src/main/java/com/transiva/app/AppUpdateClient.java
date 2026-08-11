@@ -26,7 +26,7 @@ public final class AppUpdateClient {
     private AppUpdateClient() {}
 
     public static void check(Context context, Callback callback) {
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeRead(context.getApplicationContext(), "app-update-check", () -> {
             HttpURLConnection connection = null;
             try {
                 connection = MerchantApiClient.open(context, UPDATE_ENDPOINT + "?app=" + APP_ROLE + "&t=" + System.currentTimeMillis());

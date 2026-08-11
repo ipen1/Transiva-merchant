@@ -58,7 +58,7 @@ public class ApiClient {
             final String jsonBody,
             final String callbackId
     ) {
-        MerchantNetworkExecutor.execute(() -> {
+        Runnable networkTask = () -> {
 
             HttpURLConnection conn = null;
 
@@ -143,7 +143,13 @@ public class ApiClient {
                 } catch (Exception ignored) {}
             }
 
-        });
+        };
+
+        if ("POST".equalsIgnoreCase(method)) {
+            MerchantNetworkExecutor.executeWrite(networkTask);
+        } else {
+            MerchantNetworkExecutor.executeRead(activity, "web:" + safe(path, ""), networkTask);
+        }
     }
 
     private String cleanPath(String path) {

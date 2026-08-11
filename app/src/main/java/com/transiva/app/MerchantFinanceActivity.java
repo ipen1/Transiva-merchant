@@ -37,7 +37,7 @@ public class MerchantFinanceActivity extends MerchantBaseActivity {
 
     private void load(){
         list.removeAllViews(); list.addView(card("Memuat mutasi..."));
-        MerchantNetworkExecutor.execute(()->{
+        MerchantNetworkExecutor.executeRead(this, "finance", ()->{
             try{ JSONObject res=new JSONObject(get(BASE+"merchant_finance.php?v="+System.currentTimeMillis())); runOnUiThread(()->show(res)); }
             catch(Exception e){ runOnUiThread(()->{ list.removeAllViews(); list.addView(card("Koneksi gagal.")); }); }
         });

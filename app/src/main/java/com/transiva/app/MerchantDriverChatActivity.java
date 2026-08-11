@@ -126,7 +126,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
 
     private void load(boolean initial) {
         if (loading) return; loading=true;
-        MerchantNetworkExecutor.execute(() -> {
+        java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "driver-chat:" + orderDbId, () -> {
             try {
                 String url = BASE + "getMerchantDriverChat.php?order_id=" + enc(orderId) + "&order_db_id=" + enc(orderDbId) + "&last_id=" + lastId + "&_=" + System.currentTimeMillis();
                 JSONObject r = new JSONObject(get(url));
@@ -134,6 +134,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
             } catch(Exception e) { if(initial) runOnUiThread(() -> status.setText("Koneksi chat belum tersedia • akan mencoba lagi")); }
             finally { loading=false; }
         });
+        if (readTask == null) loading=false;
     }
 
     private void apply(JSONObject r, boolean initial) {
@@ -159,7 +160,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private void sendText(String raw) {
         String text=safe(raw).trim(); if(text.isEmpty()||sending)return; if(text.length()>500){toast("Pesan maksimal 500 karakter.");return;}
         sending=true; send.setEnabled(false);
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeWrite(() -> {
             try {
                 JSONObject p=new JSONObject();p.put("order_id",orderId);p.put("order_db_id",orderDbId);p.put("message",text);
                 JSONObject r=new JSONObject(postJson(BASE+"sendMerchantDriverChat.php",p));

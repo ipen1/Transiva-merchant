@@ -234,8 +234,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         stopAuto();
         firstLoad = true;
         loadAll();
-        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 45000); };
-        handler.postDelayed(autoTask, 45000);
+        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 90000); };
+        handler.postDelayed(autoTask, 90000);
     }
 
     private void stopAuto(){
@@ -249,7 +249,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             networkText.setText(MerchantConnectivity.isOnline(this) ? "● Menghubungkan..." : "● Tidak ada koneksi internet");
             networkText.setTextColor(Color.parseColor(MerchantConnectivity.isOnline(this) ? "#B54708" : "#D92D20"));
         }
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeRead(this, "dashboard", () -> {
             try {
                 String dash = get(BASE + "getMerchantDashboard.php?v=" + System.currentTimeMillis());
                 runOnUiThread(() -> {
@@ -320,7 +320,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         final int next = current == 1 ? 0 : 1;
         storeStatusBtn.setEnabled(false);
         storeStatusBtn.setText("Memproses...");
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeWrite(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("is_open", next);

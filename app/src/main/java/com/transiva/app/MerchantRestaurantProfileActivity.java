@@ -88,7 +88,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
 
     private void load(){
         final String u = username();
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeRead(this, "restaurant-profile", () -> {
             try{
                 JSONObject prof = new JSONObject(get(BASE + "get_restaurant_profile.php?v=" + System.currentTimeMillis()));
                 JSONObject restaurant = prof.optJSONObject("restaurant");
@@ -165,7 +165,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if(name.isEmpty()){ alert("Nama Kosong", "Nama merchant tidak boleh kosong."); return; }
         if(restaurantId.isEmpty()){ alert("Merchant Tidak Ditemukan", "Silakan login ulang atau cek getMerchantDashboard.php."); return; }
         save.setEnabled(false); save.setText("Menyimpan...");
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeWrite(() -> {
             try{
                 JSONObject f = new JSONObject(); f.put("name", name);
                 JSONObject res = new JSONObject(postForm(BASE + "update_restaurant_profile.php", f, bannerUri, "banner", "merchant_banner.jpg"));

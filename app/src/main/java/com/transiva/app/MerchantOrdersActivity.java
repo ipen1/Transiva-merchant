@@ -193,7 +193,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             realtimeStatus.setTextColor(Color.parseColor("#B54708"));
         }
 
-        MerchantNetworkExecutor.execute(() -> {
+        java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, historyMode ? "orders-history" : "orders-active", () -> {
             try {
                 String scope = historyMode ? "history" : "active";
                 JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
@@ -219,6 +219,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 });
             }
         });
+        if (readTask == null) loading = false;
     }
 
     private void render() {
@@ -503,7 +504,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
-        MerchantNetworkExecutor.execute(() -> {
+        MerchantNetworkExecutor.executeWrite(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("id", id);
