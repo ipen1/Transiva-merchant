@@ -49,7 +49,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
             if (!stopped) {
                 load(false);
                 long delay = quietPolls >= 3 ? IDLE_REFRESH_MS : ACTIVE_REFRESH_MS;
-                main.postDelayed(this, delay);
+                main.postDelayed(this, WaveLoadGuard.jitter(delay));
             }
         }
     };
@@ -73,7 +73,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         stopped = false;
         if (!realtimeRegistered) { MerchantRealtime.register(this, realtimeReceiver); realtimeRegistered = true; }
         main.removeCallbacks(refresh);
-        main.postDelayed(refresh, ACTIVE_REFRESH_MS);
+        main.postDelayed(refresh, WaveLoadGuard.jitter(ACTIVE_REFRESH_MS));
     }
     @Override protected void onPause() {
         super.onPause();

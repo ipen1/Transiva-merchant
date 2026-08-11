@@ -234,8 +234,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         stopAuto();
         firstLoad = true;
         loadAll();
-        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, 90000); };
-        handler.postDelayed(autoTask, 90000);
+        autoTask = () -> { loadAll(); handler.postDelayed(autoTask, WaveLoadGuard.jitter(90000L)); };
+        handler.postDelayed(autoTask, WaveLoadGuard.jitter(90000L));
     }
 
     private void stopAuto(){

@@ -163,9 +163,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         load(true);
         task = () -> {
             if (!updating && !loading) load(false);
-            handler.postDelayed(task, FALLBACK_POLL_MS);
+            handler.postDelayed(task, WaveLoadGuard.jitter(FALLBACK_POLL_MS));
         };
-        handler.postDelayed(task, FALLBACK_POLL_MS);
+        handler.postDelayed(task, WaveLoadGuard.jitter(FALLBACK_POLL_MS));
     }
 
     private void stop() {
