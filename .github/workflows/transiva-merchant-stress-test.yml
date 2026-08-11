@@ -1,4 +1,4 @@
-name: Transiva Merchant Stress Test
+name: Transiva Merchant Stress Test V3
 
 on:
   workflow_dispatch:
