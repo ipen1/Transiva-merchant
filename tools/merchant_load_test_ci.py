@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Transiva Merchant read-only burst test V7.
+"""Transiva Merchant read-only burst test V12.
 
 Uses the normal authenticated Merchant Orders endpoint and deliberately stays below
 Transiva's production fixed-window rate limit (240 requests / 60 seconds).
@@ -73,12 +73,13 @@ def main():
         "X-Device-UUID":a.device,
         "X-App-Scope":"merchant",
         "Cache-Control":"no-cache",
-        "User-Agent":"Transiva-GitHub-Burst-Test/7.0",
+        "User-Agent":"Transiva-GitHub-Burst-Test/12.0",
     }
 
     # One normal authenticated preflight. It is included in the safety reasoning:
     # max 200 load requests + 1 preflight = 201, still below 240/window.
-    pre_req=urllib.request.Request(url, method="GET", headers=common_headers)
+    pre_url=url+"?scope=history"
+    pre_req=urllib.request.Request(pre_url, method="GET", headers=common_headers)
     try:
         with urllib.request.urlopen(pre_req, timeout=a.timeout) as r:
             pre_code=int(r.status)
@@ -92,10 +93,10 @@ def main():
 
     if pre_code != 200:
         jcode,msg=parse_json_code_message(pre_body)
-        payload={"status":"GAGAL","phase":"preflight","endpoint":url,"http":pre_code,
+        payload={"status":"GAGAL","phase":"preflight","endpoint":pre_url,"http":pre_code,
                  "code":jcode or "PREFLIGHT_FAILED","message":msg or pre_body[:300]}
         Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
-        md=f"""# ❌ Transiva Merchant Burst Test V7 — GAGAL PREFLIGHT
+        md=f"""# ❌ Transiva Merchant Burst Test V12 — GAGAL PREFLIGHT
 
 | Parameter | Hasil |
 |---|---|
@@ -111,10 +112,10 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
 
     def once(i):
         req=urllib.request.Request(url, method="GET", headers=common_headers)
-        t0=time.perf_counter(); code=-1; body=""; err_type=""
+        t0=time.perf_counter(); code=-1; body=""; err_type=""; cache_mode=""; plan=""
         try:
             with urllib.request.urlopen(req, timeout=a.timeout) as r:
-                code=int(r.status); body=safe_body(r.read())
+                code=int(r.status); cache_mode=r.headers.get("X-Transiva-Orders-Cache", ""); plan=r.headers.get("X-Transiva-Orders-Plan", ""); body=safe_body(r.read())
         except urllib.error.HTTPError as e:
             code=int(e.code); err_type="HTTPError"
             try: body=safe_body(e.read())
@@ -127,14 +128,16 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
             jcode,msg=parse_json_code_message(body)
             diag={"request":i+1,"http":code,"ms":round(ms,1),"error_type":err_type,
                   "code":jcode,"message":msg,"body":body}
-        return code,ms,diag
+        return code,ms,diag,cache_mode,plan
 
     start=time.perf_counter()
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.users) as ex:
         results=list(ex.map(once, range(a.requests)))
     elapsed=max(time.perf_counter()-start,0.001)
-    codes=Counter(str(c) for c,_,_ in results); times=[ms for _,ms,_ in results]
-    errors=[d for _,_,d in results if d is not None][:MAX_ERROR_SAMPLES]
+    codes=Counter(str(c) for c,_,_,_,_ in results); times=[ms for _,ms,_,_,_ in results]
+    cache_modes=Counter(cm or "none" for _,_,_,cm,_ in results)
+    plans=Counter(pl or "none" for _,_,_,_,pl in results)
+    errors=[d for _,_,d,_,_ in results if d is not None][:MAX_ERROR_SAMPLES]
     avg_ms=statistics.mean(times) if times else 0.0
     p95=percentile(times,.95); p99=percentile(times,.99)
     status,success_rate=classify(a.requests,codes,avg_ms,p95,p99)
@@ -142,11 +145,11 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
              "seconds":round(elapsed,2),"rps":round(a.requests/elapsed,2),
              "success_rate_pct":round(success_rate,2),"http_codes":dict(sorted(codes.items())),
              "avg_ms":round(avg_ms,1),"p95_ms":round(p95,1),"p99_ms":round(p99,1),
-             "error_samples":errors,"test_mode":"production-rate-limit-safe-burst"}
+             "error_samples":errors,"cache_modes":dict(sorted(cache_modes.items())),"plans":dict(sorted(plans.items())),"test_mode":"production-rate-limit-safe-burst-v12"}
     Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
     icon={"AMAN":"✅","PERLU PERBAIKAN":"⚠️","GAGAL":"❌"}[status]
-    md=f"""# {icon} Transiva Merchant Burst Test V7 — {status}
+    md=f"""# {icon} Transiva Merchant Burst Test V12 — {status}
 
 | Parameter | Hasil |
 |---|---:|
@@ -158,6 +161,8 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
 | P95 | **{payload['p95_ms']} ms** |
 | P99 | **{payload['p99_ms']} ms** |
 | HTTP codes | `{json.dumps(payload['http_codes'], sort_keys=True)}` |
+| Cache modes | `{json.dumps(payload['cache_modes'], sort_keys=True)}` |
+| Server plan | `{json.dumps(payload['plans'], sort_keys=True)}` |
 | Durasi | **{payload['seconds']} s** |
 
 ## Penilaian otomatis
