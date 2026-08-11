@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Transiva Merchant read-only burst test V13.
+"""Transiva Merchant read-only burst test V15.
 
 Uses the normal authenticated Merchant Orders endpoint and deliberately stays below
 Transiva's production fixed-window rate limit (240 requests / 60 seconds).
@@ -48,6 +48,18 @@ def parse_json_code_message(body: str):
     return "", ""
 
 
+def parse_diag(body: str):
+    try:
+        obj=json.loads(body)
+        if isinstance(obj, dict):
+            d=obj.get("_transiva_diag")
+            if isinstance(d, dict):
+                return str(d.get("cache", ""))[:120], str(d.get("plan", ""))[:160]
+    except Exception:
+        pass
+    return "", ""
+
+
 def main():
     p=argparse.ArgumentParser()
     p.add_argument("--base", required=True)
@@ -73,7 +85,7 @@ def main():
         "X-Device-UUID":a.device,
         "X-App-Scope":"merchant",
         "Cache-Control":"no-cache",
-        "User-Agent":"Transiva-GitHub-Burst-Test/13.0",
+        "User-Agent":"Transiva-GitHub-Burst-Test/15.0",
     }
 
     # One normal authenticated preflight. It is included in the safety reasoning:
@@ -96,7 +108,7 @@ def main():
         payload={"status":"GAGAL","phase":"preflight","endpoint":pre_url,"http":pre_code,
                  "code":jcode or "PREFLIGHT_FAILED","message":msg or pre_body[:300]}
         Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
-        md=f"""# ❌ Transiva Merchant Burst Test V13 — GAGAL PREFLIGHT
+        md=f"""# ❌ Transiva Merchant Burst Test V15 — GAGAL PREFLIGHT
 
 | Parameter | Hasil |
 |---|---|
@@ -123,6 +135,11 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
         except Exception as e:
             code=-1; err_type=type(e).__name__; body=str(e)[:MAX_BODY_CHARS]
         ms=(time.perf_counter()-t0)*1000.0
+        # Sebagian shared hosting/CDN membuang custom response header. V15 juga
+        # membaca diagnostik dari JSON body agar cache/plan tetap terlihat.
+        body_cache, body_plan = parse_diag(body)
+        if not cache_mode: cache_mode = body_cache
+        if not plan: plan = body_plan
         diag=None
         if code != 200:
             jcode,msg=parse_json_code_message(body)
@@ -145,11 +162,11 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
              "seconds":round(elapsed,2),"rps":round(a.requests/elapsed,2),
              "success_rate_pct":round(success_rate,2),"http_codes":dict(sorted(codes.items())),
              "avg_ms":round(avg_ms,1),"p95_ms":round(p95,1),"p99_ms":round(p99,1),
-             "error_samples":errors,"cache_modes":dict(sorted(cache_modes.items())),"plans":dict(sorted(plans.items())),"test_mode":"production-rate-limit-safe-burst-v13"}
+             "error_samples":errors,"cache_modes":dict(sorted(cache_modes.items())),"plans":dict(sorted(plans.items())),"test_mode":"production-rate-limit-safe-burst-v15"}
     Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
     icon={"AMAN":"✅","PERLU PERBAIKAN":"⚠️","GAGAL":"❌"}[status]
-    md=f"""# {icon} Transiva Merchant Burst Test V13 — {status}
+    md=f"""# {icon} Transiva Merchant Burst Test V15 — {status}
 
 | Parameter | Hasil |
 |---|---:|
@@ -165,15 +182,15 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
 | Server plan | `{json.dumps(payload['plans'], sort_keys=True)}` |
 | Durasi | **{payload['seconds']} s** |
 
-**Target V13:** `Server plan` idealnya memuat `atomic-burst-shield-v13`, sedangkan `Cache modes` dapat memuat `hit-v13`, `coalesced-v13`, `coalesced-cold-v13`, atau `miss-leader-v13`. Jika tetap `none`, custom response header kemungkinan tidak diteruskan hosting/CDN; nilai HTTP/latency tetap menjadi sumber utama penilaian.
+**Target V15:** `Server plan` idealnya memuat `atomic-burst-shield-v15`, sedangkan `Cache modes` dapat memuat `hit-v15`, `coalesced-v15`, `coalesced-cold-v15`, `stale-burst-v15`, atau `miss-leader-v15`. Jika tetap `none`, custom response header kemungkinan tidak diteruskan hosting/CDN; nilai HTTP/latency tetap menjadi sumber utama penilaian.
 
 ## Penilaian otomatis
 - **AMAN**: HTTP 200 ≥99%, tidak ada 5xx/network error, Average ≤1500 ms, P95 ≤2500 ms, P99 ≤5000 ms.
 - **PERLU PERBAIKAN**: masih berjalan tetapi melewati salah satu target AMAN.
 - **GAGAL**: ada 5xx/network error, HTTP 200 <95%, Average >3000 ms, P95 >5000 ms, atau P99 >10000 ms.
 
-## Mode pengujian V13
-V13 **tidak memakai bypass rate limit** dan tidak membutuhkan `TRANSIVA_STRESS_KEY`. Tool memakai endpoint produksi normal dan membatasi maksimum **200 load request + 1 preflight**, sehingga tetap di bawah limiter default 240 request/60 detik.
+## Mode pengujian V15
+V15 **tidak memakai bypass rate limit** dan tidak membutuhkan `TRANSIVA_STRESS_KEY`. Tool memakai endpoint produksi normal dan membatasi maksimum **200 load request + 1 preflight**, sehingga tetap di bawah limiter default 240 request/60 detik.
 
 Untuk 50/100/200 concurrent, ini adalah **burst test satu gelombang**, bukan sustained-load test berulang selama satu menit.
 """
