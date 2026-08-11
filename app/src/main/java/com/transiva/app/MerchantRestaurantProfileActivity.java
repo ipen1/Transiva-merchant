@@ -165,7 +165,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if(name.isEmpty()){ alert("Nama Kosong", "Nama merchant tidak boleh kosong."); return; }
         if(restaurantId.isEmpty()){ alert("Merchant Tidak Ditemukan", "Silakan login ulang atau cek getMerchantDashboard.php."); return; }
         save.setEnabled(false); save.setText("Menyimpan...");
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("restaurant-profile-save", () -> {
             try{
                 JSONObject f = new JSONObject(); f.put("name", name);
                 JSONObject res = new JSONObject(postForm(BASE + "update_restaurant_profile.php", f, bannerUri, "banner", "merchant_banner.jpg"));

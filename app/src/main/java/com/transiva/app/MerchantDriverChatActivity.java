@@ -160,7 +160,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private void sendText(String raw) {
         String text=safe(raw).trim(); if(text.isEmpty()||sending)return; if(text.length()>500){toast("Pesan maksimal 500 karakter.");return;}
         sending=true; send.setEnabled(false);
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("chat-send:" + orderDbId + ":" + Integer.toHexString(text.hashCode()), () -> {
             try {
                 JSONObject p=new JSONObject();p.put("order_id",orderId);p.put("order_db_id",orderDbId);p.put("message",text);
                 JSONObject r=new JSONObject(postJson(BASE+"sendMerchantDriverChat.php",p));

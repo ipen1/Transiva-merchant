@@ -475,7 +475,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         if (!grossupLoaded) { alert("Aturan Harga Belum Siap", "Aturan gross-up belum berhasil dimuat dari server. Coba buka ulang halaman atau periksa API server."); return; }
         long fee = gross(original), appPrice = original + fee;
         save.setEnabled(false); save.setText(editMode ? "Menyimpan perubahan..." : "Mengupload...");
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("menu-save:" + (editMode ? editMenuId : "new") + ":" + name, () -> {
             try {
                 JSONObject f = new JSONObject();
                 f.put("name", name); f.put("price", appPrice); f.put("original_price", original); f.put("grossup_fee", fee); f.put("category", cat);

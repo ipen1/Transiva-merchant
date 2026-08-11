@@ -504,7 +504,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("order-status:" + id + ":" + status, () -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("id", id);

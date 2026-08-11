@@ -7,7 +7,6 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -35,6 +34,7 @@ public final class MerchantNetworkExecutor {
     private static final int READ_MAX_THREADS = 5;
     private static final int READ_QUEUE_CAPACITY = 96;
     private static final int WRITE_THREADS = 2;
+    private static final int WRITE_QUEUE_CAPACITY = 128;
 
     private static final AtomicInteger READ_ID = new AtomicInteger(1);
     private static final AtomicInteger WRITE_ID = new AtomicInteger(1);
@@ -62,12 +62,13 @@ public final class MerchantNetworkExecutor {
             WRITE_THREADS,
             30L,
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(),
+            new ArrayBlockingQueue<>(WRITE_QUEUE_CAPACITY),
             factory("transiva-write-", WRITE_ID),
             new ThreadPoolExecutor.AbortPolicy()
     );
 
     private static final ConcurrentHashMap<String, Boolean> READ_IN_FLIGHT = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> WRITE_IN_FLIGHT = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Object, Set<Future<?>>> OWNER_READS = new ConcurrentHashMap<>();
 
     static {
@@ -127,18 +128,45 @@ public final class MerchantNetworkExecutor {
     }
 
     /**
-     * Writes are isolated from READ saturation and are never intentionally dropped/cancelled.
+     * P6 WRITE scheduler:
+     * - bounded queue prevents unlimited RAM growth;
+     * - keyed single-flight prevents duplicate user mutations/double taps;
+     * - saturated network work is never executed inline on the UI thread.
+     *
+     * @return true when accepted, false when duplicate/saturated/shutdown.
      */
-    public static void executeWrite(Runnable task) {
-        if (task == null || WRITE_EXECUTOR.isShutdown()) return;
-        try {
-            WRITE_EXECUTOR.execute(task);
-        } catch (RejectedExecutionException rejected) {
-            // This should only happen during executor shutdown; execute inline as the safest
-            // last resort so a user-initiated mutation is not silently lost.
-            Log.w(TAG, "Write executor unavailable; running write inline as last resort");
-            task.run();
+    public static boolean executeWrite(String key, Runnable task) {
+        if (task == null || WRITE_EXECUTOR.isShutdown()) return false;
+
+        final String normalizedKey = key == null ? "" : key.trim();
+        final boolean keyed = !normalizedKey.isEmpty();
+        if (keyed && WRITE_IN_FLIGHT.putIfAbsent(normalizedKey, Boolean.TRUE) != null) {
+            Log.d(TAG, "Skipped duplicate write: " + normalizedKey);
+            return false;
         }
+
+        try {
+            WRITE_EXECUTOR.execute(() -> {
+                try {
+                    task.run();
+                } finally {
+                    if (keyed) WRITE_IN_FLIGHT.remove(normalizedKey);
+                }
+            });
+            return true;
+        } catch (RejectedExecutionException rejected) {
+            if (keyed) WRITE_IN_FLIGHT.remove(normalizedKey);
+            Log.w(TAG, "Write queue saturated; mutation rejected safely: " + normalizedKey);
+            return false;
+        }
+    }
+
+    public static boolean executeWrite(Runnable task) {
+        return executeWrite("", task);
+    }
+
+    public static boolean isWriteInFlight(String key) {
+        return key != null && WRITE_IN_FLIGHT.containsKey(key.trim());
     }
 
     /** Cancel only cancellable GET/read work owned by a destroyed Activity. */

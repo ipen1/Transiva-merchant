@@ -320,7 +320,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         final int next = current == 1 ? 0 : 1;
         storeStatusBtn.setEnabled(false);
         storeStatusBtn.setText("Memproses...");
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("restaurant-open-toggle", () -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("is_open", next);

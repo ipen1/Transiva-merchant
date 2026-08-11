@@ -253,7 +253,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         save.setEnabled(false);
         save.setText("Menyimpan...");
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("merchant-settings-save", () -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("old_pin", oldPin);
@@ -276,7 +276,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         save.setEnabled(false);
         save.setText("Menyimpan...");
-        MerchantNetworkExecutor.executeWrite(() -> {
+        MerchantNetworkExecutor.executeWrite("merchant-pin-or-security-save", () -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("current_password", currentPassword);
