@@ -106,6 +106,11 @@ public final class MerchantNetworkExecutor {
                     Set<Future<?>> existing = OWNER_READS.putIfAbsent(owner, created);
                     ownerSet = existing == null ? created : existing;
                 }
+                // P3: long-lived owners (especially Application for session/update checks)
+                // must not retain every completed Future forever.
+                for (Future<?> old : ownerSet) {
+                    if (old == null || old.isDone() || old.isCancelled()) ownerSet.remove(old);
+                }
                 ownerSet.add(future);
             }
             return future;
@@ -153,6 +158,8 @@ public final class MerchantNetworkExecutor {
 
     public static int queuedReads() { return READ_EXECUTOR.getQueue().size(); }
     public static int queuedWrites() { return WRITE_EXECUTOR.getQueue().size(); }
+    public static int activeReads() { return READ_EXECUTOR.getActiveCount(); }
+    public static int activeWrites() { return WRITE_EXECUTOR.getActiveCount(); }
 
     private static String ownerKey(Object owner) {
         return owner == null ? "global" : owner.getClass().getName() + "@" + System.identityHashCode(owner);
