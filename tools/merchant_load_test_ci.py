@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Transiva Merchant read-only burst test V15.
+"""Transiva Merchant read-only burst test V18.
 
 Uses the normal authenticated Merchant Orders endpoint and deliberately stays below
 Transiva's production fixed-window rate limit (240 requests / 60 seconds).
@@ -34,8 +34,11 @@ def classify(total, codes, avg_ms, p95_ms, p99_ms):
     return "AMAN", success_rate
 
 
+def decode_body(raw: bytes) -> str:
+    return raw.decode("utf-8", errors="replace").strip()
+
 def safe_body(raw: bytes) -> str:
-    return raw.decode("utf-8", errors="replace").strip()[:MAX_BODY_CHARS]
+    return decode_body(raw)[:MAX_BODY_CHARS]
 
 
 def parse_json_code_message(body: str):
@@ -85,7 +88,7 @@ def main():
         "X-Device-UUID":a.device,
         "X-App-Scope":"merchant",
         "Cache-Control":"no-cache",
-        "User-Agent":"Transiva-GitHub-Burst-Test/15.0",
+        "User-Agent":"Transiva-GitHub-Burst-Test/18.0",
     }
 
     # One normal authenticated preflight. It is included in the safety reasoning:
@@ -108,7 +111,7 @@ def main():
         payload={"status":"GAGAL","phase":"preflight","endpoint":pre_url,"http":pre_code,
                  "code":jcode or "PREFLIGHT_FAILED","message":msg or pre_body[:300]}
         Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
-        md=f"""# ❌ Transiva Merchant Burst Test V15 — GAGAL PREFLIGHT
+        md=f"""# ❌ Transiva Merchant Burst Test V18 — GAGAL PREFLIGHT
 
 | Parameter | Hasil |
 |---|---|
@@ -127,7 +130,7 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
         t0=time.perf_counter(); code=-1; body=""; err_type=""; cache_mode=""; plan=""
         try:
             with urllib.request.urlopen(req, timeout=a.timeout) as r:
-                code=int(r.status); cache_mode=r.headers.get("X-Transiva-Orders-Cache", ""); plan=r.headers.get("X-Transiva-Orders-Plan", ""); body=safe_body(r.read())
+                code=int(r.status); cache_mode=r.headers.get("X-Transiva-Orders-Cache", ""); plan=r.headers.get("X-Transiva-Orders-Plan", ""); body=decode_body(r.read())
         except urllib.error.HTTPError as e:
             code=int(e.code); err_type="HTTPError"
             try: body=safe_body(e.read())
@@ -144,7 +147,7 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
         if code != 200:
             jcode,msg=parse_json_code_message(body)
             diag={"request":i+1,"http":code,"ms":round(ms,1),"error_type":err_type,
-                  "code":jcode,"message":msg,"body":body}
+                  "code":jcode,"message":msg,"body":body[:MAX_BODY_CHARS]}
         return code,ms,diag,cache_mode,plan
 
     start=time.perf_counter()
@@ -166,7 +169,7 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
     Path(a.json_out).write_text(json.dumps(payload,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
 
     icon={"AMAN":"✅","PERLU PERBAIKAN":"⚠️","GAGAL":"❌"}[status]
-    md=f"""# {icon} Transiva Merchant Burst Test V15 — {status}
+    md=f"""# {icon} Transiva Merchant Burst Test V18 — {status}
 
 | Parameter | Hasil |
 |---|---:|
@@ -182,7 +185,7 @@ Endpoint normal `getMerchantOrders.php` belum merespons HTTP 200. Stress/burst t
 | Server plan | `{json.dumps(payload['plans'], sort_keys=True)}` |
 | Durasi | **{payload['seconds']} s** |
 
-**Target V15:** `Server plan` idealnya memuat `atomic-burst-shield-v15`, sedangkan `Cache modes` dapat memuat `hit-v15`, `coalesced-v15`, `coalesced-cold-v15`, `stale-burst-v15`, atau `miss-leader-v15`. Jika tetap `none`, custom response header kemungkinan tidak diteruskan hosting/CDN; nilai HTTP/latency tetap menjadi sumber utama penilaian.
+**Target V15:** `Server plan` idealnya memuat `atomic-burst-shield-v18`, sedangkan `Cache modes` dapat memuat `hit-v18`, `coalesced-v18`, `coalesced-cold-v18`, `stale-burst-v18`, atau `miss-leader-v18`. Jika tetap `none`, custom response header kemungkinan tidak diteruskan hosting/CDN; nilai HTTP/latency tetap menjadi sumber utama penilaian.
 
 ## Penilaian otomatis
 - **AMAN**: HTTP 200 ≥99%, tidak ada 5xx/network error, Average ≤1500 ms, P95 ≤2500 ms, P99 ≤5000 ms.
