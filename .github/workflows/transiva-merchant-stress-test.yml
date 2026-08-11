@@ -1,4 +1,4 @@
-name: Transiva Merchant Burst Test V7
+name: Transiva Merchant Burst Test V12
 
 on:
   workflow_dispatch:
