@@ -210,8 +210,6 @@ public class MerchantBaseActivity extends Activity {
     private void applyMerchantAuth(HttpURLConnection c) {
         c.setRequestProperty("Accept", "application/json");
         c.setRequestProperty("Cache-Control", "no-store");
-        // Hindari reuse koneksi TLS lama setelah sertifikat/CDN server berubah.
-        c.setRequestProperty("Connection", "close");
         c.setRequestProperty("X-Transiva-App", "Android-Merchant");
         c.setRequestProperty("X-App-Scope", "merchant");
         c.setRequestProperty("X-Android-SDK", String.valueOf(Build.VERSION.SDK_INT));

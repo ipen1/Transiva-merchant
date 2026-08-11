@@ -25,7 +25,6 @@ public final class MerchantApiClient {
         connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Accept", "application/json");
         connection.setRequestProperty("Cache-Control", "no-store");
-        connection.setRequestProperty("Connection", "close");
         applySecurity(context, connection);
         return connection;
     }

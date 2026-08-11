@@ -252,14 +252,12 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         new Thread(() -> {
             try {
                 String dash = get(BASE + "getMerchantDashboard.php?v=" + System.currentTimeMillis());
-                String orders = get(BASE + "getMerchantOrders.php?v=" + System.currentTimeMillis());
                 runOnUiThread(() -> {
                     if(networkText != null){
                         networkText.setText("● Online • server terhubung");
                         networkText.setTextColor(Color.parseColor("#16803A"));
                     }
                     showDash(dash);
-                    checkOrders(orders);
                 });
             } catch(Exception e){
                 runOnUiThread(() -> {
@@ -282,6 +280,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             ratingText.setText(String.format(java.util.Locale.US, "%.1f ⭐", d.optDouble("rating", 0)));
             reviewText.setText(d.optInt("review_count", 0) + " ulasan");
             if(revenueText != null) revenueText.setText(rupiah(d.optLong("today_revenue", 0)));
+            setOrderTileActive(d.optInt("pending_orders", 0));
+            firstLoad = false;
             storeStatusBtn.setText(open ? "🔴 Tutup Restoran" : "🟢 Buka Restoran");
             storeStatusBtn.setTag(open ? "1" : "0");
         } catch(Exception e){ descText.setText("Dashboard belum terbaca"); }

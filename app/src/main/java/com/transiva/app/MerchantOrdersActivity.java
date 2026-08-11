@@ -117,14 +117,18 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         tabs.addView(hist, new LinearLayout.LayoutParams(0, dp(48), 1));
         root.addView(tabs);
         active.setOnClickListener(v -> {
-            historyMode = false;
-            periodSpinner.setVisibility(Spinner.GONE);
-            render();
+            if (historyMode) {
+                historyMode = false;
+                periodSpinner.setVisibility(Spinner.GONE);
+                load(true);
+            }
         });
         hist.setOnClickListener(v -> {
-            historyMode = true;
-            periodSpinner.setVisibility(Spinner.VISIBLE);
-            render();
+            if (!historyMode) {
+                historyMode = true;
+                periodSpinner.setVisibility(Spinner.VISIBLE);
+                load(true);
+            }
         });
 
         periodSpinner = new Spinner(this);
@@ -191,7 +195,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
         new Thread(() -> {
             try {
-                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?v=" + System.currentTimeMillis()));
+                String scope = historyMode ? "history" : "active";
+                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
                 JSONArray orders = r.optJSONArray("orders");
                 if (orders == null) orders = new JSONArray();
                 JSONArray finalOrders = orders;
@@ -224,8 +229,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             JSONObject o = cached.optJSONObject(i);
             if (o == null) continue;
             String st = o.optString("status", "pending").toLowerCase(Locale.US);
-            boolean fin = isFinal(st);
-            if (historyMode != fin) continue;
             if (historyMode && !inPeriod(o)) continue;
             if (!historyMode && !focusOrderId.isEmpty() && sameOrder(o, focusOrderId)) {
                 list.addView(orderView(o, true));
@@ -237,8 +240,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             JSONObject o = cached.optJSONObject(i);
             if (o == null) continue;
             String st = o.optString("status", "pending").toLowerCase(Locale.US);
-            boolean fin = isFinal(st);
-            if (historyMode != fin) continue;
             if (historyMode && !inPeriod(o)) continue;
             if (!historyMode && !focusOrderId.isEmpty() && sameOrder(o, focusOrderId)) continue;
             list.addView(orderView(o, false));
