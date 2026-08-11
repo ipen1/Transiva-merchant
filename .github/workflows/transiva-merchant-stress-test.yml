@@ -1,4 +1,4 @@
-name: Transiva Merchant Stress Test V5
+name: Transiva Merchant Burst Test V7
 
 on:
   workflow_dispatch:
@@ -24,12 +24,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: transiva-production-stress-test
+  group: transiva-production-burst-test
   cancel-in-progress: false
 
 jobs:
   stress-test:
-    name: "Stress Test ${{ inputs.load_level }} concurrent"
+    name: "Burst Test ${{ inputs.load_level }} concurrent"
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -44,55 +44,41 @@ jobs:
           CONFIRMATION: ${{ inputs.high_load_confirmation }}
           TRANSIVA_TOKEN: ${{ secrets.TRANSIVA_MERCHANT_TOKEN }}
           TRANSIVA_DEVICE: ${{ secrets.TRANSIVA_DEVICE_UUID }}
-          TRANSIVA_STRESS_KEY: ${{ secrets.TRANSIVA_STRESS_KEY }}
         run: |
           set -euo pipefail
-
-          if [ -z "$TRANSIVA_TOKEN" ]; then
-            echo "::error::Secret TRANSIVA_MERCHANT_TOKEN belum dibuat."
-            exit 1
-          fi
-
-          if [ -z "$TRANSIVA_DEVICE" ]; then
-            echo "::error::Secret TRANSIVA_DEVICE_UUID belum dibuat."
-            exit 1
-          fi
-
-          if [ -z "$TRANSIVA_STRESS_KEY" ] || [ "${#TRANSIVA_STRESS_KEY}" -lt 32 ]; then
-            echo "::error::Secret TRANSIVA_STRESS_KEY belum dibuat atau kurang dari 32 karakter."
-            exit 1
-          fi
-
+          [ -n "$TRANSIVA_TOKEN" ] || { echo "::error::Secret TRANSIVA_MERCHANT_TOKEN belum dibuat."; exit 1; }
+          [ -n "$TRANSIVA_DEVICE" ] || { echo "::error::Secret TRANSIVA_DEVICE_UUID belum dibuat."; exit 1; }
           if { [ "$USERS" = "100" ] || [ "$USERS" = "200" ]; } && [ "$CONFIRMATION" != "SAYA PAHAM" ]; then
             echo "::error::Untuk load 100/200, isi high_load_confirmation dengan tepat: SAYA PAHAM"
             exit 1
           fi
 
-      - name: Select request count
+      - name: Select safe request count
         id: config
         shell: bash
         env:
           USERS: ${{ inputs.load_level }}
         run: |
           set -euo pipefail
+          # Tetap di bawah limiter produksi default 240 request / 60 detik.
+          # Ada 1 request preflight tambahan di tool.
           case "$USERS" in
             10)  REQUESTS=100 ;;
-            25)  REQUESTS=250 ;;
-            50)  REQUESTS=500 ;;
-            100) REQUESTS=1000 ;;
-            200) REQUESTS=2000 ;;
+            25)  REQUESTS=200 ;;
+            50)  REQUESTS=200 ;;
+            100) REQUESTS=200 ;;
+            200) REQUESTS=200 ;;
             *) echo "Invalid level"; exit 1 ;;
           esac
           echo "requests=$REQUESTS" >> "$GITHUB_OUTPUT"
 
-      - name: Run read-only stress test
+      - name: Run read-only burst test
         id: run_test
         continue-on-error: true
         shell: bash
         env:
           TRANSIVA_TOKEN: ${{ secrets.TRANSIVA_MERCHANT_TOKEN }}
           TRANSIVA_DEVICE: ${{ secrets.TRANSIVA_DEVICE_UUID }}
-          TRANSIVA_STRESS_KEY: ${{ secrets.TRANSIVA_STRESS_KEY }}
           USERS: ${{ inputs.load_level }}
           REQUESTS: ${{ steps.config.outputs.requests }}
         run: |
@@ -101,7 +87,6 @@ jobs:
             --base "https://transiva.my.id/" \
             --token "$TRANSIVA_TOKEN" \
             --device "$TRANSIVA_DEVICE" \
-            --stress-key "$TRANSIVA_STRESS_KEY" \
             --users "$USERS" \
             --requests "$REQUESTS" \
             --json-out stress-result.json \
@@ -117,14 +102,14 @@ jobs:
           if [ -f stress-summary.md ]; then
             cat stress-summary.md >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "# ❌ Stress test tidak menghasilkan laporan" >> "$GITHUB_STEP_SUMMARY"
+            echo "# ❌ Burst test tidak menghasilkan laporan" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload raw results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: transiva-stress-result-${{ inputs.load_level }}-users
+          name: transiva-burst-result-${{ inputs.load_level }}-users
           path: |
             stress-result.json
             stress-summary.md
@@ -138,6 +123,6 @@ jobs:
           TEST_EXIT: ${{ steps.run_test.outputs.exit_code }}
         run: |
           if [ "${TEST_EXIT:-1}" != "0" ]; then
-            echo "::error::Stress test dinilai GAGAL. Buka Job Summary untuk detail."
+            echo "::error::Burst test dinilai GAGAL. Buka Job Summary untuk detail."
             exit 1
           fi
