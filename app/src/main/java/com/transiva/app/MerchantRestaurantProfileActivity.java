@@ -1,5 +1,6 @@
 package com.transiva.app;
 
+import com.bumptech.glide.Glide;
 import android.os.Bundle;
 import android.net.Uri;
 import android.content.Intent;
@@ -87,14 +88,14 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
 
     private void load(){
         final String u = username();
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try{
                 JSONObject prof = new JSONObject(get(BASE + "get_restaurant_profile.php?v=" + System.currentTimeMillis()));
                 JSONObject restaurant = prof.optJSONObject("restaurant");
                 restaurantId = restaurant == null ? "" : restaurant.optString("id", "");
                 runOnUiThread(() -> show(prof));
             }catch(Exception e){ runOnUiThread(() -> statusText.setText("Gagal memuat profil merchant."));}
-        }).start();
+        });
     }
 
     private void show(JSONObject res){
@@ -141,20 +142,11 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
     private void loadBannerImage(String rawUrl){
         final String url = normalizeImageUrl(rawUrl);
         if(url.isEmpty()) return;
-        new Thread(() -> {
-            try{
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                conn.setConnectTimeout(15000);
-                conn.setReadTimeout(15000);
-                conn.setUseCaches(true);
-                conn.setRequestProperty("User-Agent", "Transiva-Android");
-                InputStream is = conn.getInputStream();
-                Bitmap bitmap = BitmapFactory.decodeStream(is);
-                is.close();
-                conn.disconnect();
-                if(bitmap != null) runOnUiThread(() -> bannerImage.setImageBitmap(bitmap));
-            }catch(Exception ignored){}
-        }).start();
+        Glide.with(this)
+                .load(url)
+                .centerCrop()
+                .thumbnail(0.25f)
+                .into(bannerImage);
     }
 
     private String normalizeImageUrl(String raw){
@@ -173,7 +165,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if(name.isEmpty()){ alert("Nama Kosong", "Nama merchant tidak boleh kosong."); return; }
         if(restaurantId.isEmpty()){ alert("Merchant Tidak Ditemukan", "Silakan login ulang atau cek getMerchantDashboard.php."); return; }
         save.setEnabled(false); save.setText("Menyimpan...");
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try{
                 JSONObject f = new JSONObject(); f.put("name", name);
                 JSONObject res = new JSONObject(postForm(BASE + "update_restaurant_profile.php", f, bannerUri, "banner", "merchant_banner.jpg"));
@@ -183,6 +175,6 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
                     if(res.optBoolean("success", false)) load();
                 });
             }catch(Exception e){ runOnUiThread(() -> { save.setEnabled(true); save.setText("💾 Simpan Profil Merchant"); alert("Error","Gagal menyimpan profil."); });}
-        }).start();
+        });
     }
 }

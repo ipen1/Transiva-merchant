@@ -193,7 +193,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             realtimeStatus.setTextColor(Color.parseColor("#B54708"));
         }
 
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 String scope = historyMode ? "history" : "active";
                 JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
@@ -218,7 +218,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     }
                 });
             }
-        }).start();
+        });
     }
 
     private void render() {
@@ -503,7 +503,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("id", id);
@@ -530,6 +530,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     alert("Koneksi", "Status belum diubah. Periksa koneksi lalu coba lagi. Aplikasi tidak akan mengirim ulang otomatis agar pesanan tidak terproses dua kali.");
                 });
             }
-        }).start();
+        });
     }
 }

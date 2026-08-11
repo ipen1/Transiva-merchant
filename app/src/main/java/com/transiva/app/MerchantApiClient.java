@@ -19,8 +19,8 @@ public final class MerchantApiClient {
             throw new IOException("Merchant API hanya boleh mengakses HTTPS Transiva");
         }
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setConnectTimeout(15000);
-        connection.setReadTimeout(20000);
+        connection.setConnectTimeout(10000);
+        connection.setReadTimeout(15000);
         connection.setUseCaches(false);
         connection.setInstanceFollowRedirects(false);
         connection.setRequestProperty("Accept", "application/json");

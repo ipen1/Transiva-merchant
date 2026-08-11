@@ -58,7 +58,7 @@ public class ApiClient {
             final String jsonBody,
             final String callbackId
     ) {
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
 
             HttpURLConnection conn = null;
 
@@ -69,7 +69,7 @@ public class ApiClient {
 
                 URL url = new URL(fullUrl);
 
-                conn = (HttpURLConnection) url.openConnection();
+                conn = MerchantApiClient.open(activity, url.toString());
                 conn.setConnectTimeout(CONNECT_TIMEOUT);
                 conn.setReadTimeout(READ_TIMEOUT);
                 conn.setUseCaches(false);
@@ -143,7 +143,7 @@ public class ApiClient {
                 } catch (Exception ignored) {}
             }
 
-        }).start();
+        });
     }
 
     private String cleanPath(String path) {

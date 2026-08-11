@@ -19,7 +19,7 @@ public final class SessionValidationClient {
         final String token = session.getToken() == null ? "" : session.getToken().trim();
         if (!session.isLoggedIn() || token.isEmpty() || !"merchant".equals(session.getRole())) return;
 
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             HttpURLConnection conn = null;
             try {
                 conn = MerchantApiClient.open(app, URL_VALIDATE);

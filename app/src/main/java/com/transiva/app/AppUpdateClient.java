@@ -26,10 +26,10 @@ public final class AppUpdateClient {
     private AppUpdateClient() {}
 
     public static void check(Context context, Callback callback) {
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                connection = (HttpURLConnection) new URL(UPDATE_ENDPOINT + "?app=" + APP_ROLE + "&t=" + System.currentTimeMillis()).openConnection();
+                connection = MerchantApiClient.open(context, UPDATE_ENDPOINT + "?app=" + APP_ROLE + "&t=" + System.currentTimeMillis());
                 connection.setRequestMethod("GET");
                 connection.setConnectTimeout(20000);
                 connection.setReadTimeout(20000);
@@ -60,7 +60,7 @@ public final class AppUpdateClient {
             } finally {
                 if (connection != null) connection.disconnect();
             }
-        }, "transiva-update-check").start();
+        });
     }
 
     public static int installedVersionCode(Context context) throws Exception {

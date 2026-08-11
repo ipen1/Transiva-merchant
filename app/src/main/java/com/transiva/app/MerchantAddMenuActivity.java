@@ -362,7 +362,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private void loadGrossupRules() {
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject response = new JSONObject(get(GROSSUP_ENDPOINT));
                 if (!response.optBoolean("success", false)) throw new Exception(response.optString("message", "Gagal memuat gross-up"));
@@ -378,7 +378,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             } catch (Exception e) {
                 runOnUiThread(() -> { grossupLoaded = false; updatePreview(); Toast.makeText(this, "Aturan gross-up belum dapat dimuat. Periksa API server.", Toast.LENGTH_LONG).show(); });
             }
-        }).start();
+        });
     }
 
     private long gross(long price) {
@@ -475,7 +475,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         if (!grossupLoaded) { alert("Aturan Harga Belum Siap", "Aturan gross-up belum berhasil dimuat dari server. Coba buka ulang halaman atau periksa API server."); return; }
         long fee = gross(original), appPrice = original + fee;
         save.setEnabled(false); save.setText(editMode ? "Menyimpan perubahan..." : "Mengupload...");
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject f = new JSONObject();
                 f.put("name", name); f.put("price", appPrice); f.put("original_price", original); f.put("grossup_fee", fee); f.put("category", cat);
@@ -492,7 +492,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             } catch (Exception e) {
                 runOnUiThread(() -> { save.setEnabled(true); save.setText(editMode ? "Simpan Perubahan" : "Simpan Menu"); alert("Error", "Server error / koneksi gagal."); });
             }
-        }).start();
+        });
     }
 
     private long parseLong(String s) { try { return Long.parseLong(s == null ? "0" : s.trim()); } catch (Exception e) { return 0; } }

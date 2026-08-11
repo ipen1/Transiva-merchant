@@ -248,8 +248,8 @@ public class MerchantBaseActivity extends Activity {
 
     private HttpURLConnection openConnection(String link) throws Exception {
         HttpURLConnection c = MerchantApiClient.open(this, link);
-        c.setConnectTimeout(20000);
-        c.setReadTimeout(25000);
+        c.setConnectTimeout(10000);
+        c.setReadTimeout(15000);
         c.setDoInput(true);
         return c;
     }
@@ -296,8 +296,8 @@ public class MerchantBaseActivity extends Activity {
 
     protected String postForm(String link, JSONObject fields, Uri fileUri, String fileField, String fileName) throws Exception {
         String boundary = "----Transiva" + System.currentTimeMillis();
-        HttpURLConnection c = (HttpURLConnection)new URL(link).openConnection();
-        c.setConnectTimeout(30000); c.setReadTimeout(30000); c.setDoOutput(true); c.setUseCaches(false);
+        HttpURLConnection c = MerchantApiClient.open(this, link);
+        c.setConnectTimeout(15000); c.setReadTimeout(30000); c.setDoOutput(true); c.setUseCaches(false);
         c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
         applyMerchantAuth(c);

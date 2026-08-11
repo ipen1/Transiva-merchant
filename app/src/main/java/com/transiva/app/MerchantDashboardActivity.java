@@ -249,7 +249,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             networkText.setText(MerchantConnectivity.isOnline(this) ? "● Menghubungkan..." : "● Tidak ada koneksi internet");
             networkText.setTextColor(Color.parseColor(MerchantConnectivity.isOnline(this) ? "#B54708" : "#D92D20"));
         }
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 String dash = get(BASE + "getMerchantDashboard.php?v=" + System.currentTimeMillis());
                 runOnUiThread(() -> {
@@ -267,7 +267,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                     }
                 });
             }
-        }).start();
+        });
     }
 
     private void showDash(String json){
@@ -320,7 +320,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         final int next = current == 1 ? 0 : 1;
         storeStatusBtn.setEnabled(false);
         storeStatusBtn.setText("Memproses...");
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject p = new JSONObject();
                 p.put("is_open", next);
@@ -331,6 +331,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                     loadAll();
                 });
             } catch(Exception e){ runOnUiThread(() -> { storeStatusBtn.setEnabled(true); alert("Error","Koneksi gagal"); loadAll(); }); }
-        }).start();
+        });
     }
 }

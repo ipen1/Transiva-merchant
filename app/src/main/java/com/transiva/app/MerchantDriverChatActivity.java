@@ -20,8 +20,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class MerchantDriverChatActivity extends MerchantBaseActivity {
-    private static final long ACTIVE_REFRESH_MS = 8000L;
-    private static final long IDLE_REFRESH_MS = 15000L;
+    private static final long ACTIVE_REFRESH_MS = 30000L;
+    private static final long IDLE_REFRESH_MS = 45000L;
     private final Handler main = new Handler(Looper.getMainLooper());
     private LinearLayout messages;
     private ScrollView scroll;
@@ -126,14 +126,14 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
 
     private void load(boolean initial) {
         if (loading) return; loading=true;
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 String url = BASE + "getMerchantDriverChat.php?order_id=" + enc(orderId) + "&order_db_id=" + enc(orderDbId) + "&last_id=" + lastId + "&_=" + System.currentTimeMillis();
                 JSONObject r = new JSONObject(get(url));
                 runOnUiThread(() -> apply(r, initial));
             } catch(Exception e) { if(initial) runOnUiThread(() -> status.setText("Koneksi chat belum tersedia • akan mencoba lagi")); }
             finally { loading=false; }
-        }).start();
+        });
     }
 
     private void apply(JSONObject r, boolean initial) {
@@ -159,14 +159,14 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private void sendText(String raw) {
         String text=safe(raw).trim(); if(text.isEmpty()||sending)return; if(text.length()>500){toast("Pesan maksimal 500 karakter.");return;}
         sending=true; send.setEnabled(false);
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject p=new JSONObject();p.put("order_id",orderId);p.put("order_db_id",orderDbId);p.put("message",text);
                 JSONObject r=new JSONObject(postJson(BASE+"sendMerchantDriverChat.php",p));
                 runOnUiThread(() -> { if(r.optBoolean("success",false)){input.setText("");load(false);} else toast(r.optString("message","Pesan gagal dikirim")); });
             }catch(Exception e){runOnUiThread(()->toast("Koneksi gagal. Pesan belum dikirim."));}
             finally{sending=false;runOnUiThread(()->send.setEnabled(true));}
-        }).start();
+        });
     }
 
     private String first(String... v){ if(v!=null)for(String s:v)if(s!=null&&!s.trim().isEmpty())return s.trim();return ""; }

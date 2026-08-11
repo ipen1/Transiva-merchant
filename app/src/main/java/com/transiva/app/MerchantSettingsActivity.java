@@ -253,7 +253,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         save.setEnabled(false);
         save.setText("Menyimpan...");
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("old_pin", oldPin);
@@ -268,7 +268,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
             } catch (Exception e) {
                 runOnUiThread(() -> { save.setEnabled(true); save.setText("Simpan"); alert("Koneksi gagal", "Tidak dapat terhubung ke server. Coba kembali."); });
             }
-        }).start();
+        });
     }
 
     private void submitCredentials(AlertDialog dialog, String username, String newPassword,
@@ -276,7 +276,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         Button save = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
         save.setEnabled(false);
         save.setText("Menyimpan...");
-        new Thread(() -> {
+        MerchantNetworkExecutor.execute(() -> {
             try {
                 JSONObject body = new JSONObject();
                 body.put("current_password", currentPassword);
@@ -304,7 +304,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
             } catch (Exception e) {
                 runOnUiThread(() -> { save.setEnabled(true); save.setText("Simpan"); alert("Koneksi gagal", "Tidak dapat terhubung ke server. Coba kembali."); });
             }
-        }).start();
+        });
     }
 
     private void confirmLogout() {
