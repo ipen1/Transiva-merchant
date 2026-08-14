@@ -17,7 +17,7 @@ import java.util.HashSet;
 
 public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout root, grid, ordersTile;
-    private TextView nameText, statusText, descText, networkText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
+    private TextView nameText, statusText, descText, networkText, clusterText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
     private Button storeStatusBtn;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final HashSet<String> notifiedOrders = new HashSet<>();
@@ -96,6 +96,9 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         networkText = tv("● Menghubungkan ke server...", 12, Color.parseColor("#B54708"), true);
         networkText.setPadding(0, dp(8), 0, 0);
         statusCard.addView(networkText);
+        clusterText = tv("📍 Cluster: memuat...", 12, NAVY, true);
+        clusterText.setPadding(0, dp(8), 0, 0);
+        statusCard.addView(clusterText);
 
         LinearLayout stats = row();
         statusCard.addView(stats);
@@ -280,6 +283,11 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             ratingText.setText(String.format(java.util.Locale.US, "%.1f ⭐", d.optDouble("rating", 0)));
             reviewText.setText(d.optInt("review_count", 0) + " ulasan");
             if(revenueText != null) revenueText.setText(rupiah(d.optLong("today_revenue", 0)));
+            JSONObject cluster = d.optJSONObject("cluster");
+            if(clusterText != null){
+                clusterText.setText(cluster == null ? "📍 Cluster belum terdeteksi" :
+                        "📍 Cluster " + cluster.optInt("id",0) + " • " + cluster.optString("name","Belum terdeteksi"));
+            }
             setOrderTileActive(d.optInt("pending_orders", 0));
             firstLoad = false;
             storeStatusBtn.setText(open ? "🔴 Tutup Restoran" : "🟢 Buka Restoran");
