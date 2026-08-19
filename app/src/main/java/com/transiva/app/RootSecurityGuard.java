@@ -11,6 +11,12 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.widget.Toast;
+import android.content.SharedPreferences;
+
+import org.json.JSONObject;
+
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -29,6 +35,12 @@ public final class RootSecurityGuard {
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final AtomicBoolean RUNNING = new AtomicBoolean(false);
     private static WeakReference<AlertDialog> dialogRef = new WeakReference<>(null);
+
+    // Remote security policy. Default is secure/enabled.
+    private static final String POLICY_URL =
+            "https://transiva.my.id/server/merchant_security_policy.php";
+    private static final String POLICY_PREF = "merchant_security_policy";
+    private static final long POLICY_CACHE_MS = 5L * 60L * 1000L;
 
     private static final String[] ROOT_PACKAGES = {
             "com.topjohnwu.magisk", "io.github.vvb2060.magisk", "me.weishu.kernelsu",
@@ -61,13 +73,33 @@ public final class RootSecurityGuard {
         }
         Context app = activity.getApplicationContext();
         WORKER.execute(() -> {
+            boolean detectionEnabled = true;
+            try {
+                detectionEnabled = resolveDetectionEnabled(app);
+            } catch (Throwable ignored) {
+                // Fail-secure: jika policy tidak dapat dibaca dan cache belum ada,
+                // perlindungan tetap aktif.
+                detectionEnabled = cachedDetectionEnabled(app, true);
+            }
+
             Detection result;
-            try { result = detect(app); }
-            catch (Throwable ignored) { result = Detection.clean(); }
+            if (!detectionEnabled) {
+                result = Detection.clean();
+            } else {
+                try { result = detect(app); }
+                catch (Throwable ignored) { result = Detection.clean(); }
+            }
+
             Detection finalResult = result;
+            boolean finalDetectionEnabled = detectionEnabled;
             MAIN.post(() -> {
                 RUNNING.set(false);
                 if (!usable(activity)) return;
+                if (!finalDetectionEnabled) {
+                    dismiss();
+                    if (onAllowed != null) onAllowed.run();
+                    return;
+                }
                 if (finalResult.blocked) showBlocked(activity, finalResult.reason);
                 else {
                     dismiss();
@@ -75,6 +107,106 @@ public final class RootSecurityGuard {
                 }
             });
         });
+    }
+
+
+    /**
+     * Effective policy:
+     * 1) account override (jika user sudah login),
+     * 2) global database setting,
+     * 3) default ON.
+     *
+     * Response sengaja hanya boolean policy agar endpoint tidak membocorkan data akun.
+     */
+    private static boolean resolveDetectionEnabled(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(POLICY_PREF, Context.MODE_PRIVATE);
+        long now = System.currentTimeMillis();
+        long cachedAt = prefs.getLong("checked_at", 0L);
+
+        // Cache sebentar supaya setiap perpindahan Activity tidak menembak server.
+        if (cachedAt > 0L && now - cachedAt < POLICY_CACHE_MS) {
+            return prefs.getBoolean("root_detection_enabled", true);
+        }
+
+        String userId = "";
+        String username = "";
+        try {
+            SessionManager session = new SessionManager(context);
+            userId = session.getUserId();
+            username = session.getUsername();
+        } catch (Throwable ignored) { }
+
+        HttpURLConnection connection = null;
+        try {
+            StringBuilder link = new StringBuilder(POLICY_URL);
+            link.append("?app=merchant");
+            if (userId != null && !userId.trim().isEmpty()) {
+                link.append("&user_id=").append(android.net.Uri.encode(userId.trim()));
+            }
+            if (username != null && !username.trim().isEmpty()) {
+                link.append("&username=").append(android.net.Uri.encode(username.trim()));
+            }
+
+            connection = (HttpURLConnection) new URL(link.toString()).openConnection();
+            connection.setConnectTimeout(4500);
+            connection.setReadTimeout(4500);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("X-Transiva-App", "Android-Merchant");
+
+            int code = connection.getResponseCode();
+            java.io.InputStream input = code >= 400
+                    ? connection.getErrorStream()
+                    : connection.getInputStream();
+
+            StringBuilder body = new StringBuilder();
+            if (input != null) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(input))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) body.append(line);
+                }
+            }
+            if (code < 200 || code >= 300) {
+                return cachedDetectionEnabled(context, true);
+            }
+
+            JSONObject json = new JSONObject(body.toString());
+            if (!json.optBoolean("success", false)) {
+                return cachedDetectionEnabled(context, true);
+            }
+
+            boolean enabled = json.optBoolean("root_detection_enabled", true);
+            prefs.edit()
+                    .putBoolean("root_detection_enabled", enabled)
+                    .putLong("checked_at", now)
+                    .apply();
+            return enabled;
+        } catch (Throwable ignored) {
+            return cachedDetectionEnabled(context, true);
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private static boolean cachedDetectionEnabled(Context context, boolean fallback) {
+        try {
+            SharedPreferences prefs =
+                    context.getSharedPreferences(POLICY_PREF, Context.MODE_PRIVATE);
+            if (prefs.contains("root_detection_enabled")) {
+                return prefs.getBoolean("root_detection_enabled", fallback);
+            }
+        } catch (Throwable ignored) { }
+        return fallback;
+    }
+
+    /** Paksa policy dibaca ulang pada login/logout berikutnya bila dibutuhkan. */
+    public static void invalidatePolicyCache(Context context) {
+        try {
+            context.getSharedPreferences(POLICY_PREF, Context.MODE_PRIVATE)
+                    .edit()
+                    .remove("checked_at")
+                    .apply();
+        } catch (Throwable ignored) { }
     }
 
     private static Detection detect(Context context) {

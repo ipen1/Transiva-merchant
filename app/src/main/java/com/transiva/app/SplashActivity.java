@@ -54,6 +54,20 @@ public class SplashActivity extends Activity {
     private void startSecurityCheck() {
         if (routed || securityCheckStarted || updateChecking || isFinishing()) return;
         securityCheckStarted = true;
+
+        SessionManager session = new SessionManager(this);
+        String role = session.getRole() == null ? "" : session.getRole().trim().toLowerCase();
+
+        // Saat belum login, jangan blokir di splash. Dengan begitu merchant yang
+        // mendapat pengecualian per-akun tetap bisa masuk. Setelah login,
+        // MerchantBaseActivity akan menerapkan policy akun sebelum penggunaan normal.
+        if (!session.isLoggedIn() || !"merchant".equals(role)) {
+            securityCheckStarted = false;
+            statusText.setText("Memeriksa versi aplikasi...");
+            checkAppUpdate();
+            return;
+        }
+
         statusText.setText("Memeriksa keamanan perangkat...");
         RootSecurityGuard.checkBeforeContinue(this, () -> {
             securityCheckStarted = false;
