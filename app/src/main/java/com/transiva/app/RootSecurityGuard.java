@@ -58,50 +58,92 @@ public final class RootSecurityGuard {
     private RootSecurityGuard() { }
 
     public static void checkBeforeContinue(Activity activity, Runnable onAllowed) {
-        check(activity, onAllowed);
+        check(activity, onAllowed, false);
     }
 
     public static void protect(Activity activity) {
-        check(activity, null);
+        check(activity, null, false);
     }
 
-    private static void check(Activity activity, Runnable onAllowed) {
+    /** Dipanggil saat FCM memberi sinyal policy berubah. */
+    public static void protectFresh(Activity activity) {
+        check(activity, null, true);
+    }
+
+    private static void check(
+            Activity activity,
+            Runnable onAllowed,
+            boolean forcePolicyRefresh
+    ) {
         if (!usable(activity)) return;
+
         if (!RUNNING.compareAndSet(false, true)) {
-            if (onAllowed != null) MAIN.postDelayed(() -> check(activity, onAllowed), 300L);
+            if (onAllowed != null || forcePolicyRefresh) {
+                MAIN.postDelayed(
+                        () -> check(activity, onAllowed, forcePolicyRefresh),
+                        300L
+                );
+            }
             return;
         }
+
         Context app = activity.getApplicationContext();
+
         WORKER.execute(() -> {
             boolean detectionEnabled = true;
+
             try {
-                detectionEnabled = resolveDetectionEnabled(app);
+                detectionEnabled = resolveDetectionEnabled(
+                        app,
+                        forcePolicyRefresh
+                );
             } catch (Throwable ignored) {
-                // Fail-secure: jika policy tidak dapat dibaca dan cache belum ada,
-                // perlindungan tetap aktif.
                 detectionEnabled = cachedDetectionEnabled(app, true);
             }
 
             Detection result;
+
             if (!detectionEnabled) {
                 result = Detection.clean();
             } else {
-                try { result = detect(app); }
-                catch (Throwable ignored) { result = Detection.clean(); }
+                try {
+                    result = detect(app);
+                } catch (Throwable ignored) {
+                    result = Detection.clean();
+                }
+
+                // Jika cache lama akan memblokir, konfirmasi sekali langsung
+                // ke server. Ini membuat admin OFF langsung efektif.
+                if (result.blocked && !forcePolicyRefresh) {
+                    try {
+                        boolean freshEnabled =
+                                resolveDetectionEnabled(app, true);
+
+                        if (!freshEnabled) {
+                            detectionEnabled = false;
+                            result = Detection.clean();
+                        }
+                    } catch (Throwable ignored) { }
+                }
             }
 
             Detection finalResult = result;
             boolean finalDetectionEnabled = detectionEnabled;
+
             MAIN.post(() -> {
                 RUNNING.set(false);
+
                 if (!usable(activity)) return;
+
                 if (!finalDetectionEnabled) {
                     dismiss();
                     if (onAllowed != null) onAllowed.run();
                     return;
                 }
-                if (finalResult.blocked) showBlocked(activity, finalResult.reason);
-                else {
+
+                if (finalResult.blocked) {
+                    showBlocked(activity, finalResult.reason);
+                } else {
                     dismiss();
                     if (onAllowed != null) onAllowed.run();
                 }
@@ -119,12 +161,16 @@ public final class RootSecurityGuard {
      * Response sengaja hanya boolean policy agar endpoint tidak membocorkan data akun.
      */
     private static boolean resolveDetectionEnabled(Context context) {
+        return resolveDetectionEnabled(context, false);
+    }
+
+    private static boolean resolveDetectionEnabled(Context context, boolean forceRefresh) {
         SharedPreferences prefs = context.getSharedPreferences(POLICY_PREF, Context.MODE_PRIVATE);
         long now = System.currentTimeMillis();
         long cachedAt = prefs.getLong("checked_at", 0L);
 
         // Cache sebentar supaya setiap perpindahan Activity tidak menembak server.
-        if (cachedAt > 0L && now - cachedAt < POLICY_CACHE_MS) {
+        if (!forceRefresh && cachedAt > 0L && now - cachedAt < POLICY_CACHE_MS) {
             return prefs.getBoolean("root_detection_enabled", true);
         }
 
@@ -292,7 +338,7 @@ public final class RootSecurityGuard {
         } catch (Throwable ignored) { }
     }
 
-    private static void dismiss() {
+    public static void dismiss() {
         AlertDialog d = dialogRef.get();
         if (d != null && d.isShowing()) try { d.dismiss(); } catch (Throwable ignored) { }
         dialogRef.clear();

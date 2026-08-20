@@ -47,6 +47,15 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             }
         }
 
+        if ("security_policy_changed".equalsIgnoreCase(type)
+                || "merchant_security_policy_changed".equalsIgnoreCase(type)) {
+            // FCM tidak menentukan ON/OFF secara langsung.
+            // Ia hanya memaksa aplikasi membaca policy terbaru dari server.
+            RootSecurityGuard.invalidatePolicyCache(this);
+            TransivaMerchantApplication.onSecurityPolicyChanged();
+            return;
+        }
+
         String signal = (type + " " + status + " " + title + " " + body)
                 .toLowerCase(Locale.US);
         boolean incomingOrder = isIncomingOrder(signal);
