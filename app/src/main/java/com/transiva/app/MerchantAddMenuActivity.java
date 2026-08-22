@@ -99,7 +99,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         variantsBox = new LinearLayout(this);
         variantsBox.setOrientation(LinearLayout.VERTICAL);
         root.addView(variantsBox);
-        addOptionRow(variantsBox, variantRows, "Regular", "0", true, "Nama varian");
+        addOptionRow(variantsBox, variantRows, "Reguler", "0", true, "Nama varian");
         Button addVariant = outlineBtn("＋ Tambah Varian");
         addVariant.setOnClickListener(v -> addOptionRow(variantsBox, variantRows, "", "", false, "Nama varian"));
         root.addView(addVariant);
@@ -402,7 +402,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private void applyOptionsJson(String raw) {
         variantRows.clear(); variantsBox.removeAllViews();
         toppingRows.clear(); toppingsBox.removeAllViews();
-        addOptionRow(variantsBox, variantRows, "Regular", "0", true, "Nama varian");
+        addOptionRow(variantsBox, variantRows, "Reguler", "0", true, "Nama varian");
         if (raw != null && !raw.trim().isEmpty()) {
             try {
                 JSONArray groups = new JSONArray(raw);
@@ -416,7 +416,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                         String pr = String.valueOf(Math.max(0, it.optLong("price", 0)));
                         if ("topping".equals(type)) {
                             addOptionRow(toppingsBox, toppingRows, nm, pr, false, "Nama topping");
-                        } else if (!nm.equalsIgnoreCase("regular")) {
+                        } else if (!nm.equalsIgnoreCase("regular") && !nm.equalsIgnoreCase("reguler")) {
                             addOptionRow(variantsBox, variantRows, nm, pr, false, "Nama varian");
                         }
                     }
@@ -437,7 +437,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private JSONObject optionGroup(String type, String label, List<OptionRow> rows, boolean ensureRegular) throws Exception {
         JSONObject g = new JSONObject(); g.put("type", type); g.put("label", label); JSONArray items = new JSONArray();
-        if (ensureRegular) { JSONObject regular = new JSONObject(); regular.put("name", "Regular"); regular.put("price", 0); items.put(regular); }
+        if (ensureRegular) { JSONObject regular = new JSONObject(); regular.put("name", "Reguler"); regular.put("price", 0); items.put(regular); }
         for (OptionRow r : rows) {
             if (r.locked && ensureRegular) continue;
             String name = r.name.getText().toString().trim();
