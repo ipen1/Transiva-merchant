@@ -22,7 +22,10 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
     private EditText nameInput;
     private TextView statusText, bannerIcon, bannerTitle, bannerSub;
     private ImageView bannerImage;
+    private Button pickBannerButton, saveProfileButton;
     private Uri bannerUri = null;
+    private PreparedImage preparedBanner = null;
+    private volatile boolean bannerPreparing = false;
     private String restaurantId = "";
 
     @Override protected void onCreate(Bundle b){ super.onCreate(b); build(); load(); }
@@ -49,12 +52,13 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
             public void afterTextChanged(android.text.Editable e){}
         });
 
-        Button pick = outlineBtn("🖼️ Pilih Banner Merchant");
-        pick.setOnClickListener(v -> choose());
-        root.addView(pick);
-        Button save = btn("💾 Simpan Profil Merchant");
-        save.setOnClickListener(v -> save(save));
-        root.addView(save);
+        root.addView(sub("✨ AI Resize to WebP aktif — foto besar otomatis diringankan, foto yang sudah kecil tidak dipaksa dikompres lagi."));
+        pickBannerButton = outlineBtn("🖼️ Pilih Banner Merchant");
+        pickBannerButton.setOnClickListener(v -> choose());
+        root.addView(pickBannerButton);
+        saveProfileButton = btn("💾 Simpan Profil Merchant");
+        saveProfileButton.setOnClickListener(v -> save(saveProfileButton));
+        root.addView(saveProfileButton);
         Button back = outlineBtn("← Kembali"); back.setOnClickListener(v -> finish()); root.addView(back);
     }
 
@@ -125,10 +129,43 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         super.onActivityResult(r,c,data);
         if(r == PICK_BANNER && c == RESULT_OK && data != null){
             bannerUri = data.getData();
+            preparedBanner = null;
             showPickedBanner(bannerUri);
-            bannerSub.setText("Preview banner baru. Tekan Simpan Profil Merchant.");
-            statusText.setText("Banner baru dipilih. Tekan Simpan Profil Merchant.");
+            prepareBannerAi();
         }
+    }
+
+
+    private void prepareBannerAi(){
+        if(bannerUri == null) return;
+        bannerPreparing = true;
+        setButtonLoading(pickBannerButton, true, "🖼️ Pilih Banner Merchant", "AI Resize to WebP...");
+        bannerSub.setText("AI Resize to WebP sedang menganalisis ukuran banner...");
+        statusText.setText("Menyiapkan banner agar ringan saat dibuka customer...");
+        final Uri source = bannerUri;
+        new Thread(() -> {
+            try{
+                PreparedImage result = prepareAiResizeToWebp(source, "merchant_banner", 1280, 220 * 1024L, 170 * 1024L);
+                preparedBanner = result;
+                runOnUiThread(() -> {
+                    bannerPreparing = false;
+                    setButtonLoading(pickBannerButton, false, "🖼️ Pilih Banner Merchant", "");
+                    if(result != null && result.transformed){
+                        bannerSub.setText("AI Resize to WebP: " + humanBytes(result.originalBytes) + " → " + humanBytes(result.finalBytes));
+                        statusText.setText("Banner sudah dioptimalkan ke WebP. Tekan Simpan Profil Merchant.");
+                    }else if(result != null){
+                        bannerSub.setText("Ukuran sudah optimal: " + humanBytes(result.finalBytes) + ". File asli dipertahankan.");
+                        statusText.setText("Banner tidak diperkecil lagi karena ukurannya sudah kecil. Tekan Simpan Profil Merchant.");
+                    }
+                });
+            }catch(Exception e){
+                runOnUiThread(() -> {
+                    bannerPreparing = false; preparedBanner = null;
+                    setButtonLoading(pickBannerButton, false, "🖼️ Pilih Banner Merchant", "");
+                    alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
+                });
+            }
+        }).start();
     }
 
     private void showPickedBanner(Uri uri){
@@ -164,17 +201,19 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         String name = nameInput.getText().toString().trim();
         if(name.isEmpty()){ alert("Nama Kosong", "Nama merchant tidak boleh kosong."); return; }
         if(restaurantId.isEmpty()){ alert("Merchant Tidak Ditemukan", "Silakan login ulang atau cek getMerchantDashboard.php."); return; }
-        save.setEnabled(false); save.setText("Menyimpan...");
+        if(bannerPreparing){ alert("AI Resize Masih Berjalan", "Tunggu sebentar sampai gambar selesai disiapkan."); return; }
+        if(bannerUri != null && preparedBanner == null){ alert("Banner Belum Siap", "Pilih ulang banner lalu tunggu proses AI Resize selesai."); return; }
+        setButtonLoading(save, true, "💾 Simpan Profil Merchant", bannerUri == null ? "Menyimpan..." : "Mengupload banner...");
         MerchantNetworkExecutor.executeWrite("restaurant-profile-save", () -> {
             try{
                 JSONObject f = new JSONObject(); f.put("name", name);
-                JSONObject res = new JSONObject(postForm(BASE + "update_restaurant_profile.php", f, bannerUri, "banner", "merchant_banner.jpg"));
+                JSONObject res = new JSONObject(postFormPrepared(BASE + "update_restaurant_profile.php", f, preparedBanner, "banner"));
                 runOnUiThread(() -> {
-                    save.setEnabled(true); save.setText("💾 Simpan Profil Merchant");
+                    setButtonLoading(save, false, "💾 Simpan Profil Merchant", "");
                     toast(res.optString("message", res.optBoolean("success") ? "Profil berhasil disimpan" : "Gagal"));
                     if(res.optBoolean("success", false)) load();
                 });
-            }catch(Exception e){ runOnUiThread(() -> { save.setEnabled(true); save.setText("💾 Simpan Profil Merchant"); alert("Error","Gagal menyimpan profil."); });}
+            }catch(Exception e){ runOnUiThread(() -> { setButtonLoading(save, false, "💾 Simpan Profil Merchant", ""); alert("Error","Gagal menyimpan profil."); });}
         });
     }
 }

@@ -44,10 +44,13 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private CheckBox trackStockInput;
     private TextView categoryValue, originalText, fileText, previewName, previewPrice, previewCategory, previewIcon;
     private ImageView previewImage;
+    private Button pickImageButton, saveMenuButton;
     private LinearLayout variantsBox, toppingsBox;
     private final List<OptionRow> variantRows = new ArrayList<>();
     private final List<OptionRow> toppingRows = new ArrayList<>();
     private Uri imageUri;
+    private PreparedImage preparedMenuImage;
+    private volatile boolean imagePreparing;
     private final List<GrossupRule> grossupRules = new ArrayList<>();
     private volatile boolean grossupLoaded;
     private boolean editMode;
@@ -122,15 +125,16 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
         addWatchers();
 
-        Button pick = outlineBtn("📷 Pilih Gambar Menu");
-        pick.setOnClickListener(v -> chooseImage());
-        root.addView(pick);
+        root.addView(sub("✨ AI Resize to WebP aktif — foto besar otomatis diringankan sebelum upload, foto kecil tetap dipertahankan."));
+        pickImageButton = outlineBtn("📷 Pilih Gambar Menu");
+        pickImageButton.setOnClickListener(v -> chooseImage());
+        root.addView(pickImageButton);
         fileText = sub("Gambar belum dipilih. Jika kosong, server memakai default.");
         root.addView(fileText);
 
-        Button save = btn(editMode ? "Simpan Perubahan" : "Simpan Menu");
-        save.setOnClickListener(v -> save(save));
-        root.addView(save);
+        saveMenuButton = btn(editMode ? "Simpan Perubahan" : "Simpan Menu");
+        saveMenuButton.setOnClickListener(v -> save(saveMenuButton));
+        root.addView(saveMenuButton);
 
         Button back = outlineBtn("← Kembali");
         back.setOnClickListener(v -> finish());
@@ -455,8 +459,38 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     @Override protected void onActivityResult(int r, int c, Intent data) {
         super.onActivityResult(r, c, data);
         if (r == PICK_IMAGE && c == RESULT_OK && data != null) {
-            imageUri = data.getData(); fileText.setText("Gambar dipilih dan siap diupload."); showPickedImage(imageUri);
+            imageUri = data.getData(); preparedMenuImage = null; showPickedImage(imageUri); prepareMenuImageAi();
         }
+    }
+
+
+    private void prepareMenuImageAi() {
+        if (imageUri == null) return;
+        imagePreparing = true;
+        setButtonLoading(pickImageButton, true, "📷 Pilih Gambar Menu", "AI Resize to WebP...");
+        fileText.setText("AI Resize to WebP sedang menganalisis gambar...");
+        final Uri source = imageUri;
+        new Thread(() -> {
+            try {
+                PreparedImage result = prepareAiResizeToWebp(source, "menu", 900, 150 * 1024L, 110 * 1024L);
+                preparedMenuImage = result;
+                runOnUiThread(() -> {
+                    imagePreparing = false;
+                    setButtonLoading(pickImageButton, false, "📷 Pilih Gambar Menu", "");
+                    if (result != null && result.transformed) {
+                        fileText.setText("AI Resize to WebP: " + humanBytes(result.originalBytes) + " → " + humanBytes(result.finalBytes) + ". Siap upload.");
+                    } else if (result != null) {
+                        fileText.setText("Ukuran sudah kecil (" + humanBytes(result.finalBytes) + "). File asli dipertahankan, tidak diperkecil lagi.");
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    imagePreparing = false; preparedMenuImage = null;
+                    setButtonLoading(pickImageButton, false, "📷 Pilih Gambar Menu", "");
+                    alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
+                });
+            }
+        }).start();
     }
 
     private void showPickedImage(Uri uri) {
@@ -474,7 +508,11 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         if (name.isEmpty() || cat.isEmpty() || original <= 0) { alert("Lengkapi Data", "Nama, harga, dan kategori wajib diisi."); return; }
         if (!grossupLoaded) { alert("Aturan Harga Belum Siap", "Aturan gross-up belum berhasil dimuat dari server. Coba buka ulang halaman atau periksa API server."); return; }
         long fee = gross(original), appPrice = original + fee;
-        save.setEnabled(false); save.setText(editMode ? "Menyimpan perubahan..." : "Mengupload...");
+        if (imagePreparing) { alert("AI Resize Masih Berjalan", "Tunggu sebentar sampai gambar selesai disiapkan."); return; }
+        if (!editMode && imageUri == null) { alert("Gambar Wajib", "Pilih gambar menu terlebih dahulu."); return; }
+        if (imageUri != null && preparedMenuImage == null) { alert("Gambar Belum Siap", "Pilih ulang gambar lalu tunggu proses AI Resize selesai."); return; }
+        String normalButton = editMode ? "Simpan Perubahan" : "Simpan Menu";
+        setButtonLoading(save, true, normalButton, imageUri == null ? "Menyimpan..." : "Mengupload menu...");
         MerchantNetworkExecutor.executeWrite("menu-save:" + (editMode ? editMenuId : "new") + ":" + name, () -> {
             try {
                 JSONObject f = new JSONObject();
@@ -483,14 +521,14 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 f.put("stock", Math.max(0, (int)parseLong(stockInput.getText().toString()))); f.put("options_json", buildOptions().toString());
                 if (editMode) { f.put("menu_id", editMenuId); f.put("id", editMenuId); f.put("action", "update"); }
                 String endpoint = editMode ? BASE + "merchant_update_menu.php" : BASE + "add_food_menu.php";
-                JSONObject res = new JSONObject(postForm(endpoint, f, imageUri, "image", "menu.jpg"));
+                JSONObject res = new JSONObject(postFormPrepared(endpoint, f, preparedMenuImage, "image"));
                 runOnUiThread(() -> {
-                    save.setEnabled(true); save.setText(editMode ? "Simpan Perubahan" : "Simpan Menu");
+                    setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", "");
                     if (res.optBoolean("success", false)) { toast(res.optString("message", editMode ? "Menu berhasil diperbarui" : "Menu berhasil disimpan")); finish(); }
                     else alert("Gagal", res.optString("message", editMode ? "Gagal memperbarui menu" : "Gagal menyimpan menu"));
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> { save.setEnabled(true); save.setText(editMode ? "Simpan Perubahan" : "Simpan Menu"); alert("Error", "Server error / koneksi gagal."); });
+                runOnUiThread(() -> { setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", ""); alert("Error", "Server error / koneksi gagal."); });
             }
         });
     }

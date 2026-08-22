@@ -4,11 +4,19 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.Animatable;
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
+import android.provider.OpenableColumns;
+import androidx.exifinterface.media.ExifInterface;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -300,34 +308,179 @@ public class MerchantBaseActivity extends Activity {
         }
     }
 
-    protected String postForm(String link, JSONObject fields, Uri fileUri, String fileField, String fileName) throws Exception {
+
+    protected static class PreparedImage {
+        public final Uri uri;
+        public final String mimeType;
+        public final String fileName;
+        public final long originalBytes;
+        public final long finalBytes;
+        public final boolean transformed;
+
+        PreparedImage(Uri uri, String mimeType, String fileName, long originalBytes, long finalBytes, boolean transformed) {
+            this.uri = uri;
+            this.mimeType = mimeType;
+            this.fileName = fileName;
+            this.originalBytes = originalBytes;
+            this.finalBytes = finalBytes;
+            this.transformed = transformed;
+        }
+    }
+
+    /** AI Resize to WebP: file kecil dipertahankan, file besar di-resize + WebP. */
+    protected PreparedImage prepareAiResizeToWebp(Uri source, String prefix, int maxDimension, long optimizeAboveBytes, long targetBytes) throws Exception {
+        if (source == null) return null;
+        long originalBytes = contentLength(source);
+        String originalMime = safeImageMime(getContentResolver().getType(source));
+        String originalName = resolveDisplayName(source, prefix + "_image");
+
+        if (originalBytes > 0 && originalBytes <= optimizeAboveBytes) {
+            String ext = extensionForMime(originalMime);
+            if (!originalName.toLowerCase(Locale.US).endsWith(ext)) originalName = prefix + "_" + System.currentTimeMillis() + ext;
+            return new PreparedImage(source, originalMime, originalName, originalBytes, originalBytes, false);
+        }
+
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream in = getContentResolver().openInputStream(source)) { BitmapFactory.decodeStream(in, null, bounds); }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw new IllegalArgumentException("File gambar tidak dapat dibaca.");
+
+        int sample = 1;
+        int biggest = Math.max(bounds.outWidth, bounds.outHeight);
+        while (biggest / sample > Math.max(maxDimension * 2, 1600)) sample *= 2;
+
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = Math.max(1, sample);
+        options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        Bitmap bitmap;
+        try (InputStream in = getContentResolver().openInputStream(source)) { bitmap = BitmapFactory.decodeStream(in, null, options); }
+        if (bitmap == null) throw new IllegalArgumentException("Gambar gagal didekode.");
+
+        int rotation = readExifRotation(source);
+        if (rotation != 0) {
+            Matrix matrix = new Matrix(); matrix.postRotate(rotation);
+            Bitmap rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+            if (rotated != bitmap) bitmap.recycle();
+            bitmap = rotated;
+        }
+
+        int maxSide = Math.max(bitmap.getWidth(), bitmap.getHeight());
+        if (maxSide > maxDimension) {
+            float scale = maxDimension / (float) maxSide;
+            Bitmap resized = Bitmap.createScaledBitmap(bitmap, Math.max(1, Math.round(bitmap.getWidth()*scale)), Math.max(1, Math.round(bitmap.getHeight()*scale)), true);
+            if (resized != bitmap) bitmap.recycle();
+            bitmap = resized;
+        }
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int quality = 78;
+        Bitmap.CompressFormat webpFormat = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R ? Bitmap.CompressFormat.WEBP_LOSSY : Bitmap.CompressFormat.WEBP;
+        while (true) {
+            out.reset();
+            if (!bitmap.compress(webpFormat, quality, out)) { bitmap.recycle(); throw new IOException("Gagal membuat WebP."); }
+            if (out.size() <= targetBytes || quality <= 52) break;
+            quality -= 6;
+        }
+        bitmap.recycle();
+
+        File dir = new File(getCacheDir(), "ai_resize_webp");
+        if (!dir.exists() && !dir.mkdirs() && !dir.isDirectory()) throw new IOException("Cache AI Resize tidak dapat dibuat.");
+        File output = new File(dir, prefix + "_" + System.currentTimeMillis() + ".webp");
+        try (FileOutputStream fos = new FileOutputStream(output)) { out.writeTo(fos); fos.flush(); }
+        long finalBytes = output.length();
+        return new PreparedImage(Uri.fromFile(output), "image/webp", output.getName(), originalBytes > 0 ? originalBytes : finalBytes, finalBytes, true);
+    }
+
+    protected String postFormPrepared(String link, JSONObject fields, PreparedImage image, String fileField) throws Exception {
+        return postMultipartInternal(link, fields, image == null ? null : image.uri, fileField,
+                image == null ? "" : image.fileName, image == null ? "application/octet-stream" : image.mimeType);
+    }
+
+    protected void setButtonLoading(Button button, boolean loading, String normalText, String loadingText) {
+        if (button == null) return;
+        button.setEnabled(!loading);
+        if (!loading) {
+            button.setText(normalText); button.setCompoundDrawables(null, null, null, null); button.setCompoundDrawablePadding(0); return;
+        }
+        button.setText(loadingText);
+        ProgressBar progress = new ProgressBar(this);
+        Drawable drawable = progress.getIndeterminateDrawable();
+        if (drawable != null) {
+            try { drawable.setTint(button.getCurrentTextColor()); } catch (Exception ignored) {}
+            int size = dp(18); drawable.setBounds(0,0,size,size);
+            button.setCompoundDrawables(drawable, null, null, null); button.setCompoundDrawablePadding(dp(8));
+            if (drawable instanceof Animatable) ((Animatable) drawable).start();
+        }
+    }
+
+    protected String humanBytes(long bytes) {
+        if (bytes <= 0) return "0 KB";
+        if (bytes < 1024L*1024L) return Math.max(1, Math.round(bytes/1024f)) + " KB";
+        return String.format(Locale.US, "%.1f MB", bytes/(1024f*1024f));
+    }
+
+    private long contentLength(Uri uri) {
+        try (AssetFileDescriptor afd = getContentResolver().openAssetFileDescriptor(uri, "r")) { if (afd != null && afd.getLength() >= 0) return afd.getLength(); } catch(Exception ignored) {}
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) return -1; byte[] buf = new byte[8192]; long total=0; int n; while((n=in.read(buf))!=-1) total += n; return total;
+        } catch(Exception ignored) { return -1; }
+    }
+
+    private String resolveDisplayName(Uri uri, String fallback) {
+        if (uri != null && "content".equalsIgnoreCase(uri.getScheme())) {
+            try (android.database.Cursor cursor = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) { String name = cursor.getString(0); if (name != null && !name.trim().isEmpty()) return name.trim(); }
+            } catch(Exception ignored) {}
+        }
+        String path = uri == null ? "" : uri.getLastPathSegment();
+        if (path != null && !path.trim().isEmpty()) return new File(path).getName();
+        return fallback;
+    }
+
+    private String safeImageMime(String mime) {
+        String m = mime == null ? "" : mime.trim().toLowerCase(Locale.US);
+        if ("image/png".equals(m) || "image/webp".equals(m) || "image/jpeg".equals(m)) return m;
+        return "image/jpeg";
+    }
+    private String extensionForMime(String mime) {
+        if ("image/png".equalsIgnoreCase(mime)) return ".png";
+        if ("image/webp".equalsIgnoreCase(mime)) return ".webp";
+        return ".jpg";
+    }
+    private int readExifRotation(Uri uri) {
+        try (InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) return 0;
+            ExifInterface exif = new ExifInterface(in);
+            int orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+            if (orientation == ExifInterface.ORIENTATION_ROTATE_90) return 90;
+            if (orientation == ExifInterface.ORIENTATION_ROTATE_180) return 180;
+            if (orientation == ExifInterface.ORIENTATION_ROTATE_270) return 270;
+        } catch(Exception ignored) {}
+        return 0;
+    }
+
+    private String postMultipartInternal(String link, JSONObject fields, Uri fileUri, String fileField, String fileName, String mimeType) throws Exception {
         String boundary = "----Transiva" + System.currentTimeMillis();
         HttpURLConnection c = MerchantApiClient.open(this, link);
-        c.setConnectTimeout(15000); c.setReadTimeout(30000); c.setDoOutput(true); c.setUseCaches(false);
-        c.setRequestMethod("POST");
-        c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-        applyMerchantAuth(c);
+        c.setConnectTimeout(15000); c.setReadTimeout(30000); c.setDoOutput(true); c.setUseCaches(false); c.setRequestMethod("POST");
+        c.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary); applyMerchantAuth(c);
         OutputStream os = c.getOutputStream();
         java.util.Iterator<String> keys = fields.keys();
-        while(keys.hasNext()){
-            String key = keys.next();
-            write(os, "--"+boundary+"\r\n");
-            write(os, "Content-Disposition: form-data; name=\"" + key + "\"\r\n\r\n");
-            write(os, fields.optString(key, "") + "\r\n");
+        while(keys.hasNext()) { String key=keys.next(); write(os,"--"+boundary+"\r\n"); write(os,"Content-Disposition: form-data; name=\""+key+"\"\r\n\r\n"); write(os,fields.optString(key,"")+"\r\n"); }
+        if (fileUri != null) {
+            write(os,"--"+boundary+"\r\n"); write(os,"Content-Disposition: form-data; name=\""+fileField+"\"; filename=\""+fileName+"\"\r\n");
+            write(os,"Content-Type: "+mimeType+"\r\n\r\n");
+            try (InputStream in = getContentResolver().openInputStream(fileUri)) {
+                if (in == null) throw new IOException("File upload tidak dapat dibaca.");
+                byte[] buf=new byte[8192]; int n; while((n=in.read(buf))>0) os.write(buf,0,n);
+            }
+            write(os,"\r\n");
         }
-        if(fileUri != null){
-            write(os, "--"+boundary+"\r\n");
-            write(os, "Content-Disposition: form-data; name=\"" + fileField + "\"; filename=\"" + fileName + "\"\r\n");
-            write(os, "Content-Type: image/jpeg\r\n\r\n");
-            InputStream in = getContentResolver().openInputStream(fileUri);
-            byte[] buf = new byte[8192]; int n;
-            while(in != null && (n = in.read(buf)) > 0) os.write(buf, 0, n);
-            if(in != null) in.close();
-            write(os, "\r\n");
-        }
-        write(os, "--"+boundary+"--\r\n");
-        os.flush(); os.close();
-        String out = response(c); c.disconnect(); return out;
+        write(os,"--"+boundary+"--\r\n"); os.flush(); os.close(); String out=response(c); c.disconnect(); return out;
+    }
+
+    protected String postForm(String link, JSONObject fields, Uri fileUri, String fileField, String fileName) throws Exception {
+        return postMultipartInternal(link, fields, fileUri, fileField, fileName, "image/jpeg");
     }
 
     private void write(OutputStream os, String s) throws Exception { os.write(s.getBytes("UTF-8")); }
