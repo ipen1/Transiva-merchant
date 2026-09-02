@@ -40,8 +40,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     };
 
     private LinearLayout root;
-    private EditText nameInput, priceInput, descriptionInput, stockInput;
-    private CheckBox trackStockInput;
+    private EditText nameInput, priceInput, descriptionInput, stockInput, discountInput;
+    private CheckBox trackStockInput, discountActiveInput;
     private TextView categoryValue, originalText, fileText, previewName, previewPrice, previewCategory, previewIcon;
     private ImageView previewImage;
     private Button pickImageButton, saveMenuButton;
@@ -81,6 +81,14 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         root.addView(label("Harga Asli Merchant"));
         priceInput = input("Contoh: 20000", InputType.TYPE_CLASS_NUMBER);
         root.addView(priceInput);
+
+        root.addView(label("Potongan Harga Merchant"));
+        discountActiveInput = new CheckBox(this);
+        discountActiveInput.setText("Aktifkan diskon realtime untuk menu ini");
+        root.addView(discountActiveInput);
+        discountInput = input("Persen diskon, contoh: 10", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        root.addView(discountInput);
+        root.addView(sub("Diskon berasal dari merchant dan langsung tampil ke customer. Maksimal 90%."));
 
         root.addView(label("Kategori"));
         root.addView(categorySelector());
@@ -291,6 +299,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         descriptionInput.setText(safe(getIntent().getStringExtra("description")));
         trackStockInput.setChecked(getIntent().getIntExtra("track_stock", 0) == 1);
         stockInput.setText(String.valueOf(getIntent().getIntExtra("stock", 0)));
+        discountActiveInput.setChecked(getIntent().getIntExtra("discount_active", 0) == 1);
+        double dpct = getIntent().getDoubleExtra("discount_percent", 0);
+        if (dpct > 0) discountInput.setText(dpct == Math.rint(dpct) ? String.valueOf((int)dpct) : String.valueOf(dpct));
         applyOptionsJson(getIntent().getStringExtra("options_json"));
         long displayPrice = getIntent().getLongExtra("price", 0L);
         long original = getIntent().getLongExtra("original_price", 0L);
@@ -351,6 +362,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         };
         nameInput.addTextChangedListener(watcher);
         priceInput.addTextChangedListener(watcher);
+        if (discountInput != null) discountInput.addTextChangedListener(watcher);
+        if (discountActiveInput != null) discountActiveInput.setOnCheckedChangeListener((buttonView, isChecked) -> updatePreview());
     }
 
     private void loadGrossupRules() {
@@ -382,9 +395,12 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private void updatePreview() {
         if (originalText == null || priceInput == null) return;
         long original = parseLong(priceInput.getText().toString());
-        long fee = gross(original);
-        long appPrice = original + fee;
-        originalText.setText("Harga Asli: " + rupiah(original) + "\nFee Gross Up: " + (grossupLoaded ? rupiah(fee) : "memuat...") + "\nHarga Tampil: " + rupiah(appPrice));
+        double discountPercent = Math.max(0d, Math.min(90d, parseDouble(discountInput == null ? "0" : discountInput.getText().toString())));
+        boolean discountActive = discountActiveInput != null && discountActiveInput.isChecked() && discountPercent > 0;
+        long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
+        long fee = gross(effectiveOriginal);
+        long appPrice = effectiveOriginal + fee;
+        originalText.setText("Harga Asli: " + rupiah(original) + (discountActive ? "\nDiskon Merchant: " + String.format(java.util.Locale.US, "%.0f%%", discountPercent) + " → " + rupiah(effectiveOriginal) : "") + "\nFee Gross Up: " + (grossupLoaded ? rupiah(fee) : "memuat...") + "\nHarga Tampil Customer: " + rupiah(appPrice));
         String name = nameInput.getText().toString().trim();
         previewName.setText(name.isEmpty() ? "Nama menu" : name);
         previewCategory.setText(selectedCategory.isEmpty() ? "Kategori" : selectedCategory);
@@ -495,7 +511,10 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         long original = parseLong(priceInput.getText().toString());
         if (name.isEmpty() || cat.isEmpty() || original <= 0) { alert("Lengkapi Data", "Nama, harga, dan kategori wajib diisi."); return; }
         if (!grossupLoaded) { alert("Aturan Harga Belum Siap", "Aturan gross-up belum berhasil dimuat dari server. Coba buka ulang halaman atau periksa API server."); return; }
-        long fee = gross(original), appPrice = original + fee;
+        double discountPercent = Math.max(0d, Math.min(90d, parseDouble(discountInput == null ? "0" : discountInput.getText().toString())));
+        boolean discountActive = discountActiveInput != null && discountActiveInput.isChecked() && discountPercent > 0;
+        long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
+        long fee = gross(effectiveOriginal), appPrice = effectiveOriginal + fee;
         if (imagePreparing) { alert("AI Resize Masih Berjalan", "Tunggu sebentar sampai gambar selesai disiapkan."); return; }
         if (!editMode && imageUri == null) { alert("Gambar Wajib", "Pilih gambar menu terlebih dahulu."); return; }
         if (imageUri != null && preparedMenuImage == null) { alert("Gambar Belum Siap", "Pilih ulang gambar lalu tunggu proses AI Resize selesai."); return; }
@@ -505,6 +524,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             try {
                 JSONObject f = new JSONObject();
                 f.put("name", name); f.put("price", appPrice); f.put("original_price", original); f.put("grossup_fee", fee); f.put("category", cat);
+                f.put("discount_percent", discountPercent); f.put("discount_active", discountActive ? 1 : 0);
                 f.put("description", descriptionInput.getText().toString().trim()); f.put("track_stock", trackStockInput.isChecked() ? 1 : 0);
                 f.put("stock", Math.max(0, (int)parseLong(stockInput.getText().toString()))); f.put("options_json", buildOptions().toString());
                 if (editMode) { f.put("menu_id", editMenuId); f.put("id", editMenuId); f.put("action", "update"); }
@@ -522,6 +542,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private long parseLong(String s) { try { return Long.parseLong(s == null ? "0" : s.trim()); } catch (Exception e) { return 0; } }
+    private double parseDouble(String s) { try { return Double.parseDouble(s == null ? "0" : s.trim().replace(",", ".")); } catch (Exception e) { return 0d; } }
     private String safe(String s) { return s == null ? "" : s; }
 
     private static class OptionRow {
