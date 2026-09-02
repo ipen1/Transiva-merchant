@@ -9,7 +9,6 @@ import android.content.SharedPreferences;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
-import android.os.PowerManager;
 import androidx.core.app.NotificationCompat;
 import com.google.firebase.messaging.FirebaseMessagingService;
 import com.google.firebase.messaging.RemoteMessage;
@@ -87,13 +86,11 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         if (isDuplicate(dedupeKey)) return;
 
         createChannels();
-        if (urgent) wakeScreenBriefly();
 
         Intent target = targetIntent(type, status, signal);
         target.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         target.putExtra("notification_type", type);
         target.putExtra("notification_status", status);
-        target.putExtra("wake_screen", urgent);
         target.putExtra("urgent_notification", urgent);
         if (!orderId.isEmpty()) target.putExtra("order_id", orderId);
         if (data != null) {
@@ -122,10 +119,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .setContentIntent(contentIntent)
                 .setPriority(urgent ? NotificationCompat.PRIORITY_MAX : NotificationCompat.PRIORITY_HIGH)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setCategory(merchantDriverChat ? NotificationCompat.CATEGORY_MESSAGE : (urgent ? NotificationCompat.CATEGORY_CALL : NotificationCompat.CATEGORY_STATUS))
+                .setCategory(merchantDriverChat ? NotificationCompat.CATEGORY_MESSAGE : NotificationCompat.CATEGORY_STATUS)
                 .setSound(sound)
                 .setVibrate(urgent ? new long[]{0, 450, 180, 450, 180, 700} : new long[]{0, 250});
-        if (urgent) b.setFullScreenIntent(contentIntent, true);
 
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm != null) nm.notify(requestCode, b.build());
@@ -142,17 +138,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         return false;
     }
 
-    @SuppressWarnings("deprecation")
-    private void wakeScreenBriefly() {
-        try {
-            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            if (pm == null) return;
-            PowerManager.WakeLock wl = pm.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ACQUIRE_CAUSES_WAKEUP | PowerManager.ON_AFTER_RELEASE,
-                    "transiva:merchantUrgentWake");
-            wl.acquire(8000L);
-        } catch (Exception ignored) { }
-    }
+
 
     private Intent targetIntent(String type, String status, String signal) {
         String low = ((type == null ? "" : type) + " " + (status == null ? "" : status) + " " + (signal == null ? "" : signal)).toLowerCase(Locale.US);

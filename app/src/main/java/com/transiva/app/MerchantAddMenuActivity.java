@@ -214,19 +214,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         updatePreview();
     }
 
-    private String normalizeCategory(String raw) {
-        String value = safe(raw).trim();
-        for (String[] c : CATEGORIES) if (c[1].equalsIgnoreCase(value)) return c[1];
-        String low = value.toLowerCase();
-        if (low.contains("minum")) return "Minuman";
-        if (low.contains("snack") || low.contains("jajan")) return "Snack & Jajanan";
-        if (low.contains("dessert") || low.contains("roti") || low.contains("cake")) return "Roti & Dessert";
-        if (low.contains("fast") || low.contains("burger") || low.contains("pizza")) return "Fast Food";
-        if (low.contains("mie") || low.contains("bakso")) return "Mie & Bakso";
-        if (low.contains("kopi") || low.contains("kafe") || low.contains("cafe")) return "Kopi & Kafe";
-        if (!value.isEmpty()) return "Makanan";
-        return "";
-    }
+    private String normalizeCategory(String raw) { return MerchantMenuRules.normalizeCategory(raw); }
 
     private TextView sectionTitle(String text) {
         TextView t = tv(text, 16, NAVY, true);

@@ -80,7 +80,9 @@ public class LoginActivity extends Activity {
          * Jangan otomatis mengarahkan berdasarkan session lama di sini.
          * Session invalid akan dibersihkan saat login/dashboard.
          */
-        setContentView(buildScreen());
+        View screen = buildScreen();
+        setContentView(screen);
+        MerchantWindowInsets.apply(this, screen);
 
         try {
             TransivaNotificationPermission.ask(this);
@@ -279,7 +281,7 @@ public class LoginActivity extends Activity {
         setLoading(true);
 
         new Thread(() -> {
-            LoginResult result = doLogin(username, password);
+            MerchantLoginRepository.Result result = MerchantLoginRepository.login(this, username, password);
 
             mainHandler.post(() -> {
                 setLoading(false);
@@ -373,7 +375,7 @@ public class LoginActivity extends Activity {
                                 + session.getToken().length()
                 );
 
-                saveFcmTokenAfterLogin(result.user);
+                MerchantLoginRepository.syncFcmAfterLogin(LoginActivity.this, result.user);
 
                 showMessage("Login berhasil", true);
 
@@ -387,369 +389,15 @@ public class LoginActivity extends Activity {
         }).start();
     }
 
-    private LoginResult doLogin(
-            String username,
-            String password
-    ) {
-        HttpURLConnection connection = null;
 
-        try {
-            connection = (HttpURLConnection)
-                    new URL(LOGIN_URL).openConnection();
 
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(TIMEOUT_MS);
-            connection.setReadTimeout(TIMEOUT_MS);
-            connection.setUseCaches(false);
-            connection.setInstanceFollowRedirects(false);
-            connection.setDoInput(true);
-            connection.setDoOutput(true);
-            connection.setRequestProperty(
-                    "Content-Type",
-                    "application/json; charset=UTF-8"
-            );
-            connection.setRequestProperty(
-                    "Accept",
-                    "application/json"
-            );
-            connection.setRequestProperty(
-                    "X-Transiva-Client",
-                    "Android-Native"
-            );
-            connection.setRequestProperty("X-App-Scope", "merchant");
-            connection.setRequestProperty("X-Device-UUID", DeviceIdentityManager.getInstallationUuid(this));
 
-            JSONObject payload = new JSONObject();
-            payload.put("username", username);
-            payload.put("password", password);
-            payload.put(
-                    "device_name",
-                    Build.MANUFACTURER + " " + Build.MODEL
-            );
-            payload.put("platform", "android_native");
-            payload.put("app_scope", "merchant");
-            payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
-            payload.put("manufacturer", Build.MANUFACTURER);
-            payload.put("model", Build.MODEL);
-            payload.put("android_version", Build.VERSION.RELEASE);
-            try {
-                payload.put("app_version", getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
-            } catch (Exception ignored) {
-                payload.put("app_version", "unknown");
-            }
 
-            String cachedFcmToken = getCachedFcmToken();
 
-            if (!cachedFcmToken.isEmpty()) {
-                /*
-                 * FCM token hanya untuk notifikasi.
-                 * Jangan kirim sebagai field token autentikasi.
-                 */
-                payload.put("fcm_token", cachedFcmToken);
-            }
 
-            try (BufferedWriter writer =
-                         new BufferedWriter(
-                                 new OutputStreamWriter(
-                                         connection.getOutputStream(),
-                                         StandardCharsets.UTF_8
-                                 )
-                         )) {
-                writer.write(payload.toString());
-                writer.flush();
-            }
 
-            int httpCode = connection.getResponseCode();
 
-            InputStream stream =
-                    httpCode >= 200 && httpCode < 300
-                            ? connection.getInputStream()
-                            : connection.getErrorStream();
 
-            String raw = readStream(stream).trim();
-
-            Log.d(
-                    TAG,
-                    "Login HTTP=" + httpCode
-                            + ", bodyLength=" + raw.length()
-            );
-
-            if (raw.isEmpty()) {
-                return LoginResult.fail(
-                        "Server tidak mengirim response."
-                );
-            }
-
-            JSONObject response = new JSONObject(raw);
-
-            boolean success =
-                    response.optBoolean("success", false);
-
-            String message = response.optString(
-                    "message",
-                    success ? "Login berhasil" : "Login gagal"
-            );
-
-            if (!success || httpCode < 200 || httpCode >= 300) {
-                return LoginResult.fail(message);
-            }
-
-            JSONObject user =
-                    response.optJSONObject("user");
-
-            if (user == null) {
-                return LoginResult.fail(
-                        "Data pengguna tidak ditemukan."
-                );
-            }
-
-            /*
-             * Kompatibilitas jika server menaruh token di root.
-             */
-            if (user.optString("token", "").trim().isEmpty()) {
-                String rootToken =
-                        response.optString("token", "").trim();
-
-                if (!rootToken.isEmpty()) {
-                    user.put("token", rootToken);
-                }
-            }
-
-            String role = normalizeRole(
-                    user.optString("role", "customer")
-            );
-
-            user.put("role", role);
-
-            return LoginResult.ok(
-                    message,
-                    role,
-                    user
-            );
-
-        } catch (Exception error) {
-            Log.e(TAG, "Login gagal", error);
-            return LoginResult.fail(
-                    "Server error atau koneksi gagal."
-            );
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
-
-    private void saveFcmTokenAfterLogin(
-            JSONObject user
-    ) {
-        try {
-            int userId = firstPositiveInt(
-                    user.optInt("id", 0),
-                    user.optInt("user_id", 0),
-                    user.optInt("uid", 0)
-            );
-
-            String username = firstNotEmpty(
-                    user.optString("username", ""),
-                    user.optString("user_name", ""),
-                    user.optString("name", "")
-            );
-
-            String role = normalizeRole(
-                    user.optString("role", "customer")
-            );
-
-            String cachedToken = getCachedFcmToken();
-
-            if (!cachedToken.isEmpty()) {
-                saveFcmLocal(
-                        cachedToken,
-                        userId,
-                        username,
-                        role
-                );
-
-                uploadFcmToken(
-                        userId,
-                        username,
-                        role,
-                        cachedToken
-                );
-            }
-
-            FirebaseMessaging.getInstance()
-                    .getToken()
-                    .addOnSuccessListener(token -> {
-                        String clean =
-                                token == null
-                                        ? ""
-                                        : token.trim();
-
-                        if (clean.isEmpty()) return;
-
-                        saveFcmLocal(
-                                clean,
-                                userId,
-                                username,
-                                role
-                        );
-
-                        uploadFcmToken(
-                                userId,
-                                username,
-                                role,
-                                clean
-                        );
-                    })
-                    .addOnFailureListener(
-                            error -> Log.e(
-                                    TAG,
-                                    "FCM token gagal",
-                                    error
-                            )
-                    );
-
-        } catch (Exception error) {
-            Log.e(TAG, "FCM setelah login gagal", error);
-        }
-    }
-
-    private void uploadFcmToken(
-            int userId,
-            String username,
-            String role,
-            String fcmToken
-    ) {
-        if (fcmToken == null || fcmToken.trim().isEmpty()) {
-            return;
-        }
-
-        new Thread(() -> {
-            HttpURLConnection connection = null;
-
-            try {
-                connection = (HttpURLConnection)
-                        new URL(SAVE_FCM_URL).openConnection();
-
-                connection.setRequestMethod("POST");
-                connection.setConnectTimeout(TIMEOUT_MS);
-                connection.setReadTimeout(TIMEOUT_MS);
-                connection.setDoInput(true);
-                connection.setDoOutput(true);
-                connection.setUseCaches(false);
-                connection.setRequestProperty(
-                        "Content-Type",
-                        "application/json; charset=UTF-8"
-                );
-                connection.setRequestProperty(
-                        "Accept",
-                        "application/json"
-                );
-                connection.setInstanceFollowRedirects(false);
-                MerchantApiClient.applySecurity(this, connection);
-
-                JSONObject payload = new JSONObject();
-                payload.put("user_id", userId);
-                payload.put("id", userId);
-                payload.put("username", username);
-                payload.put("role", role);
-                payload.put("fcm_token", fcmToken.trim());
-                payload.put("platform", "android_native");
-            payload.put("installation_uuid", DeviceIdentityManager.getInstallationUuid(this));
-            payload.put("manufacturer", Build.MANUFACTURER);
-            payload.put("model", Build.MODEL);
-            payload.put("android_version", Build.VERSION.RELEASE);
-            try {
-                payload.put("app_version", getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
-            } catch (Exception ignored) {
-                payload.put("app_version", "unknown");
-            }
-
-                try (BufferedWriter writer =
-                             new BufferedWriter(
-                                     new OutputStreamWriter(
-                                             connection.getOutputStream(),
-                                             StandardCharsets.UTF_8
-                                     )
-                             )) {
-                    writer.write(payload.toString());
-                }
-
-                int code = connection.getResponseCode();
-
-                InputStream stream =
-                        code >= 200 && code < 300
-                                ? connection.getInputStream()
-                                : connection.getErrorStream();
-
-                Log.d(
-                        TAG,
-                        "FCM upload HTTP=" + code
-                                + ", body=" + readStream(stream)
-                );
-
-            } catch (Exception error) {
-                Log.e(TAG, "Upload FCM gagal", error);
-            } finally {
-                if (connection != null) {
-                    connection.disconnect();
-                }
-            }
-        }).start();
-    }
-
-    private String getCachedFcmToken() {
-        try {
-            String value = getSharedPreferences(
-                    "transiva_fcm",
-                    MODE_PRIVATE
-            ).getString("fcm_token", "");
-
-            if (value != null && !value.trim().isEmpty()) {
-                return value.trim();
-            }
-        } catch (Exception ignored) {}
-
-        try {
-            String value =
-                    new SessionManager(this).getFcmToken();
-
-            if (value != null && !value.trim().isEmpty()) {
-                return value.trim();
-            }
-        } catch (Exception ignored) {}
-
-        return "";
-    }
-
-    private void saveFcmLocal(
-            String token,
-            int userId,
-            String username,
-            String role
-    ) {
-        String cleanToken =
-                token == null ? "" : token.trim();
-
-        getSharedPreferences(
-                "transiva_fcm",
-                MODE_PRIVATE
-        ).edit()
-                .putString("fcm_token", cleanToken)
-                .putInt("user_id", userId)
-                .putString("username", username)
-                .putString("role", role)
-                .putLong(
-                        "fcm_token_saved_at",
-                        System.currentTimeMillis()
-                )
-                .apply();
-
-        try {
-            new SessionManager(this)
-                    .saveFcmToken(cleanToken);
-        } catch (Exception ignored) {}
-    }
 
     private void openPinPage(String role) {
         Intent intent = new Intent(this, PinActivity.class);
@@ -899,35 +547,9 @@ public class LoginActivity extends Activity {
                 .show();
     }
 
-    private String readStream(
-            InputStream stream
-    ) throws Exception {
-        if (stream == null) return "";
 
-        try (BufferedReader reader =
-                     new BufferedReader(
-                             new InputStreamReader(
-                                     stream,
-                                     StandardCharsets.UTF_8
-                             )
-                     )) {
-            StringBuilder result = new StringBuilder();
-            String line;
 
-            while ((line = reader.readLine()) != null) {
-                result.append(line);
-            }
-
-            return result.toString();
-        }
-    }
-
-    private TextView label(String value) {
-        TextView view =
-                text(value, 14, "#123F7A", true);
-        view.setPadding(0, dp(5), 0, dp(6));
-        return view;
-    }
+    private TextView label(String value) { return MerchantLoginUi.label(this, value); }
 
     private EditText input(
             String hint,
@@ -989,48 +611,20 @@ public class LoginActivity extends Activity {
     private GradientDrawable round(
             String fill,
             int radius
-    ) {
-        GradientDrawable drawable =
-                new GradientDrawable();
-        drawable.setColor(Color.parseColor(fill));
-        drawable.setCornerRadius(radius);
-        return drawable;
-    }
+    ) { return MerchantLoginUi.round(fill, radius, this); }
 
     private GradientDrawable roundStroke(
             String fill,
             String stroke,
             int radius,
             int width
-    ) {
-        GradientDrawable drawable =
-                round(fill, radius);
-
-        drawable.setStroke(
-                dp(width),
-                Color.parseColor(stroke)
-        );
-
-        return drawable;
-    }
+    ) { return MerchantLoginUi.roundStroke(fill, stroke, radius, width, this); }
 
     private GradientDrawable gradient(
             String start,
             String end,
             int radius
-    ) {
-        GradientDrawable drawable =
-                new GradientDrawable(
-                        GradientDrawable.Orientation.LEFT_RIGHT,
-                        new int[]{
-                                Color.parseColor(start),
-                                Color.parseColor(end)
-                        }
-                );
-
-        drawable.setCornerRadius(radius);
-        return drawable;
-    }
+    ) { return MerchantLoginUi.gradient(start, end, radius, this); }
 
     private int findDrawable(String name) {
         return getResources().getIdentifier(
@@ -1040,14 +634,7 @@ public class LoginActivity extends Activity {
         );
     }
 
-    private int dp(int value) {
-        return Math.round(
-                value
-                        * getResources()
-                        .getDisplayMetrics()
-                        .density
-        );
-    }
+    private int dp(int value) { return MerchantLoginUi.dp(this, value); }
 
     private int firstPositiveInt(int... values) {
         if (values == null) return 0;
@@ -1072,44 +659,5 @@ public class LoginActivity extends Activity {
         return "";
     }
 
-    private static final class LoginResult {
-        final boolean success;
-        final String message;
-        final String role;
-        final JSONObject user;
 
-        private LoginResult(
-                boolean success,
-                String message,
-                String role,
-                JSONObject user
-        ) {
-            this.success = success;
-            this.message = message;
-            this.role = role;
-            this.user = user;
-        }
-
-        static LoginResult ok(
-                String message,
-                String role,
-                JSONObject user
-        ) {
-            return new LoginResult(
-                    true,
-                    message,
-                    role,
-                    user
-            );
-        }
-
-        static LoginResult fail(String message) {
-            return new LoginResult(
-                    false,
-                    message,
-                    "",
-                    null
-            );
-        }
-    }
 }

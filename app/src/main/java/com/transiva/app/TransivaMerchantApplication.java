@@ -29,12 +29,13 @@ public class TransivaMerchantApplication extends Application implements Applicat
             FirebaseMessaging.getInstance()
                     .subscribeToTopic("transiva_merchant_security");
         } catch (Throwable ignored) { }
+
+        // Resource-only update: no APK install / unknown-source permission.
+        MerchantResourceUpdater.checkAsync(this, false, null);
     }
 
     @Override public void onActivityResumed(Activity activity) {
         currentActivity = new WeakReference<>(activity);
-
-        AppUpdateRuntimeGate.onActivityResumed(activity);
 
         // Security guard tetap berjalan seperti sebelumnya.
         if (!(activity instanceof SplashActivity)) {

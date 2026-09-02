@@ -1,0 +1,4 @@
+package com.transiva.app;
+import android.app.Activity;import android.view.View;import androidx.core.graphics.Insets;import androidx.core.view.ViewCompat;import androidx.core.view.WindowCompat;import androidx.core.view.WindowInsetsCompat;
+/** Android 16 edge-to-edge compatibility for programmatic Views. */
+final class MerchantWindowInsets{private MerchantWindowInsets(){}static void apply(Activity a,View root){if(root==null)return;WindowCompat.setDecorFitsSystemWindows(a.getWindow(),false);final int l=root.getPaddingLeft(),t=root.getPaddingTop(),r=root.getPaddingRight(),b=root.getPaddingBottom();ViewCompat.setOnApplyWindowInsetsListener(root,(v,in)->{Insets bars=in.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());v.setPadding(l+bars.left,t+bars.top,r+bars.right,b+bars.bottom);return in;});ViewCompat.requestApplyInsets(root);}}

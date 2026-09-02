@@ -5,12 +5,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
-import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -51,7 +49,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-        handleUrgentIntent(getIntent());
         focusOrderId = getIntent().getStringExtra("order_id");
         if (focusOrderId == null) focusOrderId = "";
         build();
@@ -60,24 +57,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        handleUrgentIntent(intent);
         String id = intent == null ? "" : intent.getStringExtra("order_id");
         if (id != null && !id.trim().isEmpty()) focusOrderId = id.trim();
         if (list != null) load(false);
     }
 
-    private void handleUrgentIntent(Intent intent) {
-        if (intent == null || !intent.getBooleanExtra("wake_screen", false)) return;
-        if (Build.VERSION.SDK_INT >= 27) {
-            setShowWhenLocked(true);
-            setTurnScreenOn(true);
-        } else {
-            getWindow().addFlags(
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED |
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        }
-    }
+
 
     @Override protected void onResume() {
         super.onResume();
@@ -351,15 +336,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
 
     private void addDriverChat(LinearLayout box, JSONObject order, String actionId, String displayId, String driverName) {
-        Button chat = outlineBtn("💬 Chat Driver");
-        chat.setOnClickListener(v -> {
-            Intent i = new Intent(this, MerchantDriverChatActivity.class);
-            i.putExtra("order_id", displayId);
-            i.putExtra("order_db_id", actionId);
-            i.putExtra("driver_name", driverName);
-            startActivity(i);
-        });
-        box.addView(chat);
+        MerchantDriverCommunication.attach(this, box, order, actionId, displayId, driverName);
     }
 
     private String orderAge(JSONObject o) {
@@ -504,32 +481,15 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
-        MerchantNetworkExecutor.executeWrite("order-status:" + id + ":" + status, () -> {
-            try {
-                JSONObject p = new JSONObject();
-                p.put("id", id);
-                p.put("order_id", displayId);
-                p.put("status", status);
-                if (cookMinutes > 0) p.put("cook_minutes", cookMinutes);
-                if (!rejectReason.isEmpty()) p.put("reject_reason", rejectReason);
-                JSONObject r = new JSONObject(postJson(BASE + "updateMerchantOrder.php", p));
-                runOnUiThread(() -> {
-                    updating = false;
-                    if (r.optBoolean("success", false)) {
-                        toast(r.optString("message", "Berhasil"));
-                        focusOrderId = displayId == null ? "" : displayId;
-                        load(false);
-                    } else {
-                        render();
-                        alert("Gagal", r.optString("message", "Gagal mengubah status."));
-                    }
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> {
-                    updating = false;
-                    render();
-                    alert("Koneksi", "Status belum diubah. Periksa koneksi lalu coba lagi. Aplikasi tidak akan mengirim ulang otomatis agar pesanan tidak terproses dua kali.");
-                });
+        MerchantOrderRepository.updateStatus(this, id, displayId, status, rejectReason, cookMinutes, (success, message, networkError) -> {
+            updating = false;
+            if (success) {
+                toast(message);
+                focusOrderId = displayId == null ? "" : displayId;
+                load(false);
+            } else {
+                render();
+                alert(networkError ? "Koneksi" : "Gagal", message);
             }
         });
     }

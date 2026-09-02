@@ -46,13 +46,16 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
 
         addSection(root, "Pembaruan", 18);
         LinearLayout updateCard = settingCard();
-        updateCard.addView(actionRow("Cek Pembaruan Aplikasi",
-                "Versi terpasang " + AppUpdateClient.installedVersionName(this),
-                () -> {
-                    Intent i = new Intent(this, UpdateDownloadActivity.class);
-                    i.putExtra(UpdateDownloadActivity.EXTRA_ROLE, "merchant");
-                    startActivity(i);
-                }));
+        updateCard.addView(actionRow("Cek Resource Merchant",
+                "Aplikasi v" + AppUpdateClient.installedVersionName(this) + " • resource v" + MerchantResourceUpdater.installedVersion(this),
+                () -> MerchantResourceUpdater.checkAsync(this, true, (updated, message) -> {
+                    if (message != null && !message.isEmpty()) toast(message);
+                    if (updated) recreate();
+                })));
+        updateCard.addView(divider());
+        updateCard.addView(actionRow("Versi Aplikasi",
+                "APK/AAB diperbarui melalui build resmi dan Google Play; aplikasi tidak memasang APK sendiri.",
+                () -> toast("Versi terpasang " + AppUpdateClient.installedVersionName(this))));
         root.addView(updateCard);
 
         addSection(root, "Akun Merchant", 18);

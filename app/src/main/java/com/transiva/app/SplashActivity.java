@@ -12,7 +12,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
-/** Splash Merchant: security check + blocking update gate before login/PIN/dashboard. */
+/** Splash Merchant: security check + non-blocking resource sync before login/PIN/dashboard. */
 public class SplashActivity extends Activity {
     private static final int SPLASH_DELAY = 900;
     private boolean routed;
@@ -47,6 +47,7 @@ public class SplashActivity extends Activity {
         lp.setMargins(28, 0, 28, 36);
         layout.addView(statusText, lp);
         setContentView(layout);
+        MerchantWindowInsets.apply(this, layout);
 
         new Handler(Looper.getMainLooper()).postDelayed(this::startSecurityCheck, SPLASH_DELAY);
     }
@@ -64,14 +65,14 @@ public class SplashActivity extends Activity {
         if (!session.isLoggedIn() || !"merchant".equals(role)) {
             securityCheckStarted = false;
             statusText.setText("Memeriksa versi aplikasi...");
-            checkAppUpdate();
+            continueToApp();
             return;
         }
 
         statusText.setText("Memeriksa keamanan perangkat...");
         RootSecurityGuard.checkBeforeContinue(this, () -> {
             securityCheckStarted = false;
-            checkAppUpdate();
+            continueToApp();
         });
     }
 
@@ -82,69 +83,12 @@ public class SplashActivity extends Activity {
         }
     }
 
-    private void checkAppUpdate() {
-        if (routed || updateChecking || isFinishing()) return;
-        updateChecking = true;
-        statusText.setText("Memeriksa versi Transiva Merchant...");
-
-        AppUpdateInfo cached = AppUpdateStore.cachedInfo(this);
-        int current = currentVersion();
-        if (cached != null && cached.isForceRequired(current)) {
-            updateChecking = false;
-            openForcedUpdate();
-            return;
-        }
-
-        AppUpdateClient.check(this, new AppUpdateClient.Callback() {
-            @Override public void onResult(AppUpdateInfo info, boolean available) {
-                runOnUiThread(() -> {
-                    updateChecking = false;
-                    if (isFinishing() || routed) return;
-                    int installed = currentVersion();
-                    if (info.isForceRequired(installed)) {
-                        openForcedUpdate();
-                        return;
-                    }
-                    if (available) {
-                        try { AppUpdateDownloadManager.ensureDownload(SplashActivity.this, info); }
-                        catch (Exception ignored) { }
-                    }
-                    statusText.setText("Aplikasi siap digunakan");
-                    routeNext();
-                });
-            }
-
-            @Override public void onError(String message) {
-                runOnUiThread(() -> {
-                    updateChecking = false;
-                    if (isFinishing() || routed) return;
-                    AppUpdateInfo old = AppUpdateStore.cachedInfo(SplashActivity.this);
-                    if (old != null && old.isForceRequired(currentVersion())) {
-                        openForcedUpdate();
-                    } else {
-                        statusText.setText("Membuka aplikasi...");
-                        routeNext();
-                    }
-                });
-            }
-        });
-    }
-
-    private void openForcedUpdate() {
-        if (routed) return;
-        routed = true;
-        Intent i = new Intent(this, UpdateDownloadActivity.class);
-        i.putExtra(UpdateDownloadActivity.EXTRA_ROLE, "merchant");
-        i.putExtra(UpdateDownloadActivity.EXTRA_FORCE, true);
-        i.putExtra(UpdateDownloadActivity.EXTRA_AUTO_START, true);
-        i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(i);
-        finish();
-    }
-
-    private int currentVersion() {
-        try { return AppUpdateClient.installedVersionCode(this); }
-        catch (Exception ignored) { return 0; }
+    private void continueToApp() {
+        if (routed || isFinishing()) return;
+        statusText.setText("Membuka aplikasi...");
+        // Resource sync never blocks startup. Failed/offline sync is silently retried next launch.
+        MerchantResourceUpdater.checkAsync(this, false, null);
+        routeNext();
     }
 
     private void routeNext() {

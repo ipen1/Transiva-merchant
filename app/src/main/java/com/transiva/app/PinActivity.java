@@ -78,7 +78,9 @@ public class PinActivity extends Activity {
         if (role.isEmpty()) role = normalizeRole(session.getRole());
         if (role.isEmpty()) role = "merchant";
 
-        setContentView(buildScreen());
+        View screen = buildScreen();
+        setContentView(screen);
+        MerchantWindowInsets.apply(this, screen);
         checkPinStatus();
     }
 
@@ -306,7 +308,7 @@ public class PinActivity extends Activity {
         setLoading(true);
 
         new Thread(() -> {
-            ApiResult result = request(STATUS_URL, null);
+            MerchantPinRepository.Result result = MerchantPinRepository.request(this, session, STATUS_URL, null);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
                     pinContentRoot.setVisibility(View.VISIBLE);
@@ -355,7 +357,7 @@ public class PinActivity extends Activity {
 
         setLoading(true);
         new Thread(() -> {
-            ApiResult result = request(SET_URL, body);
+            MerchantPinRepository.Result result = MerchantPinRepository.request(this, session, SET_URL, body);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
                     pinContentRoot.setVisibility(View.VISIBLE);
@@ -393,7 +395,7 @@ public class PinActivity extends Activity {
 
         setLoading(true);
         new Thread(() -> {
-            ApiResult result = request(VERIFY_URL, body);
+            MerchantPinRepository.Result result = MerchantPinRepository.request(this, session, VERIFY_URL, body);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
                     pinContentRoot.setVisibility(View.VISIBLE);
@@ -423,101 +425,7 @@ public class PinActivity extends Activity {
         }, "transiva-pin-verify").start();
     }
 
-    private ApiResult request(String endpoint, JSONObject payload) {
-        HttpURLConnection conn = null;
 
-        try {
-            conn = (HttpURLConnection) new URL(endpoint).openConnection();
-            conn.setRequestMethod(payload == null ? "GET" : "POST");
-            conn.setConnectTimeout(TIMEOUT_MS);
-            conn.setReadTimeout(TIMEOUT_MS);
-            conn.setUseCaches(false);
-            conn.setDoInput(true);
-
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("Cache-Control", "no-store");
-            // Paksa koneksi TLS baru agar endpoint PIN tidak memakai pooled connection
-            // lama setelah sertifikat/CDN Transiva berubah.
-            conn.setRequestProperty("Connection", "close");
-            conn.setRequestProperty("Authorization", "Bearer " + safe(session.getToken()).trim());
-            conn.setRequestProperty(
-                    "X-Device-UUID",
-                    DeviceIdentityManager.getInstallationUuid(this)
-            );
-            conn.setRequestProperty("X-Transiva-Client", "Android-Native");
-            conn.setRequestProperty("X-App-Scope", "merchant");
-
-            if (payload != null) {
-                conn.setDoOutput(true);
-                conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-
-                try (BufferedWriter writer = new BufferedWriter(
-                        new OutputStreamWriter(conn.getOutputStream(), StandardCharsets.UTF_8)
-                )) {
-                    writer.write(payload.toString());
-                }
-            }
-
-            int status = conn.getResponseCode();
-            InputStream stream =
-                    status >= 200 && status < 400
-                            ? conn.getInputStream()
-                            : conn.getErrorStream();
-
-            String raw = readAll(stream);
-            JSONObject json;
-
-            try {
-                json = raw.trim().isEmpty()
-                        ? new JSONObject()
-                        : new JSONObject(raw.trim());
-            } catch (Exception parseError) {
-                return new ApiResult(
-                        false,
-                        "INVALID_RESPONSE",
-                        "Respons server PIN tidak valid.",
-                        new JSONObject()
-                );
-            }
-
-            String code = json.optString("code", "");
-            String message = json.optString(
-                    "message",
-                    status >= 200 && status < 300
-                            ? "Berhasil."
-                            : "Permintaan PIN gagal."
-            );
-
-            // Jangan logout hanya karena HTTP 401/403 generik.
-            // Endpoint PIN dapat memakai status tersebut untuk error PIN;
-            // logout hanya untuk kode sesi/perangkat yang memang final.
-            if (ForceLogoutManager.isForceLogoutCode(code)) {
-                mainHandler.post(() ->
-                        ForceLogoutManager.execute(
-                                PinActivity.this,
-                                code.isEmpty() ? "SESSION_REVOKED" : code
-                        )
-                );
-            }
-
-            return new ApiResult(
-                    status >= 200 && status < 300 && json.optBoolean("success", false),
-                    code,
-                    message,
-                    json
-            );
-
-        } catch (Exception e) {
-            return new ApiResult(
-                    false,
-                    "NETWORK_ERROR",
-                    "Tidak dapat terhubung ke server. Periksa koneksi internet Anda.",
-                    new JSONObject()
-            );
-        } finally {
-            if (conn != null) conn.disconnect();
-        }
-    }
 
     private void renderDots() {
         if (dotsContainer == null) return;
@@ -658,39 +566,11 @@ public class PinActivity extends Activity {
         );
     }
 
-    private String readAll(InputStream stream) throws Exception {
-        if (stream == null) return "";
 
-        BufferedReader reader = new BufferedReader(
-                new InputStreamReader(stream, StandardCharsets.UTF_8)
-        );
-
-        StringBuilder out = new StringBuilder();
-        String line;
-
-        while ((line = reader.readLine()) != null) {
-            out.append(line);
-        }
-
-        reader.close();
-        return out.toString();
-    }
 
     private String safe(String value) {
         return value == null ? "" : value;
     }
 
-    private static final class ApiResult {
-        final boolean success;
-        final String code;
-        final String message;
-        final JSONObject data;
 
-        ApiResult(boolean success, String code, String message, JSONObject data) {
-            this.success = success;
-            this.code = code == null ? "" : code;
-            this.message = message == null ? "" : message;
-            this.data = data == null ? new JSONObject() : data;
-        }
-    }
 }
