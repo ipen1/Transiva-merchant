@@ -60,13 +60,16 @@ final class MerchantOrderProgressView {
     }
 
     private static void bindCountdown(TextView t, String readyAt, int fallbackMinutes) {
-        final long target;
+        long resolvedTarget;
         try {
             Date d = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(readyAt);
-            target = d == null ? System.currentTimeMillis() + Math.max(1, fallbackMinutes) * 60000L : d.getTime();
+            resolvedTarget = d == null
+                    ? System.currentTimeMillis() + Math.max(1, fallbackMinutes) * 60000L
+                    : d.getTime();
         } catch (Exception e) {
-            target = System.currentTimeMillis() + Math.max(1, fallbackMinutes) * 60000L;
+            resolvedTarget = System.currentTimeMillis() + Math.max(1, fallbackMinutes) * 60000L;
         }
+        final long target = resolvedTarget;
         Handler h = new Handler(Looper.getMainLooper());
         Runnable r = new Runnable() {
             @Override public void run() {
