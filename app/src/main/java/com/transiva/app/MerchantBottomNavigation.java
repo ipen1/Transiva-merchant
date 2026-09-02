@@ -80,11 +80,12 @@ public final class MerchantBottomNavigation {
         else icon.setImageResource(android.R.drawable.ic_menu_manage);
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         icon.setAlpha(active ? 1f : .62f);
-        root.addView(icon, new LinearLayout.LayoutParams(dp(activity, 22), dp(activity, 22)));
+        int iconDp = activity.getResources().getConfiguration().screenWidthDp < 380 ? 20 : 22;
+        root.addView(icon, new LinearLayout.LayoutParams(dp(activity, iconDp), dp(activity, iconDp)));
 
         TextView title = new TextView(activity);
         title.setText(label);
-        title.setTextSize(9f);
+        title.setTextSize(activity.getResources().getConfiguration().screenWidthDp < 380 ? 8f : 9f);
         title.setGravity(Gravity.CENTER);
         title.setIncludeFontPadding(false);
         title.setTextColor(Color.parseColor(active ? ACTIVE_COLOR : INACTIVE_COLOR));

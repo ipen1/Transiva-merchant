@@ -21,6 +21,7 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.core.widget.TextViewCompat;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
@@ -95,7 +96,8 @@ public class MerchantBaseActivity extends Activity {
 
     protected View page(LinearLayout root){
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(18), dp(16), dp(24));
+        int side = compactScreen() ? 12 : 16;
+        root.setPadding(dp(side), dp(compactScreen() ? 14 : 18), dp(side), dp(24));
         root.setBackgroundColor(BG);
 
         LinearLayout shell = new LinearLayout(this);
@@ -109,7 +111,7 @@ public class MerchantBaseActivity extends Activity {
         shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         View bottom = MerchantBottomNavigation.build(this, MerchantBottomNavigation.resolve(this));
-        shell.addView(bottom, new LinearLayout.LayoutParams(-1, dp(66)));
+        shell.addView(bottom, new LinearLayout.LayoutParams(-1, dp(bottomNavHeightDp())));
         ViewCompat.setOnApplyWindowInsetsListener(shell, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
@@ -120,7 +122,8 @@ public class MerchantBaseActivity extends Activity {
     }
 
     protected TextView title(String text){
-        TextView v = tv(text, 24, NAVY, true);
+        TextView v = tv(text, compactScreen() ? 21 : 24, NAVY, true);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(v, 18, compactScreen() ? 22 : 26, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         v.setPadding(dp(4), dp(4), dp(4), dp(2));
         return v;
     }
@@ -157,12 +160,13 @@ public class MerchantBaseActivity extends Activity {
         Button b = new Button(this);
         b.setAllCaps(false);
         b.setText(text);
-        b.setTextSize(15);
+        b.setTextSize(compactScreen() ? 13 : 15);
+        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(b, 10, compactScreen() ? 14 : 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(Color.WHITE);
         b.setBackground(round(BLUE, dp(16)));
         b.setPadding(dp(10), 0, dp(10), 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(50));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(compactScreen() ? 48 : 50));
         lp.setMargins(0, dp(5), 0, dp(8));
         b.setLayoutParams(lp);
         return b;
@@ -218,6 +222,14 @@ public class MerchantBaseActivity extends Activity {
         return g;
     }
 
+    protected int screenWidthDp(){ return getResources().getConfiguration().screenWidthDp; }
+    protected int screenHeightDp(){ return getResources().getConfiguration().screenHeightDp; }
+    protected boolean compactScreen(){ return screenWidthDp() > 0 && screenWidthDp() < 380; }
+    protected int bottomNavHeightDp(){
+        float fs = getResources().getConfiguration().fontScale;
+        int base = compactScreen() ? 64 : 66;
+        return Math.max(base, Math.round(base * Math.min(1.22f, Math.max(1f, fs))));
+    }
     protected int dp(int v){ return (int)(v * getResources().getDisplayMetrics().density + .5f); }
     protected String enc(String v){ try{return URLEncoder.encode(v == null ? "" : v, "UTF-8");}catch(Exception e){return "";} }
     protected String rupiah(long v){ return "Rp " + NumberFormat.getNumberInstance(new Locale("id","ID")).format(v); }

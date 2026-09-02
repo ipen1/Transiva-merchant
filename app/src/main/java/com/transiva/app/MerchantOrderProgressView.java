@@ -19,7 +19,7 @@ final class MerchantOrderProgressView {
     private MerchantOrderProgressView() {}
 
     static void attach(MerchantBaseActivity a, LinearLayout parent, JSONObject order) {
-        final String global = lower(order.optString("global_status", order.optString("status", "pending")));
+        final String global = resolveGlobalStatus(order);
         final String merchant = lower(order.optString("merchant_status", ""));
         if ("pending".equals(global) && merchant.isEmpty()) return;
 
@@ -90,8 +90,32 @@ final class MerchantOrderProgressView {
     }
 
     private static boolean isKitchenActive(String global, String merchant) {
-        return !isFinal(global) && ("merchant_accepted".equals(global) || "driver_accepted".equals(global)
-                || "arrived_pickup".equals(global) || "preparing".equals(merchant) || "merchant_preparing".equals(merchant));
+        // Countdown hanya milik fase dapur. Begitu driver membawa makanan (on_delivery)
+        // atau status setelahnya, timer harus hilang walau merchant_status masih "preparing".
+        if (rank(global) >= rank("on_delivery") || isFinal(global)) return false;
+        return "merchant_accepted".equals(global) || "driver_accepted".equals(global)
+                || "arrived_pickup".equals(global) || "preparing".equals(merchant)
+                || "merchant_preparing".equals(merchant) || "ready".equals(merchant)
+                || "merchant_ready".equals(merchant);
+    }
+
+    private static String resolveGlobalStatus(JSONObject order) {
+        // Beberapa endpoint lama mempertahankan status merchant pada field `status`
+        // sementara perjalanan driver ada di driver_status/order_status. Pilih status
+        // dengan rank perjalanan tertinggi agar UI selalu mengikuti driver secara realtime.
+        String[] keys = {"global_status", "driver_status", "order_status", "trip_status", "status"};
+        String best = "pending";
+        int bestRank = 0;
+        for (String key : keys) {
+            String value = lower(order.optString(key, ""));
+            if (value.isEmpty()) continue;
+            int valueRank = rank(value);
+            if (valueRank > bestRank || (bestRank == 0 && !"pending".equals(value))) {
+                best = value;
+                bestRank = valueRank;
+            }
+        }
+        return best;
     }
     private static boolean isKitchenStarted(String global, String merchant) {
         return !"pending".equals(global) || "preparing".equals(merchant) || "merchant_preparing".equals(merchant) || "ready".equals(merchant);

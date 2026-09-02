@@ -23,7 +23,7 @@ import java.text.SimpleDateFormat;
 import java.util.Locale;
 
 public class MerchantOrdersActivity extends MerchantBaseActivity {
-    private static final long FALLBACK_POLL_MS = 45000L;
+    private static final long FALLBACK_POLL_MS = 15000L;
 
     private LinearLayout root;
     private LinearLayout list;
@@ -268,7 +268,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
         String displayId = s(o, "order_id", "id");
         String actionId = s(o, "id", "order_numeric_id", "order_db_id", "order_id");
-        String status = o.optString("status", "pending");
+        String status = effectiveStatus(o);
         boolean pending = "pending".equalsIgnoreCase(status);
 
         int borderColor = pending ? Color.parseColor("#EF4444") : BLUE;
@@ -390,12 +390,18 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         String st = status == null ? "" : status.trim().toLowerCase(Locale.US);
         if ("pending".equals(st)) {
             LinearLayout a = row();
+            if (compactScreen()) a.setOrientation(LinearLayout.VERTICAL);
             Button accept = btn(updating ? "Memproses..." : "✓ Terima");
             Button reject = outlineBtn("✕ Tolak");
             accept.setEnabled(!updating);
             reject.setEnabled(!updating);
-            a.addView(accept, new LinearLayout.LayoutParams(0, dp(50), 1));
-            a.addView(reject, new LinearLayout.LayoutParams(0, dp(50), 1));
+            if (compactScreen()) {
+                a.addView(accept, new LinearLayout.LayoutParams(-1, dp(50)));
+                a.addView(reject, new LinearLayout.LayoutParams(-1, dp(50)));
+            } else {
+                a.addView(accept, new LinearLayout.LayoutParams(0, dp(50), 1));
+                a.addView(reject, new LinearLayout.LayoutParams(0, dp(50), 1));
+            }
             box.addView(a);
             accept.setOnClickListener(v -> { if (!updating) showCookTime(actionId, displayId); });
             reject.setOnClickListener(v -> { if (!updating) showRejectReasons(actionId, displayId); });
@@ -461,6 +467,31 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 .show();
     }
 
+    private String effectiveStatus(JSONObject o) {
+        String[] keys = {"global_status", "driver_status", "order_status", "trip_status", "status"};
+        String best = "pending";
+        int bestRank = 0;
+        for (String key : keys) {
+            String v = o.optString(key, "").trim().toLowerCase(Locale.US);
+            if (v.isEmpty()) continue;
+            int r = statusRank(v);
+            if (r > bestRank || (bestRank == 0 && !"pending".equals(v))) { best = v; bestRank = r; }
+        }
+        return best;
+    }
+
+    private int statusRank(String s) {
+        switch (s == null ? "" : s.trim().toLowerCase(Locale.US)) {
+            case "merchant_accepted": case "preparing": case "merchant_preparing": return 1;
+            case "ready": case "merchant_ready": case "driver_accepted": case "taken": return 2;
+            case "arrived_pickup": return 3;
+            case "on_delivery": return 4;
+            case "arrived_delivery": return 5;
+            case "finished": case "completed": return 6;
+            default: return 0;
+        }
+    }
+
     private String statusLabel(String s) {
         if (s == null) return "-";
         switch (s.trim().toLowerCase(Locale.US)) {
@@ -471,6 +502,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             case "ready":
             case "merchant_ready": return "Siap Diambil";
             case "merchant_rejected": return "Ditolak Merchant";
+            case "driver_accepted":
             case "taken": return "Driver Menuju Pickup";
             case "arrived_pickup": return "Driver Tiba di Resto";
             case "on_delivery": return "Menuju Customer";

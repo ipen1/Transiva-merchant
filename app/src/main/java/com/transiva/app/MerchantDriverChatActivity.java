@@ -10,11 +10,16 @@ import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -59,6 +64,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         orderId = safe(getIntent().getStringExtra("order_id"));
         orderDbId = safe(getIntent().getStringExtra("order_db_id"));
         driverName = first(getIntent().getStringExtra("driver_name"), "Driver");
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
         if (orderId.isEmpty() && orderDbId.isEmpty()) {
             alert("Chat tidak tersedia", "ID order tidak ditemukan.");
@@ -88,6 +94,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         page.setPadding(dp(14), dp(14), dp(14), dp(12));
         page.setBackgroundColor(BG);
         setContentView(page);
+        applyChatInsets(page);
 
         LinearLayout head = new LinearLayout(this);
         head.setGravity(Gravity.CENTER_VERTICAL);
@@ -108,20 +115,39 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         addQuick(quick2,"Tunggu sebentar ya"); addQuick(quick2,"Silakan ambil pesanan");
         page.addView(quick2);
 
-        scroll = new ScrollView(this); scroll.setFillViewport(true);
+        scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
         messages = new LinearLayout(this); messages.setOrientation(LinearLayout.VERTICAL); messages.setPadding(dp(2),dp(6),dp(2),dp(8));
         scroll.addView(messages, new ScrollView.LayoutParams(-1,-2));
         page.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout composer = new LinearLayout(this); composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding(dp(8),dp(7),dp(8),dp(7)); composer.setBackground(round(Color.WHITE,dp(18)));
-        input = new EditText(this); input.setHint("Ketik pesan ke driver..."); input.setSingleLine(false); input.setMaxLines(3); input.setTextSize(14); input.setTextColor(TEXT); input.setHintTextColor(Color.parseColor("#98A2B3")); input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|InputType.TYPE_TEXT_FLAG_MULTI_LINE); input.setBackground(stroke(Color.parseColor("#F8FBFF"),Color.parseColor("#DDE7F3"),dp(14))); input.setPadding(dp(12),0,dp(12),0);
-        composer.addView(input,new LinearLayout.LayoutParams(0,dp(50),1));
+        input = new EditText(this); input.setHint("Ketik pesan ke driver..."); input.setSingleLine(false); input.setMaxLines(4); input.setMinLines(1); input.setTextSize(compactScreen() ? 13 : 14); input.setTextColor(TEXT); input.setHintTextColor(Color.parseColor("#98A2B3")); input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|InputType.TYPE_TEXT_FLAG_MULTI_LINE); input.setBackground(stroke(Color.parseColor("#F8FBFF"),Color.parseColor("#DDE7F3"),dp(14))); input.setPadding(dp(12),dp(8),dp(12),dp(8));
+        composer.addView(input,new LinearLayout.LayoutParams(0,-2,1));
         send = btn("Kirim"); LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(86),dp(50));sp.setMargins(dp(8),0,0,0);composer.addView(send,sp); send.setOnClickListener(v->sendText(input.getText().toString()));
         page.addView(composer);
     }
 
+    private void applyChatInsets(LinearLayout page) {
+        final int baseLeft = dp(14), baseTop = dp(14), baseRight = dp(14), baseBottom = dp(12);
+        ViewCompat.setOnApplyWindowInsetsListener(page, (v, insets) -> {
+            Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            int bottomInset = Math.max(bars.bottom, ime.bottom);
+            v.setPadding(baseLeft + bars.left, baseTop + bars.top, baseRight + bars.right, baseBottom + bottomInset);
+            // Weighted message area menyusut otomatis; composer selalu berada tepat di atas keyboard.
+            if (input != null && input.hasFocus()) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(page);
+        page.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
+            if (b != oldB && input != null && input.hasFocus()) {
+                scroll.postDelayed(() -> scroll.fullScroll(View.FOCUS_DOWN), 60L);
+            }
+        });
+    }
+
     private void addQuick(LinearLayout parent, String text) {
-        Button b = outlineBtn(text); b.setTextSize(11); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(44),1); lp.setMargins(dp(3),0,dp(3),0); parent.addView(b,lp); b.setOnClickListener(v->sendText(text));
+        Button b = outlineBtn(text); b.setTextSize(compactScreen() ? 10 : 11); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(compactScreen() ? 48 : 44),1); lp.setMargins(dp(3),0,dp(3),0); parent.addView(b,lp); b.setOnClickListener(v->sendText(text));
     }
 
     private void load(boolean initial) {
@@ -153,7 +179,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         if(messages.getChildCount()==1 && messages.getChildAt(0) instanceof TextView && ((TextView)messages.getChildAt(0)).getText().toString().startsWith("Belum ada pesan")) messages.removeAllViews();
         boolean mine="customer".equalsIgnoreCase(m.optString("sender_type",""));
         LinearLayout line=new LinearLayout(this); line.setGravity(mine?Gravity.END:Gravity.START);
-        TextView bubble=tv(m.optString("message",""),14,mine?Color.WHITE:TEXT,false); bubble.setPadding(dp(12),dp(9),dp(12),dp(9)); bubble.setBackground(round(mine?BLUE:Color.WHITE,dp(16))); bubble.setMaxWidth(dp(285));
+        TextView bubble=tv(m.optString("message",""),14,mine?Color.WHITE:TEXT,false); bubble.setPadding(dp(12),dp(9),dp(12),dp(9)); bubble.setBackground(round(mine?BLUE:Color.WHITE,dp(16))); bubble.setMaxWidth(Math.max(dp(210), (int)(getResources().getDisplayMetrics().widthPixels * 0.76f)));
         line.addView(bubble); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(3),0,dp(3));messages.addView(line,lp);
     }
 
