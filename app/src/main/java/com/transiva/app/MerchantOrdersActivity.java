@@ -326,8 +326,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
 
         MerchantOrderFinanceView.attach(this, box, o);
+        MerchantOrderProgressView.attach(this, box, o);
         if (!historyMode) {
-            addActions(box, actionId, displayId, status);
+            addActions(box, o, actionId, displayId, status);
             if (!driver.isEmpty()) addDriverChat(box, o, actionId, displayId, driver);
         }
         return box;
@@ -385,7 +386,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
     }
 
-    private void addActions(LinearLayout box, String actionId, String displayId, String status) {
+    private void addActions(LinearLayout box, JSONObject order, String actionId, String displayId, String status) {
         String st = status == null ? "" : status.trim().toLowerCase(Locale.US);
         if ("pending".equals(st)) {
             LinearLayout a = row();
@@ -399,15 +400,15 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             accept.setOnClickListener(v -> { if (!updating) showCookTime(actionId, displayId); });
             reject.setOnClickListener(v -> { if (!updating) showRejectReasons(actionId, displayId); });
         } else if ("merchant_accepted".equals(st)) {
-            Button p = btn(updating ? "Memproses..." : "Mulai Siapkan Pesanan");
-            p.setEnabled(!updating);
-            p.setOnClickListener(v -> { if (!updating) update(actionId, displayId, "preparing", "", 0); });
-            box.addView(p);
+            // Setelah Terima tidak ada lagi tombol Terima/Tolak maupun Mulai Siapkan.
+            // Server otomatis memasukkan dapur ke status preparing dan countdown ditampilkan di progress card.
         } else if ("preparing".equals(st) || "merchant_preparing".equals(st)) {
-            Button r = btn(updating ? "Memproses..." : "✓ Pesanan Siap Diambil");
-            r.setEnabled(!updating);
-            r.setOnClickListener(v -> { if (!updating) update(actionId, displayId, "ready", "", 0); });
-            box.addView(r);
+            if (MerchantOrderProgressView.countdownFinished(order)) {
+                Button r = btn(updating ? "Memproses..." : "✓ Pesanan Siap Diambil");
+                r.setEnabled(!updating);
+                r.setOnClickListener(v -> { if (!updating) update(actionId, displayId, "ready", "", 0); });
+                box.addView(r);
+            }
         }
     }
 

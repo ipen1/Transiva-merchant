@@ -19,9 +19,9 @@ final class MerchantOrderFinanceView {
     private MerchantOrderFinanceView() {}
 
     static void attach(MerchantBaseActivity a, LinearLayout parent, JSONObject order) {
-        long foodTotal = n(order, "customer_food_total", "food_total");
+        long foodTotal = n(order, "customer_food_total_with_grossup", "customer_food_total", "food_total");
         long deliveryFee = n(order, "customer_delivery_fee", "delivery_fee");
-        long merchantNet = n(order, "merchant_net_revenue");
+        long merchantNet = n(order, "merchant_receivable_total", "merchant_net_revenue");
         long grossup = n(order, "merchant_grossup_fee");
         long merchantDiscount = n(order, "merchant_discount_total");
         long voucher = n(order, "customer_voucher_discount", "voucher_discount");
@@ -40,13 +40,13 @@ final class MerchantOrderFinanceView {
         card.setBackground(a.round(Color.parseColor("#F8FAFC"), dp(a, 14)));
 
         card.addView(text(a, "Rincian Pembayaran Merchant", 14, Color.parseColor("#102A43"), true));
-        card.addView(row(a, "Harga makanan dibayar customer", money(foodTotal), false));
-        if (grossup > 0) card.addView(row(a, "Gross-up Transiva", money(grossup), false));
-        if (merchantDiscount > 0) card.addView(row(a, "Diskon ditanggung merchant", "- " + money(merchantDiscount), false));
+        card.addView(row(a, "Total menu customer (termasuk gross-up)", money(foodTotal), false));
+        if (grossup > 0) card.addView(row(a, "Gross-up milik Transiva", "- " + money(grossup), false));
+        if (merchantDiscount > 0) card.addView(row(a, "Diskon merchant (sudah diterapkan)", money(merchantDiscount), false));
         card.addView(divider(a));
-        card.addView(row(a, "Pendapatan Bersih Merchant", money(merchantNet), true));
+        card.addView(row(a, "TOTAL DITERIMA MERCHANT", money(merchantNet), true));
 
-        TextView netInfo = text(a, "✓ Ini adalah hak merchant dari makanan/opsi. Gross-up tidak masuk pendapatan merchant.", 11, Color.parseColor("#137333"), true);
+        TextView netInfo = text(a, "✓ Total diterima merchant = harga bersih makanan/opsi tanpa gross-up dan tanpa ongkir.", 11, Color.parseColor("#137333"), true);
         netInfo.setPadding(0, dp(a, 5), 0, 0);
         card.addView(netInfo);
 
