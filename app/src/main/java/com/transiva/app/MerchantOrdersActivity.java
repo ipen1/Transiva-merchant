@@ -294,7 +294,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             }
         }
 
-        long price = o.optLong("price", o.optLong("total", o.optLong("grand_total", 0)));
         String customer = s(o, "customer_name", "customer", "name");
         String phone = s(o, "customer_phone", "phone");
         String address = s(o, "delivery_address", "destination_address", "address");
@@ -326,7 +325,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             box.addView(nv);
         }
 
-        box.addView(tv("Total: " + rupiah(price), 16, NAVY, true));
+        MerchantOrderFinanceView.attach(this, box, o);
         if (!historyMode) {
             addActions(box, actionId, displayId, status);
             if (!driver.isEmpty()) addDriverChat(box, o, actionId, displayId, driver);
@@ -368,10 +367,20 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             String name = s(it, "name", "menu_name", "food_name", "item_name");
             long unit = it.optLong("price", it.optLong("unit_price", 0));
             long subtotal = it.optLong("subtotal", unit * qty);
+            long merchantBase = it.optLong("merchant_price", it.optLong("original_price", 0));
+            long originalBase = it.optLong("original_price", merchantBase);
+            long optionTotal = Math.max(0, it.optLong("option_total", 0));
+            long grossupUnit = Math.max(0, it.optLong("grossup_fee", Math.max(0, unit - optionTotal - merchantBase)));
+            double discountPct = Math.max(0d, it.optDouble("discount_percent", 0d));
+            long merchantUnit = Math.max(0, merchantBase + optionTotal);
             String variant = s(it, "variant", "variant_name", "option", "options");
             String note = s(it, "note", "notes", "item_note", "catatan");
-            box.addView(tv(qty + "x " + (name.isEmpty() ? "Item" : name) + (subtotal > 0 ? "  •  " + rupiah(subtotal) : ""), 14, TEXT, true));
-            if (!variant.isEmpty()) box.addView(tv("   " + variant, 12, MUTED, false));
+            box.addView(tv(qty + "x " + (name.isEmpty() ? "Item" : name) + (subtotal > 0 ? "  •  Customer " + rupiah(subtotal) : ""), 14, TEXT, true));
+            if (discountPct > 0 && originalBase > merchantBase) {
+                box.addView(tv("   Diskon merchant " + (discountPct == Math.rint(discountPct) ? String.valueOf((int) discountPct) : String.valueOf(discountPct)) + "% • Harga bersih dasar " + rupiah(merchantBase), 12, Color.parseColor("#137333"), true));
+            }
+            if (merchantUnit > 0) box.addView(tv("   Diterima merchant: " + rupiah(merchantUnit * qty) + (grossupUnit > 0 ? " • Gross-up: " + rupiah(grossupUnit * qty) : ""), 12, MUTED, false));
+            if (!variant.isEmpty()) box.addView(tv("   Pilihan: " + variant, 12, MUTED, false));
             if (!note.isEmpty()) box.addView(tv("   Catatan: " + note, 12, Color.parseColor("#7A4D00"), false));
         }
     }
