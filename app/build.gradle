@@ -11,8 +11,8 @@ android {
         applicationId 'com.transiva.merchant'
         minSdk 23
         targetSdk 36
-        versionCode 12
-        versionName '1.9.12'
+        versionCode 13
+        versionName '1.9.13'
     }
 
     signingConfigs {
@@ -33,10 +33,9 @@ android {
         release {
             signingConfig signingConfigs.release
             debuggable false
-            // Keep R8 off for the 17 Aug pilot until a signed release regression pass is complete.
-            // Rules are prepared in proguard-rules.pro so hardening can be enabled safely afterward.
-            minifyEnabled false
-            shrinkResources false
+            // Production hardening for Play release.
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
