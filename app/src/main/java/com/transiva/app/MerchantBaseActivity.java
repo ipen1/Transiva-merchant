@@ -42,16 +42,18 @@ import java.util.Locale;
 public class MerchantBaseActivity extends Activity {
     protected static final String BASE = "https://transiva.my.id/server/";
     protected SessionManager sessionManager;
-    protected final int BLUE = Color.parseColor("#1677F2");
+    protected final int BLUE = Color.parseColor("#0B78FF");
+    protected final int CYAN = Color.parseColor("#14C8FF");
+    protected final int SOFT_BLUE = Color.parseColor("#EAF4FF");
     protected final int NAVY = Color.parseColor("#0A1A2E");
     protected final int TEXT = Color.parseColor("#172033");
     protected final int MUTED = Color.parseColor("#667085");
-    protected final int BG = Color.parseColor("#F5F8FF");
+    protected final int BG = Color.parseColor("#F4F8FE");
 
     @Override protected void onCreate(Bundle b){
         super.onCreate(b);
         try {
-            getWindow().setStatusBarColor(Color.WHITE);
+            getWindow().setStatusBarColor(Color.parseColor("#F4F8FE"));
             getWindow().setNavigationBarColor(Color.WHITE);
         } catch(Exception ignored){}
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
@@ -97,7 +99,7 @@ public class MerchantBaseActivity extends Activity {
     protected View page(LinearLayout root){
         root.setOrientation(LinearLayout.VERTICAL);
         int side = compactScreen() ? 12 : 16;
-        root.setPadding(dp(side), dp(compactScreen() ? 14 : 18), dp(side), dp(24));
+        root.setPadding(dp(side), dp(compactScreen() ? 12 : 16), dp(side), dp(28));
         root.setBackgroundColor(BG);
 
         LinearLayout shell = new LinearLayout(this);
@@ -124,7 +126,8 @@ public class MerchantBaseActivity extends Activity {
     protected TextView title(String text){
         TextView v = tv(text, compactScreen() ? 21 : 24, NAVY, true);
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(v, 18, compactScreen() ? 22 : 26, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
-        v.setPadding(dp(4), dp(4), dp(4), dp(2));
+        v.setPadding(dp(4), dp(6), dp(4), dp(4));
+        v.setLetterSpacing(-0.015f);
         return v;
     }
 
@@ -146,10 +149,10 @@ public class MerchantBaseActivity extends Activity {
 
     protected TextView card(String text){
         TextView v = tv(text, 14, TEXT, false);
-        v.setPadding(dp(16), dp(14), dp(16), dp(14));
-        v.setBackground(round(Color.WHITE, dp(18)));
+        v.setPadding(dp(17), dp(16), dp(17), dp(16));
+        v.setBackground(stroke(Color.WHITE, Color.parseColor("#E3ECF7"), dp(20)));
         v.setLineSpacing(dp(2), 1f);
-        v.setElevation(dp(2));
+        v.setElevation(dp(3));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 0, 0, dp(12));
         v.setLayoutParams(lp);
@@ -164,7 +167,10 @@ public class MerchantBaseActivity extends Activity {
         TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(b, 10, compactScreen() ? 14 : 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(Color.WHITE);
-        b.setBackground(round(BLUE, dp(16)));
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{BLUE, Color.parseColor("#279DFF")});
+        bg.setCornerRadius(dp(16));
+        b.setBackground(bg);
+        b.setElevation(dp(3));
         b.setPadding(dp(10), 0, dp(10), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(compactScreen() ? 48 : 50));
         lp.setMargins(0, dp(5), 0, dp(8));
@@ -175,7 +181,8 @@ public class MerchantBaseActivity extends Activity {
     protected Button outlineBtn(String text){
         Button b = btn(text);
         b.setTextColor(BLUE);
-        b.setBackground(stroke(Color.WHITE, Color.parseColor("#BBD9FF"), dp(16)));
+        b.setBackground(stroke(Color.WHITE, Color.parseColor("#B9D7FF"), dp(16)));
+        b.setElevation(dp(1));
         return b;
     }
 
@@ -189,7 +196,8 @@ public class MerchantBaseActivity extends Activity {
         e.setTextColor(TEXT);
         e.setHintTextColor(Color.parseColor("#98A2B3"));
         e.setPadding(dp(14), 0, dp(14), 0);
-        e.setBackground(stroke(Color.WHITE, Color.parseColor("#DDE7F3"), dp(14)));
+        e.setBackground(stroke(Color.WHITE, Color.parseColor("#D8E4F2"), dp(15)));
+        e.setElevation(dp(1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(50));
         lp.setMargins(0, dp(4), 0, dp(12));
         e.setLayoutParams(lp);

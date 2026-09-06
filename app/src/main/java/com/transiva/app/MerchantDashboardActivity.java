@@ -132,6 +132,10 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         tile(r3, "💰", "Keuangan", () -> open(MerchantFinanceActivity.class));
         tile(r3, "📊", "Analitik", () -> open(MerchantAnalyticsActivity.class));
 
+        LinearLayout r4 = row(); grid.addView(r4);
+        tile(r4, "🤖", "Trans Asisten", () -> open(MerchantTransAssistantActivity.class));
+        tile(r4, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
+
         Button refresh = outlineBtn("↻  Refresh Dashboard");
         refresh.setOnClickListener(v -> loadAll());
         root.addView(refresh);
@@ -194,8 +198,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         t.setOrientation(LinearLayout.VERTICAL);
         t.setGravity(Gravity.CENTER);
         t.setPadding(dp(8), dp(10), dp(8), dp(12));
-        t.setBackground(round(Color.WHITE, dp(20)));
-        t.setElevation(dp(2));
+        t.setBackground(stroke(Color.WHITE, Color.parseColor("#E2ECF8"), dp(22)));
+        t.setElevation(dp(4));
         return t;
     }
 
