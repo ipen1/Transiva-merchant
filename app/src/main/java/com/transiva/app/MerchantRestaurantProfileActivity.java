@@ -145,7 +145,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         bannerSub.setText("AI Resize to WebP sedang menganalisis ukuran banner...");
         statusText.setText("Menyiapkan banner agar ringan saat dibuka customer...");
         final Uri source = bannerUri;
-        new Thread(() -> {
+        MerchantTaskExecutor.execute(() -> {
             try{
                 PreparedImage result = prepareAiResizeToWebp(source, "merchant_banner", 1280, 220 * 1024L, 170 * 1024L);
                 preparedBanner = result;
@@ -167,7 +167,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
                     alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
                 });
             }
-        }).start();
+        });
     }
 
     private void showPickedBanner(Uri uri){

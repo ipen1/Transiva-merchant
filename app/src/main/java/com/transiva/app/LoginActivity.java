@@ -280,7 +280,7 @@ public class LoginActivity extends Activity {
 
         setLoading(true);
 
-        new Thread(() -> {
+        boolean accepted = MerchantNetworkExecutor.executeWrite("merchant-login", () -> {
             MerchantLoginRepository.Result result = MerchantLoginRepository.login(this, username, password);
 
             mainHandler.post(() -> {
@@ -386,7 +386,11 @@ public class LoginActivity extends Activity {
                         500
                 );
             });
-        }).start();
+        });
+        if (!accepted) {
+            setLoading(false);
+            showMessage("Permintaan login sedang diproses. Coba lagi sesaat.", false);
+        }
     }
 
 

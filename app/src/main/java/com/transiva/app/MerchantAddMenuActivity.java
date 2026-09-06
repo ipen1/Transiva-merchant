@@ -474,7 +474,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         setButtonLoading(pickImageButton, true, "📷 Pilih Gambar Menu", "AI Resize to WebP...");
         fileText.setText("AI Resize to WebP sedang menganalisis gambar...");
         final Uri source = imageUri;
-        new Thread(() -> {
+        MerchantTaskExecutor.execute(() -> {
             try {
                 PreparedImage result = prepareAiResizeToWebp(source, "menu", 900, 150 * 1024L, 110 * 1024L);
                 preparedMenuImage = result;
@@ -494,7 +494,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                     alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
                 });
             }
-        }).start();
+        });
     }
 
     private void showPickedImage(Uri uri) {

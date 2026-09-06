@@ -307,7 +307,7 @@ public class PinActivity extends Activity {
     private void checkPinStatus() {
         setLoading(true);
 
-        new Thread(() -> {
+        java.util.concurrent.Future<?> accepted = MerchantNetworkExecutor.executeRead(this, "pin-status", () -> {
             MerchantPinRepository.Result result = MerchantPinRepository.request(this, session, STATUS_URL, null);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
@@ -345,7 +345,10 @@ public class PinActivity extends Activity {
                 setKeypadEnabled(true);
                 renderDots();
             });
-        }, "transiva-pin-status").start();
+        });
+        if (accepted == null) {
+            setLoading(false);
+        }
     }
 
     private void setPin(String pin) {
@@ -356,7 +359,7 @@ public class PinActivity extends Activity {
         } catch (Exception ignored) {}
 
         setLoading(true);
-        new Thread(() -> {
+        boolean accepted = MerchantNetworkExecutor.executeWrite("pin-set", () -> {
             MerchantPinRepository.Result result = MerchantPinRepository.request(this, session, SET_URL, body);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
@@ -384,7 +387,11 @@ public class PinActivity extends Activity {
                 showMessage("PIN berhasil dibuat. Membuka akun...", true);
                 mainHandler.postDelayed(this::openRolePage, 450);
             });
-        }, "transiva-pin-set").start();
+        });
+        if (!accepted) {
+            setLoading(false);
+            showMessage("Permintaan pembuatan PIN masih diproses.", false);
+        }
     }
 
     private void verifyPin(String pin) {
@@ -394,7 +401,7 @@ public class PinActivity extends Activity {
         } catch (Exception ignored) {}
 
         setLoading(true);
-        new Thread(() -> {
+        boolean accepted = MerchantNetworkExecutor.executeWrite("pin-verify", () -> {
             MerchantPinRepository.Result result = MerchantPinRepository.request(this, session, VERIFY_URL, body);
             mainHandler.post(() -> {
                 if (pinContentRoot != null) {
@@ -422,7 +429,11 @@ public class PinActivity extends Activity {
                 showMessage("PIN benar. Membuka akun...", true);
                 mainHandler.postDelayed(this::openRolePage, 350);
             });
-        }, "transiva-pin-verify").start();
+        });
+        if (!accepted) {
+            setLoading(false);
+            showMessage("Verifikasi PIN masih diproses.", false);
+        }
     }
 
 
