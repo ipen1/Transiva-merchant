@@ -521,7 +521,7 @@ public class LoginActivity extends Activity {
     }
 
     private void openRegister() {
-        openBrowser(BASE_URL + "register.php");
+        startActivity(new Intent(this, MerchantRegisterActivity.class));
     }
 
     private void openBrowser(String url) {

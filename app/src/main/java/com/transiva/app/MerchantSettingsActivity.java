@@ -20,6 +20,7 @@ import org.json.JSONObject;
 public class MerchantSettingsActivity extends MerchantBaseActivity {
     private static final String CHANGE_PIN_URL = BASE + "merchant_change_pin.php";
     private static final String CHANGE_CREDENTIALS_URL = BASE + "merchant_change_credentials.php";
+    private static final String DELETE_ACCOUNT_URL = BASE + "merchant_delete_account.php";
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -75,6 +76,10 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         accountCard.addView(actionRow("Ubah PIN",
                 "PIN keamanan 6 angka untuk akses aplikasi",
                 this::showChangePin));
+        accountCard.addView(divider());
+        accountCard.addView(actionRow("Hapus Akun Permanen",
+                "Hapus akun merchant, restoran, dan data terkait",
+                this::showDeleteAccount));
         root.addView(accountCard);
 
         TextView securityNote = tv(
@@ -223,6 +228,34 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
             String pin = securityPin.getText().toString().trim();
             if (!MerchantSecurityRules.isPinValid(pin)) { securityPin.setError("PIN harus tepat 6 angka"); return; }
             submitCredentials(dialog, "", newPass, conf, oldPass, pin);
+        }));
+        dialog.show();
+    }
+
+    private void showDeleteAccount() {
+        EditText pass = secureInput("Password akun", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Hapus akun permanen?")
+                .setMessage("Tindakan ini menghapus akun merchant, restoran, menu, dan data terkait. Tindakan tidak dapat dibatalkan.")
+                .setView(dialogForm(pass))
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Hapus Permanen", null)
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String password = pass.getText().toString();
+            if (password.isEmpty()) { pass.setError("Masukkan password"); return; }
+            Button b = dialog.getButton(AlertDialog.BUTTON_POSITIVE); b.setEnabled(false); b.setText("Menghapus...");
+            MerchantNetworkExecutor.executeWrite("merchant-delete-account", () -> {
+                try {
+                    JSONObject body = new JSONObject(); body.put("password", password);
+                    JSONObject r = new JSONObject(postJson(DELETE_ACCOUNT_URL, body));
+                    runOnUiThread(() -> {
+                        b.setEnabled(true); b.setText("Hapus Permanen");
+                        if (r.optBoolean("success")) { dialog.dismiss(); new AlertDialog.Builder(this).setTitle("Akun dihapus").setMessage(r.optString("message")).setCancelable(false).setPositiveButton("Selesai", (d,w) -> logout()).show(); }
+                        else alert("Gagal menghapus akun", r.optString("message", "Penghapusan akun gagal."));
+                    });
+                } catch (Exception e) { runOnUiThread(() -> { b.setEnabled(true); b.setText("Hapus Permanen"); alert("Koneksi gagal", "Tidak dapat terhubung ke server."); }); }
+            });
         }));
         dialog.show();
     }

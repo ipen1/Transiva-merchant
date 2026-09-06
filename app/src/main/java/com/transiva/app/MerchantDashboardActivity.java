@@ -276,9 +276,10 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private void showDash(String json){
         try {
             JSONObject d = new JSONObject(json);
-            boolean open = d.optInt("is_open", 0) == 1;
-            statusText.setText(open ? "🟢 Buka" : "🔴 Tutup");
-            descText.setText(open ? "Restoran sedang menerima pesanan" : "Restoran sedang tidak menerima pesanan");
+            boolean verified = d.optInt("is_verified", 0) == 1;
+            boolean open = verified && d.optInt("is_open", 0) == 1;
+            statusText.setText(!verified ? "🟡 Belum Terverifikasi" : (open ? "✅ Terverifikasi • 🟢 Buka" : "✅ Terverifikasi • 🔴 Tutup"));
+            descText.setText(!verified ? "Menunggu verifikasi admin • toko terkunci dalam status Tutup" : (open ? "Akun terverifikasi • restoran sedang menerima pesanan" : "Akun terverifikasi • restoran sedang tidak menerima pesanan"));
             todayText.setText(String.valueOf(d.optInt("today_orders", 0)));
             ratingText.setText(String.format(java.util.Locale.US, "%.1f ⭐", d.optDouble("rating", 0)));
             reviewText.setText(d.optInt("review_count", 0) + " ulasan");
@@ -290,7 +291,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             }
             setOrderTileActive(d.optInt("pending_orders", 0));
             firstLoad = false;
-            storeStatusBtn.setText(open ? "🔴 Tutup Restoran" : "🟢 Buka Restoran");
+            storeStatusBtn.setText(!verified ? "🔒 Menunggu Verifikasi" : (open ? "🔴 Tutup Restoran" : "🟢 Buka Restoran"));
+            storeStatusBtn.setEnabled(verified);
             storeStatusBtn.setTag(open ? "1" : "0");
         } catch(Exception e){ descText.setText("Dashboard belum terbaca"); }
     }
