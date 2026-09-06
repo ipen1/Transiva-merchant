@@ -1,26 +1,64 @@
 package com.transiva.app;
 
+import org.json.JSONObject;
+
+/**
+ * Regional/cluster model sourced from the Transiva server/database.
+ * No regional or cluster definitions are hardcoded in the Merchant APK.
+ */
 public final class TransivaCluster {
+    public static final class Region {
+        public final int id;
+        public final String code;
+        public final String name;
+        public final boolean inside;
+
+        Region(int id, String code, String name, boolean inside) {
+            this.id = id; this.code = safe(code); this.name = safe(name); this.inside = inside;
+        }
+    }
+
     public static final class Item {
-        public final int id; public final String code; public final String name; public final double lat; public final double lng;
-        Item(int id,String code,String name,double lat,double lng){this.id=id;this.code=code;this.name=name;this.lat=lat;this.lng=lng;}
+        public final int id;
+        public final int regionId;
+        public final String code;
+        public final String name;
+        public final boolean insideLaunchArea;
+        public final Region region;
+
+        Item(int id, int regionId, String code, String name, boolean insideLaunchArea, Region region) {
+            this.id = id; this.regionId = regionId; this.code = safe(code); this.name = safe(name);
+            this.insideLaunchArea = insideLaunchArea; this.region = region;
+        }
     }
-    public static final Item[] ALL = new Item[]{
-            new Item(1,"SUMBERSARI","Sumbersari",-0.9291806,120.2289806),
-            new Item(2,"DOLAGO_RIBAMBA","Dolago / Ribamba",-0.8748000,120.2040000),
-            new Item(3,"PARIGI","Parigi",-0.8024100,120.1710800),
-            new Item(4,"PANGI","Pangi",-0.7416889,120.0681194),
-            new Item(5,"TOBOLI","Toboli",-0.6999500,120.0805500)
-    };
-    private TransivaCluster(){}
-    public static Item nearest(double lat,double lng){
-        Item best=ALL[0]; double bestKm=Double.MAX_VALUE;
-        for(Item item:ALL){ double km=distanceKm(lat,lng,item.lat,item.lng); if(km<bestKm){bestKm=km;best=item;} }
-        return best;
+
+    private TransivaCluster() {}
+
+    public static Item fromServer(JSONObject cluster) {
+        if (cluster == null) return null;
+        JSONObject r = cluster.optJSONObject("region");
+        Region region = r == null ? null : new Region(
+                r.optInt("id", cluster.optInt("region_id", 0)),
+                r.optString("code", cluster.optString("region_code", "")),
+                r.optString("name", cluster.optString("region_name", "")),
+                r.optBoolean("inside_region", true)
+        );
+        return new Item(
+                cluster.optInt("id", 0),
+                cluster.optInt("region_id", region == null ? 0 : region.id),
+                cluster.optString("code", ""),
+                cluster.optString("name", ""),
+                cluster.optBoolean("inside_launch_area", false),
+                region
+        );
     }
-    public static double distanceKm(double lat1,double lng1,double lat2,double lng2){
-        double r=6371.0,dLat=Math.toRadians(lat2-lat1),dLng=Math.toRadians(lng2-lng1);
-        double a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(Math.toRadians(lat1))*Math.cos(Math.toRadians(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
-        return r*2*Math.atan2(Math.sqrt(a),Math.sqrt(Math.max(1e-12,1-a)));
+
+    public static String label(Item item) {
+        if (item == null || item.id <= 0) return "📍 Wilayah merchant belum terdeteksi";
+        String regionName = item.region == null ? "Regional belum terdeteksi" : nonEmpty(item.region.name, "Regional belum terdeteksi");
+        return "🌐 Regional " + regionName + "  •  📍 Cluster " + nonEmpty(item.name, "Belum terdeteksi");
     }
+
+    private static String safe(String v) { return v == null ? "" : v.trim(); }
+    private static String nonEmpty(String v, String fallback) { String s = safe(v); return s.isEmpty() ? fallback : s; }
 }

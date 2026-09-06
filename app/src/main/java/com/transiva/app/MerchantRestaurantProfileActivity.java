@@ -109,12 +109,14 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         String banner = s(r,"banner","banner_url","image","photo","foto","cover","cover_image","restaurant_banner");
         nameInput.setText(name);
         bannerTitle.setText(name.isEmpty() ? "Merchant Transiva" : name);
+        TransivaCluster.Item area = TransivaCluster.fromServer(res.optJSONObject("cluster"));
+        String areaLabel = TransivaCluster.label(area);
         if(banner.isEmpty()){
             bannerSub.setText("Belum ada banner aktif. Pilih banner lalu simpan.");
-            statusText.setText("🏪 " + (name.isEmpty() ? "Merchant" : name) + "\nBanner aktif belum tersedia.");
+            statusText.setText("🏪 " + (name.isEmpty() ? "Merchant" : name) + "\n" + areaLabel + "\nBanner aktif belum tersedia.");
         }else{
             bannerSub.setText("Banner aktif saat ini");
-            statusText.setText("🏪 " + (name.isEmpty() ? "Merchant" : name) + "\nBanner aktif sudah tampil di atas.");
+            statusText.setText("🏪 " + (name.isEmpty() ? "Merchant" : name) + "\n" + areaLabel + "\nBanner aktif sudah tampil di atas.");
             loadBannerImage(banner);
         }
     }

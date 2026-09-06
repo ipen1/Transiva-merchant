@@ -285,8 +285,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             if(revenueText != null) revenueText.setText(rupiah(d.optLong("today_revenue", 0)));
             JSONObject cluster = d.optJSONObject("cluster");
             if(clusterText != null){
-                clusterText.setText(cluster == null ? "📍 Cluster belum terdeteksi" :
-                        "📍 Cluster " + cluster.optInt("id",0) + " • " + cluster.optString("name","Belum terdeteksi"));
+                TransivaCluster.Item area = TransivaCluster.fromServer(cluster);
+                clusterText.setText(TransivaCluster.label(area));
             }
             setOrderTileActive(d.optInt("pending_orders", 0));
             firstLoad = false;
