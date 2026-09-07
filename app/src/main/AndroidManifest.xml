@@ -29,6 +29,10 @@
         <activity android:name=".MerchantFinanceActivity" android:exported="false"/>
         <activity android:name=".MerchantAnalyticsActivity" android:exported="false"/>
         <activity android:name=".MerchantSettingsActivity" android:exported="false"/>
+        <activity android:name=".MerchantPrivacyActivity" android:exported="false"/>
+        <activity android:name=".MerchantNotificationCenterActivity" android:exported="false"/>
+        <activity android:name=".MerchantDiagnosticsActivity" android:exported="false"/>
+        <activity android:name=".MerchantLocationActivity" android:exported="false"/>
         <service android:name=".TransivaFirebaseService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>
         </service>
