@@ -82,6 +82,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         // Refresh visible screens immediately. Polling remains only as a fallback.
         MerchantRealtime.publish(this, incomingOrder ? "new_order" : (driverArrived ? "driver_arrived" : (merchantDriverChat ? "merchant_driver_chat" : "update")), orderId);
 
+        MerchantNotificationStore.add(this, title, body, type, orderId);
+
         String dedupeKey = (orderId + "|" + type + "|" + status + "|" + title).toLowerCase(Locale.US);
         if (isDuplicate(dedupeKey)) return;
 

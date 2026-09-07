@@ -65,6 +65,14 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
                 "Kelola nama restoran dan banner merchant",
                 () -> open(MerchantRestaurantProfileActivity.class)));
         accountCard.addView(divider());
+        accountCard.addView(actionRow("Lokasi Merchant", "Kunci titik pickup + preview peta", () -> open(MerchantLocationActivity.class)));
+        accountCard.addView(divider());
+        accountCard.addView(actionRow("Privasi & Data", "Kebijakan privasi dan kontrol penghapusan akun", () -> open(MerchantPrivacyActivity.class)));
+        accountCard.addView(divider());
+        accountCard.addView(actionRow("Pusat Notifikasi", "Riwayat notifikasi penting di perangkat", () -> open(MerchantNotificationCenterActivity.class)));
+        accountCard.addView(divider());
+        accountCard.addView(actionRow("Diagnostik", "Periksa internet, FCM, lokasi, notifikasi, dan sesi", () -> open(MerchantDiagnosticsActivity.class)));
+        accountCard.addView(divider());
         accountCard.addView(actionRow("Ubah Username",
                 "Ganti nama pengguna untuk login merchant",
                 this::showChangeUsername));

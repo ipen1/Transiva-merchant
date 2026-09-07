@@ -286,8 +286,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             urgent.setBackground(round(Color.parseColor("#FEE4E2"), dp(12)));
             box.addView(urgent);
             String age = orderAge(o);
+            String deadline = responseDeadline(o);
             if (!age.isEmpty()) {
-                TextView ageText = tv(age, 11, Color.parseColor("#B42318"), true);
+                TextView ageText = tv(age + (deadline.isEmpty() ? "" : " • " + deadline), 11, Color.parseColor("#B42318"), true);
                 ageText.setGravity(Gravity.CENTER);
                 ageText.setPadding(0, dp(5), 0, dp(8));
                 box.addView(ageText);
@@ -352,6 +353,11 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    private String responseDeadline(JSONObject o) {
+        String raw=s(o,"created_at","order_date","created"); if(raw.isEmpty()) return "";
+        try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US);long elapsed=Math.max(0,System.currentTimeMillis()-f.parse(raw).getTime());long left=5*60000L-elapsed;if(left<=0)return "⚠ melewati target respons 5 menit";long sec=(left+999)/1000;return "Target respons "+(sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}catch(Exception e){return "";}
     }
 
     private void addItems(LinearLayout box, JSONObject order) {

@@ -1,0 +1,6 @@
+package com.transiva.app;
+import android.os.Bundle;import android.widget.*;import org.json.*;import java.text.*;import java.util.*;
+public class MerchantNotificationCenterActivity extends MerchantBaseActivity{
+ private LinearLayout list;@Override protected void onCreate(Bundle b){super.onCreate(b);LinearLayout root=new LinearLayout(this);setContentView(page(root));root.addView(title("Pusat Notifikasi"));root.addView(sub("Riwayat notifikasi penting yang diterima perangkat ini"));list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);root.addView(list);Button clear=outlineBtn("Hapus Riwayat Lokal");clear.setOnClickListener(v->{MerchantNotificationStore.clear(this);render();});root.addView(clear);render();}
+ private void render(){list.removeAllViews();JSONArray a=MerchantNotificationStore.get(this);if(a.length()==0){list.addView(card("Belum ada notifikasi tersimpan."));return;}DateFormat f=new SimpleDateFormat("dd MMM yyyy • HH:mm",new Locale("id","ID"));for(int i=0;i<a.length();i++){JSONObject n=a.optJSONObject(i);if(n==null)continue;String id=n.optString("order_id","");list.addView(card(n.optString("title","Notifikasi")+"\n"+n.optString("body","")+(id.isEmpty()?"":"\nOrder #"+id)+"\n"+f.format(new Date(n.optLong("at",0)))));}}
+}

@@ -136,6 +136,10 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         tile(r4, "🤖", "Trans Asisten", () -> open(MerchantTransAssistantActivity.class));
         tile(r4, "⚙️", "Pengaturan", () -> open(MerchantSettingsActivity.class));
 
+        LinearLayout r5 = row(); grid.addView(r5);
+        tile(r5, "🔔", "Notifikasi", () -> open(MerchantNotificationCenterActivity.class));
+        tile(r5, "🩺", "Diagnostik", () -> open(MerchantDiagnosticsActivity.class));
+
         Button refresh = outlineBtn("↻  Refresh Dashboard");
         refresh.setOnClickListener(v -> loadAll());
         root.addView(refresh);
@@ -293,7 +297,9 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                 TransivaCluster.Item area = TransivaCluster.fromServer(cluster);
                 clusterText.setText(TransivaCluster.label(area));
             }
+            int activeOrders = d.optInt("active_orders", 0);
             setOrderTileActive(d.optInt("pending_orders", 0));
+            if(activeOrders > 0 && descText != null) descText.setText(descText.getText()+" • "+activeOrders+" pesanan aktif dapat dilanjutkan setelah aplikasi dibuka kembali");
             firstLoad = false;
             storeStatusBtn.setText(!verified ? "🔒 Menunggu Verifikasi" : (open ? "🔴 Tutup Restoran" : "🟢 Buka Restoran"));
             storeStatusBtn.setEnabled(verified);
