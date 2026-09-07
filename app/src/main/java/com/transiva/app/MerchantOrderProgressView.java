@@ -55,7 +55,7 @@ final class MerchantOrderProgressView {
         if (readyAt.trim().isEmpty()) return true;
         try {
             Date d = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(readyAt);
-            return d == null || System.currentTimeMillis() >= d.getTime();
+            return d == null || MerchantServerClock.now() >= d.getTime();
         } catch (Exception e) { return true; }
     }
 
@@ -64,17 +64,17 @@ final class MerchantOrderProgressView {
         try {
             Date d = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(readyAt);
             resolvedTarget = d == null
-                    ? System.currentTimeMillis() + Math.max(1, fallbackMinutes) * 60000L
+                    ? MerchantServerClock.now() + Math.max(1, fallbackMinutes) * 60000L
                     : d.getTime();
         } catch (Exception e) {
-            resolvedTarget = System.currentTimeMillis() + Math.max(1, fallbackMinutes) * 60000L;
+            resolvedTarget = MerchantServerClock.now() + Math.max(1, fallbackMinutes) * 60000L;
         }
         final long target = resolvedTarget;
         Handler h = new Handler(Looper.getMainLooper());
         Runnable r = new Runnable() {
             @Override public void run() {
                 if (!t.isAttachedToWindow()) return;
-                long left = Math.max(0L, target - System.currentTimeMillis());
+                long left = Math.max(0L, target - MerchantServerClock.now());
                 long min = left / 60000L;
                 long sec = (left / 1000L) % 60L;
                 if (left > 0) {

@@ -37,6 +37,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private boolean realtimeRegistered = false;
     private String focusOrderId = "";
     private JSONArray cached = new JSONArray();
+    private boolean degradedOffline = false;
+    private static final String ORDER_CACHE_PREF="merchant_order_cache_v1";
     private Spinner periodSpinner;
 
     private final BroadcastReceiver realtimeReceiver = new BroadcastReceiver() {
@@ -182,6 +184,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             try {
                 String scope = historyMode ? "history" : "active";
                 JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
+                MerchantServerClock.sync(r.optLong("server_time_epoch_ms",0L));
                 JSONArray orders = r.optJSONArray("orders");
                 if (orders == null) orders = new JSONArray();
                 JSONArray finalOrders = orders;
@@ -189,6 +192,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     loading = false;
                     firstLoad = false;
                     cached = finalOrders;
+                    degradedOffline=false;
+                    saveOrderCache(scope, finalOrders, r.optLong("server_time_epoch_ms",System.currentTimeMillis()));
                     setConnectionState(true, "● Real-time aktif • server terhubung");
                     render();
                 });
@@ -196,7 +201,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 runOnUiThread(() -> {
                     loading = false;
                     firstLoad = false;
-                    setConnectionState(false, "● Menghubungkan kembali... data terakhir tetap ditampilkan");
+                    setConnectionState(false, "● Offline • mode baca saja • data terakhir");
+                    degradedOffline=true;
+                    if(cached.length()==0) cached=loadOrderCache(historyMode?"history":"active");
+                    if(cached.length()>0) render();
                     if (cached.length() == 0) {
                         list.removeAllViews();
                         list.addView(card("Koneksi gagal saat memuat pesanan. Aplikasi akan mencoba lagi otomatis."));
@@ -206,6 +214,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         });
         if (readTask == null) loading = false;
     }
+
+    private void saveOrderCache(String scope, JSONArray orders, long serverTimeMs){try{getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}}
+    private JSONArray loadOrderCache(String scope){try{String raw=getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}}
 
     private void render() {
         list.removeAllViews();
@@ -357,7 +368,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private String responseDeadline(JSONObject o) {
         String raw=s(o,"created_at","order_date","created"); if(raw.isEmpty()) return "";
-        try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US);long elapsed=Math.max(0,System.currentTimeMillis()-f.parse(raw).getTime());long left=5*60000L-elapsed;if(left<=0)return "⚠ melewati target respons 5 menit";long sec=(left+999)/1000;return "Target respons "+(sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}catch(Exception e){return "";}
+        try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US);long elapsed=Math.max(0,MerchantServerClock.now()-f.parse(raw).getTime());long left=5*60000L-elapsed;if(left<=0)return "⚠ melewati target respons 5 menit";long sec=(left+999)/1000;return "Target respons "+(sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}catch(Exception e){return "";}
     }
 
     private void addItems(LinearLayout box, JSONObject order) {
@@ -409,8 +420,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 a.addView(reject, new LinearLayout.LayoutParams(0, dp(50), 1));
             }
             box.addView(a);
-            accept.setOnClickListener(v -> { if (!updating) showCookTime(actionId, displayId); });
-            reject.setOnClickListener(v -> { if (!updating) showRejectReasons(actionId, displayId); });
+            accept.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showCookTime(actionId, displayId); });
+            reject.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showRejectReasons(actionId, displayId); });
         } else if ("merchant_accepted".equals(st)) {
             // Setelah Terima tidak ada lagi tombol Terima/Tolak maupun Mulai Siapkan.
             // Server otomatis memasukkan dapur ke status preparing dan countdown ditampilkan di progress card.
@@ -418,7 +429,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             if (MerchantOrderProgressView.countdownFinished(order)) {
                 Button r = btn(updating ? "Memproses..." : "✓ Pesanan Siap Diambil");
                 r.setEnabled(!updating);
-                r.setOnClickListener(v -> { if (!updating) update(actionId, displayId, "ready", "", 0); });
+                r.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) update(actionId, displayId, "ready", "", 0); });
                 box.addView(r);
             }
         }

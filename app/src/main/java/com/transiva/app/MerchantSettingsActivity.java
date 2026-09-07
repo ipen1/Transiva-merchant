@@ -73,6 +73,8 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         accountCard.addView(divider());
         accountCard.addView(actionRow("Diagnostik", "Periksa internet, FCM, lokasi, notifikasi, dan sesi", () -> open(MerchantDiagnosticsActivity.class)));
         accountCard.addView(divider());
+        accountCard.addView(actionRow("Perangkat & Sesi", "Lihat dan keluarkan sesi merchant di perangkat lain", () -> open(MerchantDeviceSessionsActivity.class)));
+        accountCard.addView(divider());
         accountCard.addView(actionRow("Ubah Username",
                 "Ganti nama pengguna untuk login merchant",
                 this::showChangeUsername));

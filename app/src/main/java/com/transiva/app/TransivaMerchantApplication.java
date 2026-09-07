@@ -23,6 +23,7 @@ public class TransivaMerchantApplication extends Application implements Applicat
         super.onCreate();
         instance = this;
         registerActivityLifecycleCallbacks(this);
+        MerchantCrashReporter.install(this);
 
         // Global ON/OFF Merchant dikirim melalui topic ini.
         try {
@@ -45,6 +46,7 @@ public class TransivaMerchantApplication extends Application implements Applicat
                 if (session.isLoggedIn()
                         && "merchant".equalsIgnoreCase(session.getRole())) {
                     RootSecurityGuard.protect(activity);
+                    if(activity instanceof MerchantBaseActivity) MerchantCrashReporter.reportPending((MerchantBaseActivity)activity);
                 }
             } catch (Throwable ignored) { }
         }
