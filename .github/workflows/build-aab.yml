@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           gradle --version
-          gradle clean assembleRelease bundleRelease --no-daemon
+          gradle clean testReleaseUnitTest lintRelease assembleRelease bundleRelease --no-daemon --stacktrace
 
       - name: Verify release outputs
         shell: bash
