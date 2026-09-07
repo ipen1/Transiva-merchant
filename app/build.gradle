@@ -11,8 +11,8 @@ android {
         applicationId 'com.transiva.merchant'
         minSdk 23
         targetSdk 36
-        versionCode 14
-        versionName '1.9.14'
+        versionCode 15
+        versionName '1.9.15'
     }
 
     signingConfigs {
