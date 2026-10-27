@@ -59,6 +59,7 @@ final class MerchantOrderProgressView {
     }
 
     private static boolean isKitchenActive(String global, String merchant) {
+        if("ready".equals(merchant)||"merchant_ready".equals(merchant))return false;
         // Countdown hanya milik fase dapur. Begitu driver membawa makanan (on_delivery)
         // atau status setelahnya, timer harus hilang walau merchant_status masih "preparing".
         if (rank(global) >= rank("on_delivery") || isFinal(global)) return false;

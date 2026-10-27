@@ -54,9 +54,9 @@ public class MerchantOperationsActivity extends MerchantBaseActivity {
         check.setOnCheckedChangeListener((v,on)->{if(!restoring){scheduleDirty=true;updateSummary();}open.setEnabled(on&&loaded&&!busy&&!loading);close.setEnabled(on&&loaded&&!busy&&!loading);});
     }
     private EditText time(String initial,String description){
-        EditText field=input(initial,InputType.TYPE_CLASS_DATETIME);field.setText(initial);field.setTextSize(13);field.setFocusable(false);field.setCursorVisible(false);field.setContentDescription(description);
+        EditText field=input(initial,InputType.TYPE_NULL);field.setKeyListener(null);field.setText(initial);field.setTextSize(13);field.setFocusable(false);field.setCursorVisible(false);field.setContentDescription(description);
         field.setOnClickListener(v->{String[] value=field.getText().toString().split(":");int hour=8,minute=0;try{hour=Integer.parseInt(value[0]);minute=Integer.parseInt(value[1]);}catch(Exception ignored){}
-            new TimePickerDialog(this,(picker,h,m)->{field.setText(String.format(Locale.US,"%02d:%02d",h,m));scheduleDirty=true;},hour,minute,true).show();});return field;
+            new TimePickerDialog(this,(picker,h,m)->{field.setText(String.format(Locale.US,"%02d:%02d",h,m));scheduleDirty=true;updateSummary();},hour,minute,true).show();});return field;
     }
     private void choosePause(){new AlertDialog.Builder(this).setTitle("Jeda pesanan baru").setItems(new String[]{"15 menit","30 menit","60 menit","Sampai diaktifkan kembali"},(d,w)->send("pause",new int[]{15,30,60,0}[w],null)).setNegativeButton("Batal",null).show();}
     private void setControls(){boolean ready=loaded&&!busy&&!loading;pauseButton.setEnabled(ready);prepSave.setEnabled(ready);scheduleSave.setEnabled(ready);prepSpinner.setEnabled(ready);
@@ -76,14 +76,14 @@ public class MerchantOperationsActivity extends MerchantBaseActivity {
         if(!prepDirty){String duration=operation.optString("duration","15 menit");for(int i=0;i<prepSpinner.getCount();i++)if(duration.equals(prepSpinner.getItemAtPosition(i).toString())){serverPrep=i;prepSpinner.setSelection(i);break;}}
         paused=operation.optBoolean("paused",false);String until=operation.optString("pause_until","");
         pauseState.setText(paused?(until.isEmpty()?"Pesanan baru dijeda sampai Anda aktifkan kembali.":"Pesanan baru dijeda hingga "+until):"Toko menerima pesanan baru.");pauseButton.setText(paused?"Terima pesanan lagi":"Jeda pesanan");
-        if(!scheduleDirty){JSONArray schedule=operation.optJSONArray("schedule");if(schedule!=null)for(int i=0;i<schedule.length();i++){JSONObject row=schedule.optJSONObject(i);if(row==null)continue;int index=row.optInt("day",i+1)-1;if(index<0||index>=7)continue;enabled.get(index).setChecked(row.optBoolean("enabled",true));opens.get(index).setText(row.optString("open","08:00"));closes.get(index).setText(row.optString("close","22:00"));}}
+        if(!scheduleDirty){for(int i=0;i<7;i++){enabled.get(i).setChecked(true);opens.get(i).setText("08:00");closes.get(i).setText("22:00");}JSONArray schedule=operation.optJSONArray("schedule");if(schedule!=null)for(int i=0;i<schedule.length();i++){JSONObject row=schedule.optJSONObject(i);if(row==null)continue;int index=row.optInt("day",i+1)-1;if(index<0||index>=7)continue;enabled.get(index).setChecked(MerchantScheduleRules.enabled(row.opt("enabled")));opens.get(index).setText(MerchantScheduleRules.display(row.optString("open"),"08:00"));closes.get(index).setText(MerchantScheduleRules.display(row.optString("close"),"22:00"));}}
         loaded=true;restoring=false;updateSummary();setControls();
     }
     private void send(String action,int minutes,JSONArray schedule){
         if(!loaded||busy||loading)return;busy=true;setControls();
         boolean accepted=MerchantNetworkExecutor.executeWrite("merchant-operations-change",()->{try{JSONObject body=new JSONObject();body.put("action",action);if(minutes>0)body.put("minutes",minutes);if(schedule!=null)body.put("schedule",schedule);
             JSONObject response=new JSONObject(postJson(BASE+"merchant_operations.php",body));runOnUiThread(()->{if(isFinishing()||isDestroyed())return;busy=false;
-                if(response.optBoolean("success")){if("schedule".equals(action))scheduleDirty=false;toast(response.optString("message","Tersimpan"));load();}else alert("Belum tersimpan",response.optString("message","Coba lagi."));setControls();});
+                if(response.optBoolean("success")){if("schedule".equals(action))scheduleDirty=false;toast(response.optString("message","Tersimpan"));JSONObject state=response.optJSONObject("operations");if(state!=null)apply(state);else load();}else alert("Belum tersimpan",response.optString("message","Coba lagi."));setControls();});
         }catch(Exception error){runOnUiThread(()->{if(isFinishing()||isDestroyed())return;busy=false;setControls();alert("Koneksi","Pengaturan belum tersimpan. Coba lagi.");});}});
         if(!accepted){busy=false;setControls();toast("Permintaan sebelumnya masih diproses.");}
     }
@@ -96,8 +96,9 @@ public class MerchantOperationsActivity extends MerchantBaseActivity {
     }
     private void saveSchedule(){try{
         JSONArray schedule=new JSONArray();for(int i=0;i<7;i++){String open=opens.get(i).getText().toString().trim(),close=closes.get(i).getText().toString().trim();
-            if(!open.matches("(?:[01]\\d|2[0-3]):[0-5]\\d")||!close.matches("(?:[01]\\d|2[0-3]):[0-5]\\d")){alert("Periksa jadwal",days[i]+": pilih jam yang valid.");return;}
+            if(enabled.get(i).isChecked()&&(!MerchantScheduleRules.valid(open)||!MerchantScheduleRules.valid(close))){alert("Periksa jadwal",days[i]+": pilih jam yang valid.");return;}
             if(enabled.get(i).isChecked()&&close.compareTo(open)<=0){alert("Periksa jadwal",days[i]+": jam tutup harus setelah jam buka. Jadwal melewati tengah malam belum didukung.");return;}
+            if(!enabled.get(i).isChecked()){open=MerchantScheduleRules.display(open,"08:00");close=MerchantScheduleRules.display(close,"22:00");}
             JSONObject row=new JSONObject();row.put("day",i+1);row.put("enabled",enabled.get(i).isChecked());row.put("open",open);row.put("close",close);schedule.put(row);
         }send("schedule",0,schedule);
     }catch(Exception error){alert("Periksa jadwal","Jadwal belum valid.");}}

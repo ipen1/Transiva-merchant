@@ -34,6 +34,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private boolean firstLoad = true;
     private boolean updating = false;
     private boolean loading = false;
+    private long readGeneration;
+    private java.util.concurrent.Future<?> activeRead;
+    private boolean refreshQueued;
     private boolean historyMode = false;
     private boolean realtimeRegistered = false;
     private String focusOrderId = "";
@@ -176,10 +179,14 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
 
     private void load(boolean showLoading) {
+        if(updating){refreshQueued=true;return;}
         if (loading) {
+            refreshQueued=true;
             if(showLoading){list.removeAllViews();list.addView(card("Memuat pesanan…"));}
             return;
         }
+        final long requestGeneration=++readGeneration;
+        refreshQueued=false;
         final boolean requestedHistory=historyMode;
         final String scope=requestedHistory?"history":"active";
         loading = true;
@@ -194,17 +201,19 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             realtimeStatus.setTextColor(Color.parseColor("#B54708"));
         }
 
-        java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, requestedHistory ? "orders-history" : "orders-active", () -> {
+        java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "orders:"+requestGeneration, () -> {
             try {
                 long sent=android.os.SystemClock.elapsedRealtime();
                 JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
-                MerchantServerClock.sync(r,sent,android.os.SystemClock.elapsedRealtime());
+                final long received=android.os.SystemClock.elapsedRealtime();
+                if(!r.optBoolean("success",false))throw new Exception(r.optString("message","Gagal memuat pesanan"));
                 JSONArray orders = r.optJSONArray("orders");
                 if (orders == null) orders = new JSONArray();
                 JSONArray finalOrders = orders;
                 runOnUiThread(() -> {
-                    if(isFinishing()||isDestroyed())return;
-                    loading = false;
+                    if(isFinishing()||isDestroyed()||requestGeneration!=readGeneration)return;
+                    MerchantServerClock.sync(r,sent,received);
+                    loading = false;activeRead=null;
                     if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
                     cached = finalOrders;
@@ -212,11 +221,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     saveOrderCache(scope, finalOrders, r.optLong("server_time_epoch_ms",System.currentTimeMillis()));
                     setConnectionState(true, "● Real-time aktif • server terhubung");
                     render();
+                    drainRefresh();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    if(isFinishing()||isDestroyed())return;
-                    loading = false;
+                    if(isFinishing()||isDestroyed()||requestGeneration!=readGeneration)return;
+                    loading = false;activeRead=null;
                     if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
                     setConnectionState(false, "● Offline • mode baca saja • data terakhir");
@@ -227,11 +237,16 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                         list.removeAllViews();
                         list.addView(card("Koneksi gagal saat memuat pesanan. Aplikasi akan mencoba lagi otomatis."));
                     }
+                    drainRefresh();
                 });
             }
         });
-        if (readTask == null) loading = false;
+        activeRead=readTask;
+        if (readTask == null) {loading=false;realtimeStatus.setText("Sinkronisasi sedang sibuk. Akan dicoba kembali.");}
     }
+    private void drainRefresh(){if(refreshQueued&&!updating&&!loading){refreshQueued=false;handler.post(()->load(false));}}
+    private void invalidateRead(){readGeneration++;if(activeRead!=null)activeRead.cancel(true);activeRead=null;loading=false;refreshQueued=false;}
+
 
     private void saveOrderCache(String scope, JSONArray orders, long serverTimeMs){try{getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}}
     private JSONArray loadOrderCache(String scope){try{String raw=getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}}
@@ -247,7 +262,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         boolean needsAction=false;
         for(int i=0;i<cached.length();i++){
             JSONObject order=cached.optJSONObject(i);if(order==null)continue;
-            String state=effectiveStatus(order);
+            String state=kitchenActionStatus(order,effectiveStatus(order));
             if(("preparing".equals(state)||"merchant_preparing".equals(state))&&MerchantOrderProgressView.countdownFinished(order)){
                 String key=s(order,"id","order_numeric_id","order_db_id","order_id")+"|"+MerchantServerClock.readyAt(order);
                 if(expiredReadyActions.add(key))needsAction=true;
@@ -344,6 +359,11 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if(!customer.isEmpty()){
             TextView who=tv("Untuk "+customer,13,TEXT,true);who.setPadding(0,dp(8),0,dp(4));box.addView(who);
         }
+        String kitchen=kitchenActionStatus(o,status);
+        if("preparing".equals(kitchen)||"merchant_preparing".equals(kitchen)||"ready".equals(kitchen)||"merchant_ready".equals(kitchen)){
+            boolean ready="ready".equals(kitchen)||"merchant_ready".equals(kitchen);
+            box.addView(tv(ready?"✓ Dapur · Siap diambil":"● Dapur · Sedang disiapkan",12,ready?android.graphics.Color.parseColor("#16A374"):BLUE,true));
+        }
         addItems(box,o);
         if(!note.isEmpty()){
             TextView nv=tv("Catatan: "+note,13,TEXT,true);nv.setPadding(dp(10),dp(8),dp(10),dp(8));
@@ -352,7 +372,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         MerchantOrderFinanceView.attach(this,box,o);
         // Transaction buttons stay above secondary information and never depend on disclosure state.
         if(!historyMode){
-            addActions(box,o,actionId,displayId,status);
+            addActions(box,o,actionId,displayId,kitchenActionStatus(o,status));
             if(!driver.isEmpty())addDriverChat(box,o,actionId,displayId,driver);
         }
         LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);
@@ -411,6 +431,13 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             if (!variant.isEmpty()) box.addView(tv("   Pilihan: " + variant, 12, MUTED, false));
             if (!note.isEmpty()) box.addView(tv("   Catatan: " + note, 12, Color.parseColor("#7A4D00"), false));
         }
+    }
+
+    private String kitchenActionStatus(JSONObject order,String global){
+        if(isFinal(global)||"pending".equals(global)||"on_delivery".equals(global)||"arrived_delivery".equals(global))return global;
+        String kitchen=order.optString("merchant_status","");
+        if("preparing".equals(kitchen)||"merchant_preparing".equals(kitchen)||"ready".equals(kitchen)||"merchant_ready".equals(kitchen))return kitchen;
+        return global;
     }
 
     private void addActions(LinearLayout box, JSONObject order, String actionId, String displayId, String status) {
@@ -489,6 +516,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
 
     private String effectiveStatus(JSONObject o) {
+        for(String key:new String[]{"global_status","status","driver_status","order_status","trip_status"}){
+            String value=o.optString(key,"").trim().toLowerCase(Locale.US);if(MerchantOrderUiState.terminal(value))return value;
+        }
         String[] keys = {"global_status", "driver_status", "order_status", "trip_status", "status"};
         String best = "pending";
         int bestRank = 0;
@@ -542,17 +572,25 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             alert("Data tidak lengkap", "ID pesanan tidak ditemukan.");
             return;
         }
+        invalidateRead();
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
-        MerchantOrderRepository.updateStatus(this, id, displayId, status, rejectReason, cookMinutes, (success, message, networkError) -> {
+        MerchantOrderRepository.updateStatus(this, id, displayId, status, rejectReason, cookMinutes, (success, message, networkError, receipt) -> {
             updating = false;
             if (success) {
                 toast(message);
-                focusOrderId = displayId == null ? "" : displayId;
+                focusOrderId = "merchant_rejected".equals(status)?"":displayId == null ? "" : displayId;
+                try{cached=MerchantOrderUiState.acknowledge(cached,id,displayId,status,rejectReason,cookMinutes,receipt,historyMode,MerchantServerClock.now());}catch(Exception ignored){}
+                degradedOffline=false;
+                saveOrderCache(historyMode?"history":"active",cached,MerchantServerClock.now());
+                getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).edit().remove(historyMode?"active":"history").apply();
+                render();
                 load(false);
             } else {
+                if(networkError)degradedOffline=true;
                 render();
-                alert(networkError ? "Koneksi" : "Gagal", message);
+                if(networkError)load(false);else drainRefresh();
+                alert(networkError ? "Memeriksa status" : "Gagal", message);
             }
         });
     }
