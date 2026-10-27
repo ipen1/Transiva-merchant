@@ -45,7 +45,7 @@ public final class MerchantBottomNavigation {
 
     public static ActiveItem resolve(Activity activity) {
         if (activity instanceof MerchantOrdersActivity) return ActiveItem.ORDERS;
-        if (activity instanceof MerchantKabarMitraActivity && !activity.getIntent().getBooleanExtra("show_followers",false)) return ActiveItem.STORIES;
+        if (activity instanceof MerchantKabarMitraActivity) return ActiveItem.STORIES;
         if (activity instanceof MerchantReviewsActivity) return ActiveItem.REVIEWS;
         if (activity instanceof MerchantSettingsActivity || activity instanceof MerchantRestaurantProfileActivity || activity instanceof MerchantOperationsActivity || activity instanceof MerchantDiagnosticsActivity || activity instanceof MerchantDeviceSessionsActivity || activity instanceof MerchantPrivacyActivity || activity instanceof MerchantLocationActivity) return ActiveItem.SETTINGS;
         return ActiveItem.HOME;

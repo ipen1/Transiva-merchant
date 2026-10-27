@@ -33,11 +33,9 @@ final class MerchantOrderProgressView {
         card.addView(text(a, "Status Pesanan", 14, Color.parseColor("#102A43"), true));
 
         if (isKitchenActive(global, merchant)) {
-            TextView countdown = text(a, "Sedang diproses...", 16, Color.parseColor("#B54708"), true);
-            countdown.setGravity(Gravity.CENTER);
-            countdown.setPadding(0, dp(a, 8), 0, dp(a, 8));
+            MerchantCountdownView countdown=new MerchantCountdownView(a,MerchantServerClock.readyAt(order),Math.max(1,order.optInt("cook_minutes",0))*60000L,"Sisa persiapan","Waktu habis • periksa makanan");
             card.addView(countdown);
-            bindCountdown(countdown, order.optString("estimated_ready_at", ""), order.optInt("cook_minutes", 0));
+            if(a instanceof MerchantOrdersActivity) countdown.onComplete(()->((MerchantOrdersActivity)a).onKitchenCountdownFinished());
         }
 
         LinearLayout details=new LinearLayout(a);details.setOrientation(LinearLayout.VERTICAL);details.setVisibility(android.view.View.GONE);
@@ -56,42 +54,8 @@ final class MerchantOrderProgressView {
     }
 
     static boolean countdownFinished(JSONObject order) {
-        String readyAt = order.optString("estimated_ready_at", "");
-        if (readyAt.trim().isEmpty()) return true;
-        try {
-            Date d = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(readyAt);
-            return d == null || MerchantServerClock.now() >= d.getTime();
-        } catch (Exception e) { return true; }
-    }
-
-    private static void bindCountdown(TextView t, String readyAt, int fallbackMinutes) {
-        long resolvedTarget;
-        try {
-            Date d = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(readyAt);
-            resolvedTarget = d == null
-                    ? MerchantServerClock.now() + Math.max(1, fallbackMinutes) * 60000L
-                    : d.getTime();
-        } catch (Exception e) {
-            resolvedTarget = MerchantServerClock.now() + Math.max(1, fallbackMinutes) * 60000L;
-        }
-        final long target = resolvedTarget;
-        Handler h = new Handler(Looper.getMainLooper());
-        Runnable r = new Runnable() {
-            @Override public void run() {
-                if (!t.isAttachedToWindow()) return;
-                long left = Math.max(0L, target - MerchantServerClock.now());
-                long min = left / 60000L;
-                long sec = (left / 1000L) % 60L;
-                if (left > 0) {
-                    t.setText(String.format(Locale.US, "🍳 Sedang diproses • %02d:%02d", min, sec));
-                    h.postDelayed(this, 1000L);
-                } else {
-                    t.setText("✓ Waktu persiapan selesai • cek pesanan lalu tandai siap");
-                    t.setTextColor(Color.parseColor("#137333"));
-                }
-            }
-        };
-        t.post(r);
+        long target=MerchantServerClock.readyAt(order);
+        return target<=0||MerchantServerClock.now()>=target;
     }
 
     private static boolean isKitchenActive(String global, String merchant) {

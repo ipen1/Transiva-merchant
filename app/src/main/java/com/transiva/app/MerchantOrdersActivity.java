@@ -196,8 +196,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, requestedHistory ? "orders-history" : "orders-active", () -> {
             try {
+                long sent=android.os.SystemClock.elapsedRealtime();
                 JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
-                MerchantServerClock.sync(r.optLong("server_time_epoch_ms",0L));
+                MerchantServerClock.sync(r,sent,android.os.SystemClock.elapsedRealtime());
                 JSONArray orders = r.optJSONArray("orders");
                 if (orders == null) orders = new JSONArray();
                 JSONArray finalOrders = orders;
@@ -234,6 +235,27 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void saveOrderCache(String scope, JSONArray orders, long serverTimeMs){try{getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}}
     private JSONArray loadOrderCache(String scope){try{String raw=getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}}
+
+    private boolean countdownRenderQueued;
+    void onKitchenCountdownFinished(){
+        if(countdownRenderQueued||isFinishing()||isDestroyed())return;
+        countdownRenderQueued=true;
+        list.post(()->{countdownRenderQueued=false;if(!isFinishing()&&!isDestroyed())refreshReadyActions();});
+    }
+    private void refreshReadyActions(){
+        // Existing transaction handlers are rebuilt only if a formerly hidden ready action is now due.
+        boolean needsAction=false;
+        for(int i=0;i<cached.length();i++){
+            JSONObject order=cached.optJSONObject(i);if(order==null)continue;
+            String state=effectiveStatus(order);
+            if(("preparing".equals(state)||"merchant_preparing".equals(state))&&MerchantOrderProgressView.countdownFinished(order)){
+                String key=s(order,"id","order_numeric_id","order_db_id","order_id")+"|"+MerchantServerClock.readyAt(order);
+                if(expiredReadyActions.add(key))needsAction=true;
+            }
+        }
+        if(needsAction&&!historyMode)render();
+    }
+    private final java.util.HashSet<String> expiredReadyActions=new java.util.HashSet<>();
 
     private void render() {
         list.removeAllViews();
@@ -310,12 +332,11 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if(pending){
             TextView prompt=tv("Periksa pesanan, lalu pilih Terima atau Tolak.",12,MUTED,false);
             prompt.setPadding(0,dp(5),0,dp(3));box.addView(prompt);
-            String age=orderAge(o),deadline=responseDeadline(o);
-            if(!age.isEmpty()||!deadline.isEmpty()){
-                TextView ageText=tv(age+(age.isEmpty()||deadline.isEmpty()?"":" • ")+deadline,11,MUTED,false);
-                if(deadline.contains("melewati"))ageText.setTextColor(Color.parseColor(dark?"#FFD28C":"#9A6700"));
-                box.addView(ageText);
-            }
+            String age=orderAge(o);
+            if(!age.isEmpty())box.addView(tv(age,11,MUTED,false));
+            long created=MerchantServerClock.createdAt(o);
+            MerchantCountdownView responseTimer=new MerchantCountdownView(this,created>0?created+5*60000L:0,5*60000L,"Konfirmasi","Segera konfirmasi pesanan");
+            box.addView(responseTimer);
         }
         String customer=s(o,"customer_name","customer","name"),phone=s(o,"customer_phone","phone");
         String address=s(o,"delivery_address","destination_address","address"),driver=s(o,"driver","driver_name");
@@ -354,24 +375,11 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         MerchantDriverCommunication.attach(this, box, order, actionId, displayId, driverName);
     }
 
-    private String orderAge(JSONObject o) {
-        String raw = s(o, "created_at", "order_date", "created");
-        if (raw.isEmpty()) return "";
-        try {
-            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US);
-            long ageMs = Math.max(0, System.currentTimeMillis() - f.parse(raw).getTime());
-            long minutes = ageMs / 60000L;
-            if (minutes <= 0) return "Masuk kurang dari 1 menit lalu";
-            if (minutes < 60) return "Masuk " + minutes + " menit lalu";
-            return "Masuk lebih dari 1 jam lalu";
-        } catch (Exception ignored) {
-            return "";
-        }
-    }
-
-    private String responseDeadline(JSONObject o) {
-        String raw=s(o,"created_at","order_date","created"); if(raw.isEmpty()) return "";
-        try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US);long elapsed=Math.max(0,MerchantServerClock.now()-f.parse(raw).getTime());long left=5*60000L-elapsed;if(left<=0)return "Sudah melewati anjuran respons 5 menit";long sec=(left+999)/1000;return "Usahakan konfirmasi dalam "+(sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}catch(Exception e){return "";}
+    private String orderAge(JSONObject order) {
+        long created=MerchantServerClock.createdAt(order);if(created<=0)return "";
+        long minutes=Math.max(0,MerchantServerClock.now()-created)/60000L;
+        if(minutes==0)return "Masuk kurang dari 1 menit lalu";
+        return minutes<60?"Masuk "+minutes+" menit lalu":"Masuk lebih dari 1 jam lalu";
     }
 
     private void addItems(LinearLayout box, JSONObject order) {
