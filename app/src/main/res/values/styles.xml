@@ -7,4 +7,10 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+    <style name="Theme.Transiva.Splash" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <item name="android:statusBarColor">#06142E</item>
+        <item name="android:navigationBarColor">#06142E</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>
