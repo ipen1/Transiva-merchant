@@ -9,10 +9,11 @@ android {
 
     defaultConfig {
         applicationId 'com.transiva.merchant'
-        minSdk 23
+        // Google Play automatic protection requires Android 7.0 (API 24)+.
+        minSdk 24
         targetSdk 36
-        versionCode 16
-        versionName '1.9.16'
+        versionCode 17
+        versionName '1.9.17'
     }
 
     signingConfigs {
