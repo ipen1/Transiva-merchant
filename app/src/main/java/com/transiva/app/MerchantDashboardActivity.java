@@ -140,6 +140,12 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         tile(r5, "🔔", "Notifikasi", () -> open(MerchantNotificationCenterActivity.class));
         tile(r5, "🩺", "Diagnostik", () -> open(MerchantDiagnosticsActivity.class));
 
+        LinearLayout r6 = row(); grid.addView(r6);
+        tile(r6, "◉", "Kabar Mitra", () -> open(MerchantKabarMitraActivity.class));
+        tile(r6, "♧", "Pengikut Toko", () -> {
+            android.content.Intent intent = new android.content.Intent(this, MerchantKabarMitraActivity.class);
+            intent.putExtra("show_followers", true); startActivity(intent);
+        });
         Button refresh = outlineBtn("↻  Refresh Dashboard");
         refresh.setOnClickListener(v -> loadAll());
         root.addView(refresh);
