@@ -41,7 +41,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-public class LoginActivity extends Activity {
+public class LoginActivity extends MerchantAuthActivity {
 
     private static final String TAG = "TRANSIVA_LOGIN";
     private static final String BASE_URL = "https://transiva.my.id/";
@@ -62,6 +62,10 @@ public class LoginActivity extends Activity {
     private ProgressBar loadingView;
     private ImageButton eyeButton;
 
+    private int loginStep;
+    private TextView stepLabel, previous, identity, usernameLabel, passwordLabel;
+    private View passwordBox;
+    private LinearLayout loginCard;
     private boolean loading;
     private boolean passwordVisible;
 
@@ -69,20 +73,12 @@ public class LoginActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        try {
-            getWindow().setStatusBarColor(
-                    Color.parseColor("#0A1A2E"));
-            getWindow().setNavigationBarColor(
-                    Color.parseColor("#0A1A2E"));
-        } catch (Exception ignored) {}
-
-        /*
-         * Jangan otomatis mengarahkan berdasarkan session lama di sini.
-         * Session invalid akan dibersihkan saat login/dashboard.
-         */
-        View screen = buildScreen();
-        setContentView(screen);
-        MerchantWindowInsets.apply(this, screen);
+        buildScreen();
+        if (savedInstanceState != null) {
+            usernameInput.setText(savedInstanceState.getString("username", ""));
+            loginStep = savedInstanceState.getInt("step", 0) == 1 ? 1 : 0;
+            updateLoginStep(false);
+        }
 
         try {
             TransivaNotificationPermission.ask(this);
@@ -91,173 +87,87 @@ public class LoginActivity extends Activity {
         }
     }
 
-    private View buildScreen() {
-        FrameLayout page = new FrameLayout(this);
-        page.setBackgroundColor(Color.parseColor("#F4F8FF"));
-
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(false);
-        page.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setPadding(dp(18), dp(18), dp(18), dp(24));
-        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
-
-        ImageView logo = new ImageView(this);
-        int logoRes = findDrawable("transiva_logo");
-        if (logoRes == 0) logoRes = findDrawable("logo_transiva");
-        if (logoRes == 0) logoRes = findDrawable("logo");
-        if (logoRes == 0) logoRes = getApplicationInfo().icon;
-        logo.setImageResource(logoRes);
-        logo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-
-        LinearLayout.LayoutParams logoLp =
-                new LinearLayout.LayoutParams(dp(190), dp(80));
-        logoLp.setMargins(0, dp(6), 0, dp(5));
-        root.addView(logo, logoLp);
-
-        TextView title = text(
-                "Masuk Transiva", 27, "#123F7A", true);
-        title.setGravity(Gravity.CENTER);
-        root.addView(title);
-
-        TextView subtitle = text(
-                "Masuk khusus untuk mengelola Merchant Transiva",
-                14,
-                "#667085",
-                false
-        );
-        subtitle.setGravity(Gravity.CENTER);
-        subtitle.setPadding(0, dp(7), 0, dp(18));
-        root.addView(subtitle);
-
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(18), dp(20), dp(18), dp(20));
-        card.setBackground(
-                roundStroke("#FFFFFF", "#E5EBF3", dp(24), 1));
-        card.setElevation(dp(5));
-        root.addView(card, new LinearLayout.LayoutParams(-1, -2));
-
-        messageText = text("", 12, "#B91C1C", true);
-        messageText.setVisibility(View.GONE);
-        messageText.setPadding(dp(14), dp(11), dp(14), dp(11));
-
-        LinearLayout.LayoutParams messageLp =
-                new LinearLayout.LayoutParams(-1, -2);
-        messageLp.setMargins(0, 0, 0, dp(13));
-        card.addView(messageText, messageLp);
-
-        card.addView(label("Nama Pengguna"));
-
-        usernameInput = input(
-                "Masukkan Nama Pengguna",
-                InputType.TYPE_CLASS_TEXT,
-                false
-        );
-        card.addView(usernameInput, fieldLayout());
-
-        card.addView(label("Kata Sandi"));
-
-        FrameLayout passwordBox = new FrameLayout(this);
-
-        passwordInput = input(
-                "Masukkan Kata Sandi",
-                InputType.TYPE_CLASS_TEXT
-                        | InputType.TYPE_TEXT_VARIATION_PASSWORD,
-                true
-        );
-        passwordBox.addView(
-                passwordInput,
-                new FrameLayout.LayoutParams(-1, -1)
-        );
-
-        eyeButton = new ImageButton(this);
-        eyeButton.setImageResource(
-                android.R.drawable.ic_menu_view);
-        eyeButton.setBackgroundColor(Color.TRANSPARENT);
-        eyeButton.setColorFilter(Color.parseColor("#1E88F5"));
-
-        FrameLayout.LayoutParams eyeLp =
-                new FrameLayout.LayoutParams(dp(44), dp(44));
-        eyeLp.gravity = Gravity.END | Gravity.CENTER_VERTICAL;
-        eyeLp.rightMargin = dp(5);
-        passwordBox.addView(eyeButton, eyeLp);
-
-        card.addView(passwordBox, fieldLayout());
-
-        loginButton = new Button(this);
-        loginButton.setText("Masuk →");
-        loginButton.setAllCaps(false);
-        loginButton.setTextSize(17);
-        loginButton.setTextColor(Color.WHITE);
-        loginButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        loginButton.setBackground(
-                gradient("#006BEF", "#2E9BFF", dp(17)));
-
-        LinearLayout.LayoutParams loginLp =
-                new LinearLayout.LayoutParams(-1, dp(54));
-        loginLp.setMargins(0, dp(8), 0, dp(14));
-        card.addView(loginButton, loginLp);
-
-        TextView register = text(
-                "Belum punya akun? Daftar",
-                14,
-                "#1685F2",
-                true
-        );
-        register.setGravity(Gravity.CENTER);
-        register.setPadding(0, dp(3), 0, dp(15));
-        card.addView(register);
-
-        LinearLayout legal = new LinearLayout(this);
-        legal.setGravity(Gravity.CENTER);
-
-        TextView privacy =
-                text("Kebijakan Privasi", 12, "#1685F2", true);
-        TextView separator =
-                text(" | ", 12, "#CBD5E1", false);
-        TextView terms =
-                text("Syarat & Ketentuan", 12, "#1685F2", true);
-
-        legal.addView(privacy);
-        legal.addView(separator);
-        legal.addView(terms);
-        card.addView(legal);
-
-        loadingView = new ProgressBar(this);
-        loadingView.setVisibility(View.GONE);
-
-        FrameLayout.LayoutParams loadingLp =
-                new FrameLayout.LayoutParams(
-                        dp(52), dp(52), Gravity.CENTER);
-        page.addView(loadingView, loadingLp);
-
-        loginButton.setOnClickListener(v -> attemptLogin());
-        eyeButton.setOnClickListener(v -> togglePassword());
-        register.setOnClickListener(v -> openRegister());
-        privacy.setOnClickListener(v -> openBrowser(PRIVACY_URL));
-        terms.setOnClickListener(v -> openBrowser(TERMS_URL));
-
+    private void buildScreen() {
+        authShell("Selamat datang kembali", "Kelola usaha, sajikan yang terbaik. Mulai dari sini.");
+        loginCard = authCard();
+        stepLabel = authText("", 12, true); stepLabel.setTextColor(Color.rgb(52, 145, 255));
+        stepLabel.setPadding(0, 0, 0, dp(16)); loginCard.addView(stepLabel);
+        identity = authText("", 20, true); identity.setPadding(0, 0, 0, dp(16)); loginCard.addView(identity);
+        messageText = authText("", 13, false); messageText.setPadding(dp(12), dp(10), dp(12), dp(10));
+        messageText.setVisibility(View.GONE); loginCard.addView(messageText);
+        usernameLabel = authText("Nama pengguna", 14, true); loginCard.addView(usernameLabel);
+        usernameInput = input("Masukkan nama pengguna", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS, false);
+        usernameInput.setSaveEnabled(false);
+        usernameInput.setImeOptions(EditorInfo.IME_ACTION_NEXT); loginCard.addView(usernameInput, fieldLayout());
+        passwordLabel = authText("Kata sandi", 14, true); loginCard.addView(passwordLabel);
+        FrameLayout box = new FrameLayout(this); passwordBox = box;
+        passwordInput = input("Masukkan kata sandi", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, true);
+        passwordInput.setSaveEnabled(false);
+        box.addView(passwordInput, new FrameLayout.LayoutParams(-1, -1));
+        eyeButton = new ImageButton(this); eyeButton.setImageResource(android.R.drawable.ic_menu_view);
+        eyeButton.setContentDescription("Tampilkan kata sandi"); eyeButton.setBackgroundColor(Color.TRANSPARENT);
+        eyeButton.setColorFilter(Color.rgb(52,145,255));
+        FrameLayout.LayoutParams eyeLp = new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.END | Gravity.CENTER_VERTICAL);
+        box.addView(eyeButton, eyeLp); loginCard.addView(box, fieldLayout());
+        loginButton = new Button(this); loginButton.setAllCaps(false); loginButton.setTextSize(16);
+        loginButton.setTextColor(Color.WHITE); loginButton.setTypeface(Typeface.DEFAULT_BOLD);
+        loginButton.setBackground(gradient("#006BEF", "#2E9BFF", dp(17)));
+        loginCard.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(54)));
+        loadingView = new ProgressBar(this); loadingView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams loadingLp = new LinearLayout.LayoutParams(dp(30), dp(30));
+        loadingLp.gravity = Gravity.CENTER; loginCard.addView(loadingView, loadingLp);
+        previous = authText("← Ganti nama pengguna", 14, true); previous.setGravity(Gravity.CENTER);
+        previous.setMinHeight(dp(48)); loginCard.addView(previous);
+        TextView register = authText("Belum bergabung? Daftar Merchant →", 14, true);
+        register.setGravity(Gravity.CENTER); register.setMinHeight(dp(56)); authRoot.addView(register);
+        TextView legal = authText("Kebijakan Privasi  •  Syarat & Ketentuan", 12, false);
+        legal.setTextColor(mutedColor); legal.setGravity(Gravity.CENTER); legal.setMinHeight(dp(48)); authRoot.addView(legal);
+        legal.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Informasi Transiva")
+                .setItems(new String[]{"Kebijakan Privasi", "Syarat & Ketentuan"}, (d, w) -> openBrowser(w == 0 ? PRIVACY_URL : TERMS_URL)).show());
+        loginButton.setOnClickListener(v -> advanceLogin());
+        usernameInput.setOnEditorActionListener((v, id, event) -> { if(id == EditorInfo.IME_ACTION_NEXT) {advanceLogin(); return true;} return false; });
         passwordInput.setImeOptions(EditorInfo.IME_ACTION_DONE);
-        passwordInput.setOnEditorActionListener(
-                (v, actionId, event) -> {
-                    boolean enter = event != null
-                            && event.getKeyCode()
-                            == KeyEvent.KEYCODE_ENTER;
+        passwordInput.setOnEditorActionListener((v, id, event) -> { if(id == EditorInfo.IME_ACTION_DONE) {advanceLogin(); return true;} return false; });
+        eyeButton.setOnClickListener(v -> togglePassword());
+        previous.setOnClickListener(v -> returnToUsername());
+        register.setOnClickListener(v -> {if(!loading) openRegister();});
+        updateLoginStep(false); mountAuth();
+    }
 
-                    if (actionId == EditorInfo.IME_ACTION_DONE
-                            || enter) {
-                        attemptLogin();
-                        return true;
-                    }
-                    return false;
-                }
-        );
-
-        return page;
+    private void advanceLogin() {
+        if (loading) return;
+        if (loginStep == 1) {attemptLogin(); return;}
+        if (usernameInput.getText().toString().trim().isEmpty()) {usernameInput.setError("Masukkan nama pengguna"); return;}
+        clearMessage(); loginStep = 1; updateLoginStep(true); passwordInput.requestFocus();
+    }
+    private void updateLoginStep(boolean animate) {
+        boolean password = loginStep == 1;
+        stepLabel.setText(password ? "LANGKAH 2 DARI 2 • KATA SANDI" : "LANGKAH 1 DARI 2 • IDENTITAS");
+        usernameLabel.setVisibility(password ? View.GONE : View.VISIBLE);
+        usernameInput.setVisibility(password ? View.GONE : View.VISIBLE);
+        passwordLabel.setVisibility(password ? View.VISIBLE : View.GONE);
+        passwordBox.setVisibility(password ? View.VISIBLE : View.GONE);
+        identity.setText("Halo, " + usernameInput.getText().toString().trim());
+        identity.setVisibility(password ? View.VISIBLE : View.GONE);
+        previous.setVisibility(password ? View.VISIBLE : View.GONE);
+        loginButton.setText(password ? "Masuk →" : "Lanjut →");
+        if (animate) animateStep(loginCard);
+    }
+    private void returnToUsername() {
+        if (loading) return;
+        passwordInput.setText(""); loginStep = 0; clearMessage(); updateLoginStep(true); usernameInput.requestFocus();
+    }
+    @Override public void onBackPressed() {
+        if (loading) return;
+        if (loginStep == 1) returnToUsername(); else super.onBackPressed();
+    }
+    @Override protected boolean canChangeTheme() { return !loading; }
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putString("username", usernameInput.getText().toString()); state.putInt("step", loginStep);
+        super.onSaveInstanceState(state);
+    }
+    @Override protected void onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null); super.onDestroy();
     }
 
     private void attemptLogin() {
@@ -284,6 +194,7 @@ public class LoginActivity extends Activity {
             MerchantLoginRepository.Result result = MerchantLoginRepository.login(this, username, password);
 
             mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 setLoading(false);
 
                 if (!result.success) {
@@ -378,6 +289,7 @@ public class LoginActivity extends Activity {
                 MerchantLoginRepository.syncFcmAfterLogin(LoginActivity.this, result.user);
 
                 showMessage("Login berhasil", true);
+                setLoading(true);
 
                 String finalRole = role;
 
@@ -404,6 +316,7 @@ public class LoginActivity extends Activity {
 
 
     private void openPinPage(String role) {
+        if (isFinishing() || isDestroyed()) return;
         Intent intent = new Intent(this, PinActivity.class);
         intent.putExtra("native_role", normalizeRole(role));
         intent.addFlags(
@@ -466,6 +379,7 @@ public class LoginActivity extends Activity {
                 passwordInput.getSelectionStart();
 
         passwordVisible = !passwordVisible;
+        eyeButton.setContentDescription(passwordVisible ? "Sembunyikan kata sandi" : "Tampilkan kata sandi");
 
         passwordInput.setInputType(
                 InputType.TYPE_CLASS_TEXT
@@ -493,7 +407,7 @@ public class LoginActivity extends Activity {
         eyeButton.setEnabled(!value);
 
         loginButton.setText(
-                value ? "Memuat..." : "Masuk →");
+                value ? "Memuat..." : loginStep == 0 ? "Lanjut →" : "Masuk →");
     }
 
     private void showMessage(
@@ -502,17 +416,9 @@ public class LoginActivity extends Activity {
     ) {
         messageText.setVisibility(View.VISIBLE);
         messageText.setText(message);
-        messageText.setTextColor(
-                Color.parseColor(
-                        success ? "#166534" : "#B91C1C"
-                )
-        );
-        messageText.setBackground(
-                round(
-                        success ? "#DCFCE7" : "#FEE2E2",
-                        dp(12)
-                )
-        );
+        boolean dark = MerchantAppSettings.isDarkMode(this);
+        messageText.setTextColor(Color.parseColor(dark ? (success ? "#70E0AE" : "#FFB4AB") : (success ? "#166534" : "#B91C1C")));
+        messageText.setBackground(authShape(Color.parseColor(dark ? (success ? "#153C32" : "#48272F") : (success ? "#DCFCE7" : "#FEE2E2")), 12));
     }
 
     private void clearMessage() {
@@ -563,8 +469,8 @@ public class LoginActivity extends Activity {
         EditText field = new EditText(this);
         field.setSingleLine(true);
         field.setTextSize(14);
-        field.setTextColor(Color.parseColor("#1F2937"));
-        field.setHintTextColor(Color.parseColor("#98A2B3"));
+        field.setTextColor(inkColor);
+        field.setHintTextColor(mutedColor);
         field.setHint(hint);
         field.setInputType(inputType);
         field.setPadding(
@@ -573,14 +479,7 @@ public class LoginActivity extends Activity {
                 hasEye ? dp(52) : dp(18),
                 0
         );
-        field.setBackground(
-                roundStroke(
-                        "#FFFFFF",
-                        "#D8E1ED",
-                        dp(16),
-                        1
-                )
-        );
+        field.setBackground(authShape(surfaceColor, 16));
         return field;
     }
 

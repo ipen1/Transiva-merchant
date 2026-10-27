@@ -36,13 +36,9 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
 
         addSection(root, "Tampilan", 8);
         LinearLayout card = settingCard();
-        card.addView(toggleRow("Mode Malam",
-                "Aktifkan tema gelap pada seluruh halaman merchant",
-                MerchantAppSettings.isDarkMode(this),
-                (button, checked) -> {
-                    MerchantAppSettings.setDarkMode(this, checked);
-                    recreate();
-                }));
+        card.addView(actionRow("Tema aplikasi", MerchantAppSettings.themeLabel(this)
+                + " • otomatis sesuai perangkat atau pilih manual",
+                () -> MerchantAppSettings.showThemePicker(this)));
         root.addView(card);
 
         addSection(root, "Pembaruan", 18);

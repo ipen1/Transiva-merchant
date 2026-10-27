@@ -37,6 +37,7 @@ public class TransivaMerchantApplication extends Application implements Applicat
 
     @Override public void onActivityResumed(Activity activity) {
         currentActivity = new WeakReference<>(activity);
+        if (!(activity instanceof SplashActivity)) MerchantAppSettings.apply(activity);
 
         // Security guard tetap berjalan seperti sebelumnya.
         if (!(activity instanceof SplashActivity)) {

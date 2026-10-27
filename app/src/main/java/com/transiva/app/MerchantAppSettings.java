@@ -3,6 +3,7 @@ package com.transiva.app;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -22,9 +23,9 @@ import android.widget.TextView;
 import java.util.WeakHashMap;
 
 /**
- * Pusat pengaturan tampilan driver.
+ * Pusat pengaturan tampilan Merchant: sistem, terang, atau gelap.
  *
- * Seluruh halaman customer tetap memakai UI Java programatik yang sudah ada.
+ * Seluruh halaman Merchant tetap memakai UI Java programatik yang sudah ada.
  * Class ini mengubah warna halaman, card, divider, input, bottom navigation,
  * dan tulisan secara otomatis ketika mode gelap aktif, termasuk view yang
  * ditambahkan belakangan dari response API.
@@ -53,12 +54,54 @@ public final class MerchantAppSettings {
                 .getSharedPreferences(PREF, Context.MODE_PRIVATE);
     }
 
+    public static final String SYSTEM = "system", LIGHT = "light", DARK = "dark";
+
+    public static String getThemeMode(Context context) {
+        SharedPreferences pref = prefs(context);
+        if (pref.contains("theme_mode")) {
+            String mode = pref.getString("theme_mode", SYSTEM);
+            return LIGHT.equals(mode) || DARK.equals(mode) ? mode : SYSTEM;
+        }
+        // Preserve a previous manual choice; new installations follow the device.
+        return pref.contains(KEY_DARK) ? (pref.getBoolean(KEY_DARK, false) ? DARK : LIGHT) : SYSTEM;
+    }
+
     public static boolean isDarkMode(Context context) {
-        return prefs(context).getBoolean(KEY_DARK, false);
+        String mode = getThemeMode(context);
+        return DARK.equals(mode) || (SYSTEM.equals(mode) &&
+                (context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                        == Configuration.UI_MODE_NIGHT_YES);
+    }
+
+    public static void setThemeMode(Context context, String mode) {
+        String valid = LIGHT.equals(mode) || DARK.equals(mode) ? mode : SYSTEM;
+        prefs(context).edit().putString("theme_mode", valid).apply();
     }
 
     public static void setDarkMode(Context context, boolean enabled) {
-        prefs(context).edit().putBoolean(KEY_DARK, enabled).apply();
+        setThemeMode(context, enabled ? DARK : LIGHT);
+    }
+
+    public static String themeLabel(Context context) {
+        String mode = getThemeMode(context);
+        return DARK.equals(mode) ? "Gelap" : LIGHT.equals(mode) ? "Terang" : "Ikuti perangkat";
+    }
+
+    public static void showThemePicker(Activity activity) {
+        String mode = getThemeMode(activity);
+        new android.app.AlertDialog.Builder(activity, isDarkMode(activity)
+                ? android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK
+                : android.app.AlertDialog.THEME_DEVICE_DEFAULT_LIGHT)
+                .setTitle("Tema aplikasi")
+                .setSingleChoiceItems(new String[]{"Ikuti perangkat", "Terang", "Gelap"},
+                        DARK.equals(mode) ? 2 : LIGHT.equals(mode) ? 1 : 0, (dialog, which) -> {
+                    String next = which == 2 ? DARK : which == 1 ? LIGHT : SYSTEM;
+                    dialog.dismiss();
+                    if (!next.equals(getThemeMode(activity))) {
+                        setThemeMode(activity, next);
+                        activity.recreate();
+                    }
+                }).setNegativeButton("Batal", null).show();
     }
 
     public static boolean isVibrationEnabled(Context context) {
@@ -73,7 +116,7 @@ public final class MerchantAppSettings {
     public static void apply(Activity activity) {
         final boolean dark = isDarkMode(activity);
 
-        // Activity driver yang masih berada di back stack telah memiliki warna yang
+        // Activity Merchant yang masih berada di back stack telah memiliki warna yang
         // dimutasi langsung. Saat pilihan tema berubah, view lama harus dibuat ulang
         // supaya warna asli mode terang dibangun kembali tanpa menutup aplikasi.
         synchronized (APPLIED_ACTIVITY_THEMES) {
@@ -87,9 +130,9 @@ public final class MerchantAppSettings {
         }
 
         activity.getWindow().setStatusBarColor(
-                dark ? Color.rgb(5, 16, 29) : Color.parseColor("#0B7CFF")
+                dark ? Color.rgb(5, 16, 29) : Color.parseColor("#F4F8FE")
         );
-        activity.getWindow().setNavigationBarColor(Color.rgb(5, 16, 29));
+        activity.getWindow().setNavigationBarColor(dark ? DARK_PAGE : Color.WHITE);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             int flags = activity.getWindow().getDecorView().getSystemUiVisibility();
@@ -101,6 +144,12 @@ public final class MerchantAppSettings {
             activity.getWindow().getDecorView().setSystemUiVisibility(flags);
         }
 
+        if (Build.VERSION.SDK_INT >= 26) {
+            int flags = activity.getWindow().getDecorView().getSystemUiVisibility();
+            activity.getWindow().getDecorView().setSystemUiVisibility(dark
+                    ? flags & ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                    : flags | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
         View content = activity.findViewById(android.R.id.content);
         if (content == null) return;
 

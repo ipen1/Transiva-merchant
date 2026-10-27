@@ -51,6 +51,8 @@ public class MerchantBaseActivity extends Activity {
     protected final int BG = Color.parseColor("#F4F8FE");
 
     @Override protected void onCreate(Bundle b){
+        setTheme(MerchantAppSettings.isDarkMode(this) ? android.R.style.Theme_Material_NoActionBar
+                : android.R.style.Theme_Material_Light_NoActionBar);
         super.onCreate(b);
         try {
             getWindow().setStatusBarColor(Color.parseColor("#F4F8FE"));
