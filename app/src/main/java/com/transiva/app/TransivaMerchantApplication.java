@@ -45,6 +45,7 @@ public class TransivaMerchantApplication extends Application implements Applicat
 
                 if (session.isLoggedIn()
                         && "merchant".equalsIgnoreCase(session.getRole())) {
+                    MerchantPushRegistration.sync(activity, false);
                     RootSecurityGuard.protect(activity);
                     if(activity instanceof MerchantBaseActivity) MerchantCrashReporter.reportPending((MerchantBaseActivity)activity);
                 }

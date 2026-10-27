@@ -24,6 +24,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
     private static final String CHANNEL_CHAT = "transiva_merchant_driver_chat_v1";
     private static final long DEDUPE_WINDOW_MS = 8000L;
 
+    @Override public void onNewToken(String token) {
+        MerchantPushRegistration.onToken(this, token);
+    }
+
     @Override
     public void onMessageReceived(RemoteMessage message) {
         Map<String, String> data = message.getData();
@@ -55,7 +59,21 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             return;
         }
 
-        String signal = (type + " " + status + " " + title + " " + body)
+        SessionManager session = new SessionManager(this);
+        if (!session.isLoggedIn() || !"merchant".equalsIgnoreCase(session.getRole())) return;
+        String targetUser = value(data, "target_user_id", "");
+        if (!targetUser.isEmpty() && !targetUser.equals(session.getUserId())) return;
+        if (!value(data, "target_app_scope", "merchant").equals("merchant")) return;
+        String targetSession = value(data, "target_session_hash", "");
+        try {
+            if (!targetSession.isEmpty() && !targetSession.equals(MerchantPushRegistration.hash(session.getToken()))) return;
+            long expiry = Long.parseLong(value(data, "merchant_expires_epoch", "0"));
+            if (expiry > 0 && System.currentTimeMillis() / 1000L >= expiry) return;
+        } catch (Exception invalid) { return; }
+
+        getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit()
+                .putLong("received_at", System.currentTimeMillis()).putString("display", "Push diterima").apply();
+        String signal = (type + " " + value(data, "event", "") + " " + status + " " + title + " " + body)
                 .toLowerCase(Locale.US);
         boolean incomingOrder = isIncomingOrder(signal);
         boolean driverArrived = isDriverArrived(signal);
@@ -82,10 +100,10 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         // Refresh visible screens immediately. Polling remains only as a fallback.
         MerchantRealtime.publish(this, incomingOrder ? "new_order" : (driverArrived ? "driver_arrived" : (merchantDriverChat ? "merchant_driver_chat" : "update")), orderId);
 
-        MerchantNotificationStore.add(this, title, body, type, orderId);
 
         String dedupeKey = (orderId + "|" + type + "|" + status + "|" + title).toLowerCase(Locale.US);
         if (isDuplicate(dedupeKey)) return;
+        MerchantNotificationStore.add(this, title, body, type, orderId);
 
         createChannels();
 
@@ -113,7 +131,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 : (driverArrived ? rawUri(R.raw.order_taken) : rawUri(R.raw.order_notif));
 
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, channelId)
-                .setSmallIcon(getApplicationInfo().icon)
+                .setSmallIcon(R.drawable.ic_stat_merchant_order)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
@@ -126,7 +144,21 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .setVibrate(urgent ? new long[]{0, 450, 180, 450, 180, 700} : new long[]{0, 250});
 
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm != null) nm.notify(requestCode, b.build());
+        if (nm == null) return;
+        try {
+            boolean enabled = androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled();
+            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(channelId) != null)
+                enabled = enabled && nm.getNotificationChannel(channelId).getImportance() != NotificationManager.IMPORTANCE_NONE;
+            if (!enabled) {
+                getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit().putString("display", "Notifikasi/kanal dinonaktifkan").apply();
+                return;
+            }
+            nm.notify(requestCode, b.build());
+            getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit()
+                    .putString("display", "Notifikasi ditampilkan").putLong("displayed_at", System.currentTimeMillis()).apply();
+        } catch (RuntimeException error) {
+            getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit().putString("display", "Gagal menampilkan notifikasi").apply();
+        }
     }
 
     private boolean isDuplicate(String key) {
@@ -151,7 +183,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
     }
 
     private boolean isIncomingOrder(String signal) {
-        return signal != null && (signal.contains("new_order")
+        return signal != null && (signal.contains("new_food_order")
+                || signal.contains("merchant_food_order")
+                || signal.contains("new_order")
                 || signal.contains("order_new")
                 || signal.contains("order_created")
                 || signal.contains("incoming_order")
