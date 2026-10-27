@@ -86,28 +86,30 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         TextView section=tv("Kelola usaha",14,NAVY,true);section.setPadding(0,dp(12),0,dp(6));root.addView(section);
         grid=new LinearLayout(this);grid.setOrientation(LinearLayout.VERTICAL);root.addView(grid);
         LinearLayout r1=shortcutRow();grid.addView(r1);
-        ordersTile=orderTile(r1);tile(r1,"＋","Tambah Menu",()->open(MerchantAddMenuActivity.class));
+        ordersTile=orderTile(r1);tile(r1,"＋","Tambah Menu",()->open(MerchantMenuListActivity.class));
         LinearLayout r2=shortcutRow();grid.addView(r2);
         tile(r2,"◷","Operasional",()->open(MerchantOperationsActivity.class));
         tile(r2,"Rp","Keuangan",()->open(MerchantFinanceActivity.class));
         LinearLayout r3=shortcutRow();grid.addView(r3);
         tile(r3,"▥","Analitik",()->open(MerchantAnalyticsActivity.class));
-        tile(r3,"◉","Kabar Mitra",()->open(MerchantKabarMitraActivity.class));
+        tile(r3,"♧","Pengikut Toko",()->openFollowers());
         Button refresh=outlineBtn("↻ Perbarui ringkasan");refresh.setOnClickListener(v->loadAll());root.addView(refresh);
     }
     private LinearLayout shortcutRow(){LinearLayout r=row();if(stackControls())r.setOrientation(LinearLayout.VERTICAL);return r;}
+    private void openFollowers(){
+        Intent i=new Intent(this,MerchantKabarMitraActivity.class);
+        i.putExtra("show_followers",true);startActivity(i);
+    }
     private void showMore(){
         new android.app.AlertDialog.Builder(this).setTitle("Menu Merchant")
-            .setItems(new String[]{"Profil toko","Daftar menu","Rating & ulasan","Trans Asisten","Pengikut toko","Notifikasi","Diagnostik","Pengaturan"},(d,w)->{
+            .setItems(new String[]{"Profil toko","Rating & ulasan","Trans Asisten","Notifikasi","Diagnostik","Pengaturan"},(d,w)->{
                 switch(w){
                     case 0:open(MerchantRestaurantProfileActivity.class);break;
-                    case 1:open(MerchantMenuListActivity.class);break;
-                    case 2:open(MerchantReviewsActivity.class);break;
-                    case 3:open(MerchantTransAssistantActivity.class);break;
-                    case 4:Intent i=new Intent(this,MerchantKabarMitraActivity.class);i.putExtra("show_followers",true);startActivity(i);break;
-                    case 5:open(MerchantNotificationCenterActivity.class);break;
-                    case 6:open(MerchantDiagnosticsActivity.class);break;
-                    case 7:open(MerchantSettingsActivity.class);break;
+                    case 1:open(MerchantReviewsActivity.class);break;
+                    case 2:open(MerchantTransAssistantActivity.class);break;
+                    case 3:open(MerchantNotificationCenterActivity.class);break;
+                    case 4:open(MerchantDiagnosticsActivity.class);break;
+                    case 5:open(MerchantSettingsActivity.class);break;
                 }
             }).setNegativeButton("Tutup",null).show();
     }

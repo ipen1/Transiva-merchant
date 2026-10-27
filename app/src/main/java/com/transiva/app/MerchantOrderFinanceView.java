@@ -55,47 +55,37 @@ final class MerchantOrderFinanceView {
             grossup = foodTotal - merchantNet;
         }
 
-        LinearLayout card = new LinearLayout(a);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(a, 13), dp(a, 12), dp(a, 13), dp(a, 12));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(a, 10), 0, dp(a, 8));
-        card.setLayoutParams(lp);
-        card.setBackground(a.round(Color.parseColor("#F8FAFC"), dp(a, 14)));
-
-        card.addView(text(a, "Rincian Pembayaran Merchant", 14, Color.parseColor("#102A43"), true));
-        card.addView(row(a, "Total menu customer (termasuk gross-up)", money(foodTotal), false));
-        if (grossup > 0) card.addView(row(a, "Gross-up (di luar hak merchant)", "- " + money(grossup), false));
-        if (merchantDiscount > 0) card.addView(row(a, "Diskon merchant (sudah diterapkan)", money(merchantDiscount), false));
-        card.addView(divider(a));
-        card.addView(row(a, "TOTAL DITERIMA MERCHANT", money(merchantNet), true));
-
-        TextView netInfo = text(a, "✓ Total diterima merchant = harga bersih makanan/opsi. Gross-up dan ongkir tidak masuk hak merchant.", 11, Color.parseColor("#137333"), true);
-        netInfo.setPadding(0, dp(a, 5), 0, 0);
-        card.addView(netInfo);
-
-        if (deliveryFee > 0) {
-            card.addView(divider(a));
-            card.addView(row(a, "Ongkir customer", money(deliveryFee), false));
-            TextView shipInfo = text(a, "Ongkir adalah hak pengantaran/driver dan tidak dihitung ke pendapatan merchant.", 11, Color.parseColor("#667085"), false);
-            card.addView(shipInfo);
-        }
-        if (voucher > 0) card.addView(row(a, "Voucher / subsidi Transiva", "- " + money(voucher), false));
-        if (customerTotal > 0) card.addView(row(a, "Total akhir customer", money(customerTotal), false));
-
+        boolean dark=MerchantAppSettings.isDarkMode(a);
+        LinearLayout card=new LinearLayout(a);card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(a,10),dp(a,10),dp(a,10),dp(a,6));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(a,8),0,dp(a,6));card.setLayoutParams(lp);
+        card.setBackground(a.round(Color.parseColor(dark?"#17334E":"#EDF5FF"),dp(a,12)));
+        card.addView(row(a,"Pendapatan toko",money(merchantNet),true));
+        TextView explanation=text(a,"Bersih untuk toko, tanpa biaya layanan dan ongkir.",11,a.MUTED,false);card.addView(explanation);
+        LinearLayout details=new LinearLayout(a);details.setOrientation(LinearLayout.VERTICAL);details.setVisibility(android.view.View.GONE);
+        details.addView(row(a,"Harga menu di aplikasi",money(foodTotal),false));
+        if(grossup>0)details.addView(row(a,"Biaya layanan harga menu","− "+money(grossup),false));
+        if(merchantDiscount>0)details.addView(row(a,"Diskon toko (sudah dihitung)",money(merchantDiscount),false));
+        if(deliveryFee>0)details.addView(row(a,"Ongkir untuk kurir",money(deliveryFee),false));
+        if(voucher>0)details.addView(row(a,"Voucher Transiva","− "+money(voucher),false));
+        if(customerTotal>0)details.addView(row(a,"Total pembayaran pelanggan",money(customerTotal),false));
+        TextView toggle=text(a,"Lihat rincian pembayaran ▾",12,dark?Color.parseColor("#79BCFF"):a.BLUE,true);
+        toggle.setMinHeight(dp(a,48));toggle.setGravity(Gravity.CENTER_VERTICAL);
+        toggle.setOnClickListener(v->{boolean show=details.getVisibility()!=android.view.View.VISIBLE;details.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);toggle.setText(show?"Tutup rincian pembayaran ▴":"Lihat rincian pembayaran ▾");});
+        card.addView(toggle);card.addView(details);
         parent.addView(card);
     }
 
     private static LinearLayout row(MerchantBaseActivity a, String label, String value, boolean strong) {
         LinearLayout r = new LinearLayout(a);
-        r.setOrientation(LinearLayout.HORIZONTAL);
-        r.setGravity(Gravity.CENTER_VERTICAL);
-        r.setPadding(0, dp(a, 4), 0, dp(a, 4));
-        TextView l = text(a, label, strong ? 14 : 12, strong ? Color.parseColor("#102A43") : Color.parseColor("#667085"), strong);
-        TextView v = text(a, value, strong ? 15 : 12, strong ? Color.parseColor("#137333") : Color.parseColor("#344054"), strong);
-        v.setGravity(Gravity.END);
-        r.addView(l, new LinearLayout.LayoutParams(0, -2, 1));
-        r.addView(v);
+        boolean stack=a.stackControls();r.setOrientation(stack?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);r.setPadding(0,dp(a,4),0,dp(a,4));
+        TextView l=text(a,label,strong?13:12,a.MUTED,strong);
+        TextView v=text(a,value,strong?18:12,strong?a.NAVY:a.TEXT,strong);
+        v.setGravity(stack?Gravity.START:Gravity.END);
+        r.addView(l,new LinearLayout.LayoutParams(stack?-1:0,-2,stack?0:1));
+        // Give long currency amounts a bounded share so labels can wrap on small screens.
+        r.addView(v,new LinearLayout.LayoutParams(stack?-1:0,-2,stack?0:1));
         return r;
     }
 
@@ -109,12 +99,7 @@ final class MerchantOrderFinanceView {
     }
 
     private static TextView text(MerchantBaseActivity a, String s, int sp, int color, boolean bold) {
-        TextView t = new TextView(a);
-        t.setText(s);
-        t.setTextSize(sp);
-        t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        return t;
+        return a.tv(s,sp,color,bold);
     }
 
     private static long merchantNetFromItems(JSONObject order) {

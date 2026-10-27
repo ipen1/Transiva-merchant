@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -298,67 +299,53 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         String status = effectiveStatus(o);
         boolean pending = "pending".equalsIgnoreCase(status);
 
-        int borderColor = pending ? Color.parseColor("#EF4444") : BLUE;
-        int bgColor = pending ? Color.parseColor("#FFF5F5") : Color.parseColor("#F0F7FF");
-        box.setBackground((focused || pending) ? stroke(bgColor, borderColor, dp(18)) : round(Color.WHITE, dp(18)));
-        box.setElevation(pending ? dp(7) : dp(2));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 0, 0, dp(8));
-        box.setLayoutParams(lp);
-
-        if (pending) {
-            TextView urgent = tv("⚡ ORDER BARU • SEGERA KONFIRMASI", 12, Color.parseColor("#D92D20"), true);
-            urgent.setPadding(dp(10), dp(7), dp(10), dp(7));
-            urgent.setGravity(Gravity.CENTER);
-            urgent.setBackground(round(Color.parseColor("#FEE4E2"), dp(12)));
-            box.addView(urgent);
-            String age = orderAge(o);
-            String deadline = responseDeadline(o);
-            if (!age.isEmpty()) {
-                TextView ageText = tv(age + (deadline.isEmpty() ? "" : " • " + deadline), 11, Color.parseColor("#B42318"), true);
-                ageText.setGravity(Gravity.CENTER);
-                ageText.setPadding(0, dp(5), 0, dp(8));
+        boolean dark=MerchantAppSettings.isDarkMode(this);
+        int edge=focused?BLUE:Color.parseColor(dark?"#2D435C":"#DCE6F1");
+        box.setBackground(stroke(Color.WHITE,edge,dp(16)));box.setElevation(dp(1));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(10));box.setLayoutParams(lp);
+        TextView heading=tv(pending?"Pesanan baru":statusLabel(status),17,NAVY,true);box.addView(heading);
+        // Keep the full identifier in the disclosure and every API action.
+        String shortId=displayId.lastIndexOf('-')>=0?displayId.substring(displayId.lastIndexOf('-')+1):(displayId.length()>8?displayId.substring(displayId.length()-8):displayId);
+        TextView ref=tv("#"+(shortId.isEmpty()?"—":shortId),11,MUTED,false);box.addView(ref);
+        if(pending){
+            TextView prompt=tv("Periksa pesanan, lalu pilih Terima atau Tolak.",12,MUTED,false);
+            prompt.setPadding(0,dp(5),0,dp(3));box.addView(prompt);
+            String age=orderAge(o),deadline=responseDeadline(o);
+            if(!age.isEmpty()||!deadline.isEmpty()){
+                TextView ageText=tv(age+(age.isEmpty()||deadline.isEmpty()?"":" • ")+deadline,11,MUTED,false);
+                if(deadline.contains("melewati"))ageText.setTextColor(Color.parseColor(dark?"#FFD28C":"#9A6700"));
                 box.addView(ageText);
             }
         }
-
-        String customer = s(o, "customer_name", "customer", "name");
-        String phone = s(o, "customer_phone", "phone");
-        String address = s(o, "delivery_address", "destination_address", "address");
-        String driver = s(o, "driver", "driver_name");
-        String note = s(o, "customer_note", "note", "notes", "catatan");
-
-        LinearLayout head = new LinearLayout(this);
-        head.setOrientation(stackControls()?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
-        head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView ot = tv("Order #" + (displayId.isEmpty() ? "-" : displayId), 17, NAVY, true);
-        head.addView(ot, actionLp());
-        TextView badge = tv(statusLabel(status), 12, pending ? Color.parseColor("#D92D20") : BLUE, true);
-        badge.setPadding(dp(10), dp(5), dp(10), dp(5));
-        badge.setBackground(round(pending ? Color.parseColor("#FEE4E2") : Color.parseColor("#EAF3FF"), dp(20)));
-        head.addView(badge);
-        box.addView(head);
-
-        String cook = s(o, "cook_minutes", "estimated_cook_minutes");
-        if (!cook.isEmpty()) box.addView(tv("⏱ Estimasi masak: " + cook + " menit", 12, Color.parseColor("#7A4D00"), true));
-        if (!customer.isEmpty()) box.addView(tv("Customer: " + customer + (phone.isEmpty() ? "" : " • " + phone), 13, TEXT, true));
-        if (!address.isEmpty()) box.addView(tv("Tujuan: " + address, 13, MUTED, false));
-        box.addView(tv("Driver: " + (driver.isEmpty() ? "Belum ada driver" : driver), 13, MUTED, false));
-        addItems(box, o);
-
-        if (!note.isEmpty()) {
-            TextView nv = tv("Catatan customer: “" + note + "”", 13, Color.parseColor("#7A4D00"), true);
-            nv.setPadding(dp(12), dp(10), dp(12), dp(10));
-            nv.setBackground(round(Color.parseColor("#FFF7E6"), dp(12)));
-            box.addView(nv);
+        String customer=s(o,"customer_name","customer","name"),phone=s(o,"customer_phone","phone");
+        String address=s(o,"delivery_address","destination_address","address"),driver=s(o,"driver","driver_name");
+        String note=s(o,"customer_note","note","notes","catatan");
+        if(!customer.isEmpty()){
+            TextView who=tv("Untuk "+customer,13,TEXT,true);who.setPadding(0,dp(8),0,dp(4));box.addView(who);
         }
-
-        MerchantOrderFinanceView.attach(this, box, o);
-        MerchantOrderProgressView.attach(this, box, o);
-        if (!historyMode) {
-            addActions(box, o, actionId, displayId, status);
-            if (!driver.isEmpty()) addDriverChat(box, o, actionId, displayId, driver);
+        addItems(box,o);
+        if(!note.isEmpty()){
+            TextView nv=tv("Catatan: "+note,13,TEXT,true);nv.setPadding(dp(10),dp(8),dp(10),dp(8));
+            nv.setBackground(round(Color.parseColor(dark?"#23364A":"#EDF5FF"),dp(10)));box.addView(nv);
         }
+        MerchantOrderFinanceView.attach(this,box,o);
+        // Transaction buttons stay above secondary information and never depend on disclosure state.
+        if(!historyMode){
+            addActions(box,o,actionId,displayId,status);
+            if(!driver.isEmpty())addDriverChat(box,o,actionId,displayId,driver);
+        }
+        LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);
+        info.addView(tv("Nomor lengkap: "+displayId,12,MUTED,false));
+        if(!phone.isEmpty())info.addView(tv("Telepon pelanggan: "+phone,12,TEXT,false));
+        if(!address.isEmpty())info.addView(tv("Alamat pengantaran: "+address,12,TEXT,false));
+        info.addView(tv("Kurir: "+(driver.isEmpty()?"Belum ditugaskan":driver),12,MUTED,false));
+        String cook=s(o,"cook_minutes","estimated_cook_minutes");
+        try{if(Integer.parseInt(cook)>0)info.addView(tv("Waktu persiapan: "+cook+" menit",12,MUTED,false));}catch(Exception ignored){}
+        info.setVisibility(View.GONE);
+        Button infoToggle=outlineBtn("Info pelanggan & pengantaran ▾");
+        infoToggle.setOnClickListener(v->{boolean show=info.getVisibility()!=View.VISIBLE;info.setVisibility(show?View.VISIBLE:View.GONE);infoToggle.setText(show?"Tutup informasi ▴":"Info pelanggan & pengantaran ▾");});
+        box.addView(infoToggle);box.addView(info);
+        MerchantOrderProgressView.attach(this,box,o);
         return box;
     }
 
@@ -384,14 +371,14 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private String responseDeadline(JSONObject o) {
         String raw=s(o,"created_at","order_date","created"); if(raw.isEmpty()) return "";
-        try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US);long elapsed=Math.max(0,MerchantServerClock.now()-f.parse(raw).getTime());long left=5*60000L-elapsed;if(left<=0)return "⚠ melewati target respons 5 menit";long sec=(left+999)/1000;return "Target respons "+(sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}catch(Exception e){return "";}
+        try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US);long elapsed=Math.max(0,MerchantServerClock.now()-f.parse(raw).getTime());long left=5*60000L-elapsed;if(left<=0)return "Sudah melewati anjuran respons 5 menit";long sec=(left+999)/1000;return "Usahakan konfirmasi dalam "+(sec/60)+":"+String.format(Locale.US,"%02d",sec%60);}catch(Exception e){return "";}
     }
 
     private void addItems(LinearLayout box, JSONObject order) {
         JSONArray items = order.optJSONArray("items");
-        box.addView(tv("Detail Pesanan", 14, NAVY, true));
+        TextView itemHeading=tv("Yang dipesan",12,MUTED,true);itemHeading.setPadding(0,dp(6),0,dp(4));box.addView(itemHeading);
         if (items == null || items.length() == 0) {
-            box.addView(tv("Detail item belum dikirim API.", 13, Color.parseColor("#B54708"), false));
+            box.addView(tv("Rincian menu belum tersedia. Coba perbarui pesanan.", 13, Color.parseColor("#B54708"), false));
             return;
         }
         for (int i = 0; i < items.length(); i++) {
@@ -409,11 +396,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             long merchantUnit = Math.max(0, merchantBase + optionTotal);
             String variant = s(it, "variant", "variant_name", "option", "options");
             String note = s(it, "note", "notes", "item_note", "catatan");
-            box.addView(tv(qty + "x " + (name.isEmpty() ? "Item" : name) + (subtotal > 0 ? "  •  Customer " + rupiah(subtotal) : ""), 14, TEXT, true));
+            TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),15,TEXT,true);itemName.setPadding(0,dp(4),0,dp(3));box.addView(itemName);
             if (discountPct > 0 && originalBase > merchantBase) {
                 box.addView(tv("   Diskon merchant " + (discountPct == Math.rint(discountPct) ? String.valueOf((int) discountPct) : String.valueOf(discountPct)) + "% • Harga bersih dasar " + rupiah(merchantBase), 12, Color.parseColor("#137333"), true));
             }
-            if (merchantUnit > 0) box.addView(tv("   Diterima merchant: " + rupiah(merchantUnit * qty) + (grossupUnit > 0 ? " • Gross-up: " + rupiah(grossupUnit * qty) : ""), 12, MUTED, false));
             if (!variant.isEmpty()) box.addView(tv("   Pilihan: " + variant, 12, MUTED, false));
             if (!note.isEmpty()) box.addView(tv("   Catatan: " + note, 12, Color.parseColor("#7A4D00"), false));
         }
@@ -422,19 +408,13 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void addActions(LinearLayout box, JSONObject order, String actionId, String displayId, String status) {
         String st = status == null ? "" : status.trim().toLowerCase(Locale.US);
         if ("pending".equals(st)) {
-            LinearLayout a = row();
-            if (compactScreen()) a.setOrientation(LinearLayout.VERTICAL);
-            Button accept = btn(updating ? "Memproses..." : "✓ Terima");
-            Button reject = outlineBtn("✕ Tolak");
+            LinearLayout a = actionRow();
+            Button accept = btn(updating ? "Memproses..." : "Terima pesanan");
+            Button reject = outlineBtn("Tolak");
             accept.setEnabled(!updating);
             reject.setEnabled(!updating);
-            if (stackControls()) {
-                a.addView(accept, new LinearLayout.LayoutParams(-1, -2));
-                a.addView(reject, new LinearLayout.LayoutParams(-1, -2));
-            } else {
-                a.addView(accept, new LinearLayout.LayoutParams(0, -2, 1));
-                a.addView(reject, new LinearLayout.LayoutParams(0, -2, 1));
-            }
+            a.addView(accept, actionLp());
+            a.addView(reject, actionLp());
             box.addView(a);
             accept.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showCookTime(actionId, displayId); });
             reject.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showRejectReasons(actionId, displayId); });
@@ -456,7 +436,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         final String[] labels = {"10 menit", "15 menit", "20 menit", "30 menit", "45 menit"};
         final int[] mins = {10, 15, 20, 30, 45};
         new AlertDialog.Builder(this)
-                .setTitle("Estimasi waktu memasak")
+                .setTitle("Berapa lama menyiapkan pesanan?")
                 .setItems(labels, (d, w) -> update(id, displayId, "merchant_accepted", "", mins[w]))
                 .setNegativeButton("Batal", null)
                 .show();

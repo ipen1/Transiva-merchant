@@ -18,7 +18,7 @@ public final class MerchantBottomNavigation {
     private static final String ACTIVE_COLOR = "#0B7CFF";
     private static final String INACTIVE_COLOR = "#64748B";
 
-    public enum ActiveItem { HOME, ORDERS, MENU, REVIEWS, SETTINGS }
+    public enum ActiveItem { HOME, ORDERS, STORIES, REVIEWS, SETTINGS }
 
     private MerchantBottomNavigation() {}
 
@@ -32,7 +32,7 @@ public final class MerchantBottomNavigation {
 
         add(nav, item(activity, "Beranda", "ic_nav_home", ActiveItem.HOME, activeItem, MerchantDashboardActivity.class));
         add(nav, item(activity, "Pesanan", "ic_nav_activity", ActiveItem.ORDERS, activeItem, MerchantOrdersActivity.class));
-        add(nav, item(activity, "Menu", "ic_service_food", ActiveItem.MENU, activeItem, MerchantMenuListActivity.class));
+        add(nav, item(activity, "Cerita", "ic_nav_stories", ActiveItem.STORIES, activeItem, MerchantKabarMitraActivity.class));
         add(nav, item(activity, "Ulasan", "ic_nav_chat", ActiveItem.REVIEWS, activeItem, MerchantReviewsActivity.class));
         add(nav, item(activity, "Pengaturan", "ic_nav_profile", ActiveItem.SETTINGS, activeItem, MerchantSettingsActivity.class));
 
@@ -45,7 +45,7 @@ public final class MerchantBottomNavigation {
 
     public static ActiveItem resolve(Activity activity) {
         if (activity instanceof MerchantOrdersActivity) return ActiveItem.ORDERS;
-        if (activity instanceof MerchantMenuListActivity || activity instanceof MerchantAddMenuActivity || activity instanceof MerchantCategoriesActivity) return ActiveItem.MENU;
+        if (activity instanceof MerchantKabarMitraActivity && !activity.getIntent().getBooleanExtra("show_followers",false)) return ActiveItem.STORIES;
         if (activity instanceof MerchantReviewsActivity) return ActiveItem.REVIEWS;
         if (activity instanceof MerchantSettingsActivity || activity instanceof MerchantRestaurantProfileActivity || activity instanceof MerchantOperationsActivity || activity instanceof MerchantDiagnosticsActivity || activity instanceof MerchantDeviceSessionsActivity || activity instanceof MerchantPrivacyActivity || activity instanceof MerchantLocationActivity) return ActiveItem.SETTINGS;
         return ActiveItem.HOME;
@@ -62,7 +62,8 @@ public final class MerchantBottomNavigation {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4));
-        boolean samePage = activity.getClass() == target;
+        boolean samePage = activity.getClass() == target
+                && !(activity instanceof MerchantKabarMitraActivity && activity.getIntent().getBooleanExtra("show_followers",false));
         root.setClickable(!samePage); root.setFocusable(!samePage);
         root.setMinimumHeight(dp(activity,48));
         root.setContentDescription(label);
@@ -108,6 +109,7 @@ public final class MerchantBottomNavigation {
     private static void open(Activity activity, Class<?> target) {
         if (activity.isFinishing() || activity.isDestroyed()) return;
         Intent i = new Intent(activity, target);
+        if(target == MerchantKabarMitraActivity.class) i.putExtra("show_followers",false);
         i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         activity.startActivity(i);
         activity.overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);

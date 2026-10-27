@@ -70,102 +70,59 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private void build() {
-        root = new LinearLayout(this);
-        setContentView(page(root));
-        root.addView(title(editMode ? "Edit Menu" : "Tambah Menu"));
-        root.addView(sub("Lengkapi menu yang akan dilihat pelanggan."));
-
-        root.addView(label("Nama Menu"));
-        nameInput = input("Contoh: Nasi Goreng Spesial", InputType.TYPE_CLASS_TEXT);
-        root.addView(nameInput);
-
-        root.addView(label("Harga Asli Merchant"));
-        priceInput = input("Contoh: 20000", InputType.TYPE_CLASS_NUMBER);
-        root.addView(priceInput);
-
-        root.addView(label("Potongan Harga Merchant"));
-        discountActiveInput = new CheckBox(this);
-        discountActiveInput.setText("Aktifkan diskon realtime untuk menu ini");
-        root.addView(discountActiveInput);
-        discountInput = input("Persen diskon, contoh: 10", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        root.addView(discountInput);
-        root.addView(sub("Diskon berasal dari merchant dan langsung tampil ke customer. Maksimal 90%."));
-
-        root.addView(label("Kategori"));
-        root.addView(categorySelector());
-
-        root.addView(label("Deskripsi Menu"));
-        descriptionInput = input("Contoh: Nasi goreng dengan ayam dan telur", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        descriptionInput.setMinLines(2);
-        descriptionInput.setMinimumHeight(dp(72));
-        descriptionInput.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));
-        root.addView(descriptionInput);
-
-        trackStockInput = new CheckBox(this);
-        trackStockInput.setText("Gunakan stok terbatas / tandai habis otomatis");
-        root.addView(trackStockInput);
-        stockInput = input("Jumlah stok, contoh: 25", InputType.TYPE_CLASS_NUMBER);
-        root.addView(stockInput);
-
-        LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.VERTICAL);
-        options.setVisibility(editMode?View.VISIBLE:View.GONE);
-        Button optionsToggle=outlineBtn("Varian & topping ⋯");
-        optionsToggle.setOnClickListener(v->options.setVisibility(options.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
-        root.addView(optionsToggle);
-        options.addView(sectionTitle("Varian"));
-        options.addView(sub("Nama varian dan tambahan harga dibuat berdampingan. Varian pertama otomatis Reguler • Rp 0."));
-        variantsBox = new LinearLayout(this);
-        variantsBox.setOrientation(LinearLayout.VERTICAL);
-        options.addView(variantsBox);
-        addOptionRow(variantsBox, variantRows, "Reguler", "0", true, "Nama varian");
-        Button addVariant = outlineBtn("＋ Tambah Varian");
-        addVariant.setOnClickListener(v -> addOptionRow(variantsBox, variantRows, "", "", false, "Nama varian"));
-        options.addView(addVariant);
-
-        options.addView(sectionTitle("Topping"));
-        options.addView(sub("Isi nama topping dan harga tambahannya. Kosongkan jika menu tidak memakai topping."));
-        toppingsBox = new LinearLayout(this);
-        toppingsBox.setOrientation(LinearLayout.VERTICAL);
-        options.addView(toppingsBox);
-        addOptionRow(toppingsBox, toppingRows, "", "", false, "Nama topping");
-        Button addTopping = outlineBtn("＋ Tambah Topping");
-        addTopping.setOnClickListener(v -> addOptionRow(toppingsBox, toppingRows, "", "", false, "Nama topping"));
-        options.addView(addTopping);
-
-        root.addView(options);
-        originalText = card("Harga Asli: Rp 0\nFee Gross Up: memuat...\nHarga Tampil: Rp 0");
-        root.addView(originalText);
-
-        root.addView(label("Preview Tampilan di Aplikasi"));
+        root=new LinearLayout(this);setContentView(page(root));
+        root.addView(title(editMode?"Edit Menu":"Tambah Menu"));
+        root.addView(sub("Foto yang jelas dan informasi singkat membantu pelanggan memilih."));
         root.addView(previewCard());
+        pickImageButton=outlineBtn("Pilih foto menu");pickImageButton.setOnClickListener(v->chooseImage());root.addView(pickImageButton);
+        fileText=sub("Foto dioptimalkan otomatis. Tanpa foto, gambar bawaan akan dipakai.");root.addView(fileText);
 
+        LinearLayout core=formSection("Informasi menu");root.addView(core);
+        core.addView(label("Nama menu"));nameInput=input("Contoh: Risol Mayo",InputType.TYPE_CLASS_TEXT);core.addView(nameInput);
+        core.addView(label("Harga untuk toko (Rp)"));priceInput=input("Contoh: 10000",InputType.TYPE_CLASS_NUMBER);core.addView(priceInput);
+        core.addView(label("Kategori"));core.addView(categorySelector());
+        core.addView(label("Deskripsi • opsional"));descriptionInput=input("Isi, rasa, atau ukuran porsi",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        descriptionInput.setMinLines(2);descriptionInput.setMaxLines(4);core.addView(descriptionInput);
+
+        LinearLayout extras=formSection("Pengaturan tambahan");root.addView(extras);
+        LinearLayout advanced=new LinearLayout(this);advanced.setOrientation(LinearLayout.VERTICAL);advanced.setVisibility(editMode?View.VISIBLE:View.GONE);
+        Button toggle=outlineBtn(editMode?"Tutup stok, diskon & pilihan ▴":"Atur stok, diskon & pilihan ▾");
+        toggle.setOnClickListener(v->{boolean show=advanced.getVisibility()!=View.VISIBLE;advanced.setVisibility(show?View.VISIBLE:View.GONE);toggle.setText(show?"Tutup stok, diskon & pilihan ▴":"Atur stok, diskon & pilihan ▾");});extras.addView(toggle);
+        trackStockInput=new CheckBox(this);trackStockInput.setText("Batasi stok menu");trackStockInput.setMinHeight(dp(48));trackStockInput.setTextColor(TEXT);advanced.addView(trackStockInput);
+        stockInput=input("Jumlah stok tersedia",InputType.TYPE_CLASS_NUMBER);advanced.addView(stockInput);
+        discountActiveInput=new CheckBox(this);discountActiveInput.setText("Berikan diskon • maksimal 90%");discountActiveInput.setMinHeight(dp(48));discountActiveInput.setTextColor(TEXT);advanced.addView(discountActiveInput);
+        discountInput=input("Persen diskon, contoh: 10",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);advanced.addView(discountInput);
+        advanced.addView(sectionTitle("Varian"));
+        variantsBox=new LinearLayout(this);variantsBox.setOrientation(LinearLayout.VERTICAL);advanced.addView(variantsBox);
+        addOptionRow(variantsBox,variantRows,"Reguler","0",true,"Nama varian");
+        Button addVariant=outlineBtn("＋ Varian");addVariant.setOnClickListener(v->addOptionRow(variantsBox,variantRows,"","",false,"Nama varian"));advanced.addView(addVariant);
+        advanced.addView(sectionTitle("Topping • opsional"));
+        toppingsBox=new LinearLayout(this);toppingsBox.setOrientation(LinearLayout.VERTICAL);advanced.addView(toppingsBox);
+        addOptionRow(toppingsBox,toppingRows,"","",false,"Nama topping");
+        Button addTopping=outlineBtn("＋ Topping");addTopping.setOnClickListener(v->addOptionRow(toppingsBox,toppingRows,"","",false,"Nama topping"));advanced.addView(addTopping);
+        extras.addView(advanced);
+
+        originalText=card("Menyiapkan ringkasan harga…");root.addView(originalText);
         addWatchers();
-
-        root.addView(sub("Foto dioptimalkan otomatis agar cepat dibuka."));
-        pickImageButton = outlineBtn("📷 Pilih Gambar Menu");
-        pickImageButton.setOnClickListener(v -> chooseImage());
-        root.addView(pickImageButton);
-        fileText = sub("Gambar belum dipilih. Jika kosong, server memakai default.");
-        root.addView(fileText);
-
-        saveMenuButton = btn(editMode ? "Simpan Perubahan" : "Simpan Menu");
-        saveMenuButton.setOnClickListener(v -> save(saveMenuButton));
-        root.addView(saveMenuButton);
-
-        Button back = outlineBtn("← Kembali");
-        back.setOnClickListener(v -> finish());
-        root.addView(back);
+        saveMenuButton=btn(editMode?"Simpan perubahan":"Simpan menu");saveMenuButton.setOnClickListener(v->save(saveMenuButton));root.addView(saveMenuButton);
+        Button back=outlineBtn("Batal / kembali ke menu toko");back.setOnClickListener(v->finish());root.addView(back);
         updatePreview();
+    }
+    private LinearLayout formSection(String title){
+        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(12),dp(10),dp(12),dp(8));
+        card.setBackground(stroke(Color.WHITE,Color.parseColor("#DCE6F1"),dp(14)));
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(4),0,dp(8));card.setLayoutParams(lp);
+        TextView heading=tv(title,14,NAVY,true);heading.setPadding(0,0,0,dp(6));card.addView(heading);return card;
     }
 
     private View categorySelector() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(14), dp(12), dp(12), dp(12));
+        card.setPadding(dp(10), dp(8), dp(10), dp(8));
         card.setBackground(stroke(Color.WHITE, Color.parseColor("#CFE2FF"), dp(16)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(4), 0, dp(12));
+        lp.setMargins(0, dp(3), 0, dp(8));
         card.setLayoutParams(lp);
         card.setMinimumHeight(dp(52));
 
@@ -299,7 +256,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private LinearLayout.LayoutParams heightLp(int h) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(h));
-        lp.setMargins(0, dp(4), 0, dp(12));
+        lp.setMargins(0, dp(3), 0, dp(8));
         return lp;
     }
 
@@ -349,17 +306,17 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         previewIcon = tv("🍽️", 34, BLUE, true);
         previewIcon.setGravity(Gravity.CENTER);
         imgWrap.addView(previewIcon, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(dp(96), dp(96));
+        LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(dp(72), dp(72));
         imgLp.setMargins(0, 0, dp(12), 0);
         box.addView(imgWrap, imgLp);
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
         info.setGravity(Gravity.CENTER_VERTICAL);
-        previewName = tv("Nama menu", 17, NAVY, true);
+        previewName = tv("Foto & pratinjau menu", 15, NAVY, true);
         previewPrice = tv("Rp 0", 16, BLUE, true);
         previewCategory = tv("Kategori", 13, MUTED, false);
-        TextView hint = tv("Harga ini yang tampil di aplikasi", 11, Color.parseColor("#98A2B3"), false);
+        TextView hint = tv("Pratinjau untuk pelanggan", 11, Color.parseColor("#98A2B3"), false);
         info.addView(previewName); info.addView(previewPrice); info.addView(previewCategory); info.addView(hint);
         box.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
         return box;
@@ -414,7 +371,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
         long fee = gross(effectiveOriginal);
         long appPrice = effectiveOriginal + fee;
-        originalText.setText("Harga Asli: " + rupiah(original) + (discountActive ? "\nDiskon Merchant: " + String.format(java.util.Locale.US, "%.0f%%", discountPercent) + " → " + rupiah(effectiveOriginal) : "") + "\nFee Gross Up: " + (grossupLoaded ? rupiah(fee) : "memuat...") + "\nHarga Tampil Customer: " + rupiah(appPrice));
+        originalText.setText("Harga toko: " + rupiah(original) + (discountActive ? "\nDiskon toko: " + String.format(java.util.Locale.US, "%.0f%%", discountPercent) + " → " + rupiah(effectiveOriginal) : "") + "\nBiaya tambahan aplikasi: " + (grossupLoaded ? rupiah(fee) : "memuat...") + "\nHarga untuk pelanggan: " + rupiah(appPrice));
         String name = nameInput.getText().toString().trim();
         previewName.setText(name.isEmpty() ? "Nama menu" : name);
         previewCategory.setText(selectedCategory.isEmpty() ? "Kategori" : selectedCategory);
