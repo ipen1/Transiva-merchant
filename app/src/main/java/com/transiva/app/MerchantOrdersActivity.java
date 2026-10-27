@@ -53,7 +53,14 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         super.onCreate(b);
         focusOrderId = getIntent().getStringExtra("order_id");
         if (focusOrderId == null) focusOrderId = "";
+        if(b!=null){historyMode=b.getBoolean("history",false);focusOrderId=b.getString("focus_order",focusOrderId);}
         build();
+        if(b!=null)periodSpinner.setSelection(b.getInt("period",0));
+    }
+    @Override protected void onSaveInstanceState(Bundle state){
+        state.putBoolean("history",historyMode);state.putString("focus_order",focusOrderId);
+        if(periodSpinner!=null)state.putInt("period",periodSpinner.getSelectedItemPosition());
+        super.onSaveInstanceState(state);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -87,32 +94,40 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void build() {
         root = new LinearLayout(this);
         setContentView(page(root));
-        root.addView(title("Pesanan Merchant"));
-        root.addView(sub("FCM real-time aktif • polling hanya sebagai cadangan"));
+        LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
+        header.addView(title("Pesanan"),new LinearLayout.LayoutParams(0,-2,1));
+        Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui pesanan");
+        refresh.setOnClickListener(v->load(false));header.addView(refresh,new LinearLayout.LayoutParams(dp(48),-2));root.addView(header);
 
         realtimeStatus = tv("● Menghubungkan ke server...", 12, Color.parseColor("#B54708"), true);
-        realtimeStatus.setPadding(dp(12), dp(9), dp(12), dp(9));
-        realtimeStatus.setBackground(round(Color.parseColor("#FFF7E6"), dp(14)));
+        realtimeStatus.setPadding(dp(2), dp(3), dp(2), dp(5));
+        realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
         LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
-        statusLp.setMargins(0, 0, 0, dp(12));
+        statusLp.setMargins(0, 0, 0, dp(5));
         root.addView(realtimeStatus, statusLp);
 
         LinearLayout tabs = row();
         Button active = btn("Aktif");
         Button hist = outlineBtn("Riwayat");
-        tabs.addView(active, new LinearLayout.LayoutParams(0, dp(48), 1));
-        tabs.addView(hist, new LinearLayout.LayoutParams(0, dp(48), 1));
+        tabs.addView(active, new LinearLayout.LayoutParams(0, -2, 1));
+        tabs.addView(hist, new LinearLayout.LayoutParams(0, -2, 1));
         root.addView(tabs);
+        Runnable updateTabs=()->{
+            active.setTextColor(historyMode?BLUE:Color.WHITE);hist.setTextColor(historyMode?Color.WHITE:BLUE);
+            active.setBackground(historyMode?stroke(Color.WHITE,Color.parseColor("#B9D7FF"),dp(12)):round(BLUE,dp(12)));
+            hist.setBackground(historyMode?round(BLUE,dp(12)):stroke(Color.WHITE,Color.parseColor("#B9D7FF"),dp(12)));
+        };
+        updateTabs.run();
         active.setOnClickListener(v -> {
             if (historyMode) {
-                historyMode = false;
+                historyMode = false;updateTabs.run();
                 periodSpinner.setVisibility(Spinner.GONE);
                 load(true);
             }
         });
         hist.setOnClickListener(v -> {
             if (!historyMode) {
-                historyMode = true;
+                historyMode = true;updateTabs.run();
                 periodSpinner.setVisibility(Spinner.VISIBLE);
                 load(true);
             }
@@ -122,7 +137,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         periodSpinner.setAdapter(new ArrayAdapter<>(this,
                 android.R.layout.simple_spinner_dropdown_item,
                 new String[]{"Hari ini", "7 hari", "30 hari", "Semua"}));
-        periodSpinner.setVisibility(Spinner.GONE);
+        periodSpinner.setVisibility(historyMode?Spinner.VISIBLE:Spinner.GONE);
         periodSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> p, android.view.View v, int pos, long id) {
                 if (historyMode) render();
@@ -135,13 +150,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list);
 
-        Button refresh = outlineBtn("↻ Refresh Pesanan");
-        refresh.setOnClickListener(v -> load(false));
-        root.addView(refresh);
-
-        Button back = outlineBtn("← Kembali");
-        back.setOnClickListener(v -> finish());
-        root.addView(back);
     }
 
     private void start() {
@@ -161,13 +169,18 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void setConnectionState(boolean connected, String message) {
         if (realtimeStatus == null) return;
-        realtimeStatus.setText(message);
-        realtimeStatus.setTextColor(Color.parseColor(connected ? "#16803A" : "#D92D20"));
-        realtimeStatus.setBackground(round(Color.parseColor(connected ? "#ECFDF3" : "#FEF3F2"), dp(14)));
+        realtimeStatus.setText(connected ? "● Pesanan tersinkron" : message);
+        realtimeStatus.setTextColor(Color.parseColor(MerchantAppSettings.isDarkMode(this) ? (connected?"#70E0AE":"#FFB4AB") : (connected ? "#16803A" : "#D92D20")));
+        realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
     }
 
     private void load(boolean showLoading) {
-        if (loading) return;
+        if (loading) {
+            if(showLoading){list.removeAllViews();list.addView(card("Memuat pesanan…"));}
+            return;
+        }
+        final boolean requestedHistory=historyMode;
+        final String scope=requestedHistory?"history":"active";
         loading = true;
         if (showLoading && firstLoad) {
             list.removeAllViews();
@@ -180,16 +193,17 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             realtimeStatus.setTextColor(Color.parseColor("#B54708"));
         }
 
-        java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, historyMode ? "orders-history" : "orders-active", () -> {
+        java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, requestedHistory ? "orders-history" : "orders-active", () -> {
             try {
-                String scope = historyMode ? "history" : "active";
                 JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
                 MerchantServerClock.sync(r.optLong("server_time_epoch_ms",0L));
                 JSONArray orders = r.optJSONArray("orders");
                 if (orders == null) orders = new JSONArray();
                 JSONArray finalOrders = orders;
                 runOnUiThread(() -> {
+                    if(isFinishing()||isDestroyed())return;
                     loading = false;
+                    if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
                     cached = finalOrders;
                     degradedOffline=false;
@@ -199,7 +213,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
+                    if(isFinishing()||isDestroyed())return;
                     loading = false;
+                    if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
                     setConnectionState(false, "● Offline • mode baca saja • data terakhir");
                     degradedOffline=true;
@@ -275,7 +291,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private LinearLayout orderView(JSONObject o, boolean focused) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(14), dp(14), dp(14), dp(14));
+        box.setPadding(dp(12), dp(10), dp(12), dp(10));
 
         String displayId = s(o, "order_id", "id");
         String actionId = s(o, "id", "order_numeric_id", "order_db_id", "order_id");
@@ -287,7 +303,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         box.setBackground((focused || pending) ? stroke(bgColor, borderColor, dp(18)) : round(Color.WHITE, dp(18)));
         box.setElevation(pending ? dp(7) : dp(2));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 0, 0, dp(12));
+        lp.setMargins(0, 0, 0, dp(8));
         box.setLayoutParams(lp);
 
         if (pending) {
@@ -313,10 +329,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         String note = s(o, "customer_note", "note", "notes", "catatan");
 
         LinearLayout head = new LinearLayout(this);
-        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setOrientation(stackControls()?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
         head.setGravity(Gravity.CENTER_VERTICAL);
         TextView ot = tv("Order #" + (displayId.isEmpty() ? "-" : displayId), 17, NAVY, true);
-        head.addView(ot, new LinearLayout.LayoutParams(0, -2, 1));
+        head.addView(ot, actionLp());
         TextView badge = tv(statusLabel(status), 12, pending ? Color.parseColor("#D92D20") : BLUE, true);
         badge.setPadding(dp(10), dp(5), dp(10), dp(5));
         badge.setBackground(round(pending ? Color.parseColor("#FEE4E2") : Color.parseColor("#EAF3FF"), dp(20)));
@@ -412,12 +428,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             Button reject = outlineBtn("✕ Tolak");
             accept.setEnabled(!updating);
             reject.setEnabled(!updating);
-            if (compactScreen()) {
-                a.addView(accept, new LinearLayout.LayoutParams(-1, dp(50)));
-                a.addView(reject, new LinearLayout.LayoutParams(-1, dp(50)));
+            if (stackControls()) {
+                a.addView(accept, new LinearLayout.LayoutParams(-1, -2));
+                a.addView(reject, new LinearLayout.LayoutParams(-1, -2));
             } else {
-                a.addView(accept, new LinearLayout.LayoutParams(0, dp(50), 1));
-                a.addView(reject, new LinearLayout.LayoutParams(0, dp(50), 1));
+                a.addView(accept, new LinearLayout.LayoutParams(0, -2, 1));
+                a.addView(reject, new LinearLayout.LayoutParams(0, -2, 1));
             }
             box.addView(a);
             accept.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showCookTime(actionId, displayId); });

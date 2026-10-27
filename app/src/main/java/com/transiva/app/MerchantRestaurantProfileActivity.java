@@ -52,7 +52,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
             public void afterTextChanged(android.text.Editable e){}
         });
 
-        root.addView(sub("✨ AI Resize to WebP aktif — foto besar otomatis diringankan, foto yang sudah kecil tidak dipaksa dikompres lagi."));
+        root.addView(sub("Foto dioptimalkan otomatis sebelum disimpan."));
         pickBannerButton = outlineBtn("🖼️ Pilih Banner Merchant");
         pickBannerButton.setOnClickListener(v -> choose());
         root.addView(pickBannerButton);
@@ -66,7 +66,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         FrameLayout frame = new FrameLayout(this);
         frame.setBackground(round(Color.parseColor("#0A1A2E"), dp(24)));
         frame.setPadding(0, 0, 0, 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(180));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(Math.round(128 * Math.max(1f,getResources().getConfiguration().fontScale))));
         lp.setMargins(0, dp(4), 0, dp(14));
         frame.setLayoutParams(lp);
 
@@ -80,9 +80,10 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         overlay.setPadding(dp(18), dp(16), dp(18), dp(16));
         overlay.setBackgroundColor(Color.parseColor("#66000000"));
 
-        bannerIcon = tv("🏪", 34, Color.WHITE, true);
-        bannerTitle = tv("Merchant Transiva", 24, Color.WHITE, true);
+        bannerIcon = tv("🏪", 22, Color.WHITE, true);
+        bannerTitle = tv("Merchant Transiva", 19, Color.WHITE, true);
         bannerSub = tv("Banner aktif sedang dimuat...", 13, Color.WHITE, false);
+        bannerTitle.setMaxLines(2);bannerTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
         overlay.addView(bannerIcon);
         overlay.addView(bannerTitle);
         overlay.addView(bannerSub);
@@ -141,8 +142,8 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
     private void prepareBannerAi(){
         if(bannerUri == null) return;
         bannerPreparing = true;
-        setButtonLoading(pickBannerButton, true, "🖼️ Pilih Banner Merchant", "AI Resize to WebP...");
-        bannerSub.setText("AI Resize to WebP sedang menganalisis ukuran banner...");
+        setButtonLoading(pickBannerButton, true, "🖼️ Pilih Banner Merchant", "Menyiapkan foto…");
+        bannerSub.setText("Menyiapkan foto…");
         statusText.setText("Menyiapkan banner agar ringan saat dibuka customer...");
         final Uri source = bannerUri;
         MerchantTaskExecutor.execute(() -> {

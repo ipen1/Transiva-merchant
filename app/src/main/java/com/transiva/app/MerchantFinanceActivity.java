@@ -18,9 +18,9 @@ public class MerchantFinanceActivity extends MerchantBaseActivity {
         root.addView(title("Keuangan Merchant"));
         root.addView(sub("Ringkasan pendapatan dari pesanan food yang sudah selesai"));
 
-        LinearLayout r1=row(); root.addView(r1);
+        LinearLayout r1=actionRow(); root.addView(r1);
         today=metric(r1,"Hari ini","Rp 0"); week=metric(r1,"Minggu ini","Rp 0");
-        LinearLayout r2=row(); root.addView(r2);
+        LinearLayout r2=actionRow(); root.addView(r2);
         month=metric(r2,"Bulan ini","Rp 0"); lifetime=metric(r2,"Total tercatat","Rp 0");
 
         note=card("Memuat status settlement..."); root.addView(note);
@@ -30,9 +30,9 @@ public class MerchantFinanceActivity extends MerchantBaseActivity {
     }
 
     private TextView metric(LinearLayout parent,String label,String value){
-        LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(14),dp(13),dp(14),dp(13)); box.setBackground(round(Color.WHITE,dp(18))); box.setElevation(dp(2));
-        TextView l=tv(label,11,MUTED,false); TextView v=tv(value,17,NAVY,true); box.addView(l); box.addView(v);
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,-2,1f); lp.setMargins(dp(4),dp(4),dp(4),dp(8)); parent.addView(box,lp); return v;
+        LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(10),dp(9),dp(10),dp(9)); box.setBackground(round(Color.WHITE,dp(14))); box.setElevation(dp(2));
+        TextView l=tv(label,11,MUTED,false); TextView v=tv(value,15,NAVY,true); box.addView(l); box.addView(v);
+        LinearLayout.LayoutParams lp=actionLp(); lp.setMargins(dp(4),dp(4),dp(4),dp(8)); parent.addView(box,lp); return v;
     }
 
     private void load(){

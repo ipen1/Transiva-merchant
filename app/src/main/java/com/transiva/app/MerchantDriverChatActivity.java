@@ -108,12 +108,11 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         head.addView(info, new LinearLayout.LayoutParams(0,-2,1));
         page.addView(head);
 
-        LinearLayout quick = new LinearLayout(this); quick.setOrientation(LinearLayout.HORIZONTAL); quick.setPadding(0,dp(10),0,dp(4));
-        addQuick(quick,"Pesanan sedang disiapkan"); addQuick(quick,"Pesanan sudah siap");
-        page.addView(quick);
-        LinearLayout quick2 = new LinearLayout(this); quick2.setOrientation(LinearLayout.HORIZONTAL); quick2.setPadding(0,0,0,dp(8));
-        addQuick(quick2,"Tunggu sebentar ya"); addQuick(quick2,"Silakan ambil pesanan");
-        page.addView(quick2);
+        Button quick=outlineBtn("Pesan cepat ⋯");
+        quick.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Pesan cepat")
+            .setItems(new String[]{"Pesanan sedang disiapkan","Pesanan sudah siap","Tunggu sebentar ya","Silakan ambil pesanan"},(d,w)->{
+                String[] texts={"Pesanan sedang disiapkan","Pesanan sudah siap","Tunggu sebentar ya","Silakan ambil pesanan"};sendText(texts[w]);
+            }).setNegativeButton("Batal",null).show());page.addView(quick);
 
         scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
         messages = new LinearLayout(this); messages.setOrientation(LinearLayout.VERTICAL); messages.setPadding(dp(2),dp(6),dp(2),dp(8));
@@ -123,7 +122,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         LinearLayout composer = new LinearLayout(this); composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding(dp(8),dp(7),dp(8),dp(7)); composer.setBackground(round(Color.WHITE,dp(18)));
         input = new EditText(this); input.setHint("Ketik pesan ke driver..."); input.setSingleLine(false); input.setMaxLines(4); input.setMinLines(1); input.setTextSize(compactScreen() ? 13 : 14); input.setTextColor(TEXT); input.setHintTextColor(Color.parseColor("#98A2B3")); input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|InputType.TYPE_TEXT_FLAG_MULTI_LINE); input.setBackground(stroke(Color.parseColor("#F8FBFF"),Color.parseColor("#DDE7F3"),dp(14))); input.setPadding(dp(12),dp(8),dp(12),dp(8));
         composer.addView(input,new LinearLayout.LayoutParams(0,-2,1));
-        send = btn("Kirim"); LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(86),dp(50));sp.setMargins(dp(8),0,0,0);composer.addView(send,sp); send.setOnClickListener(v->sendText(input.getText().toString()));
+        send = btn("Kirim"); LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(80),-2);sp.setMargins(dp(8),0,0,0);composer.addView(send,sp); send.setOnClickListener(v->sendText(input.getText().toString()));
         page.addView(composer);
     }
 
@@ -179,7 +178,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         if(messages.getChildCount()==1 && messages.getChildAt(0) instanceof TextView && ((TextView)messages.getChildAt(0)).getText().toString().startsWith("Belum ada pesan")) messages.removeAllViews();
         boolean mine="customer".equalsIgnoreCase(m.optString("sender_type",""));
         LinearLayout line=new LinearLayout(this); line.setGravity(mine?Gravity.END:Gravity.START);
-        TextView bubble=tv(m.optString("message",""),14,mine?Color.WHITE:TEXT,false); bubble.setPadding(dp(12),dp(9),dp(12),dp(9)); bubble.setBackground(round(mine?BLUE:Color.WHITE,dp(16))); bubble.setMaxWidth(Math.max(dp(210), (int)(getResources().getDisplayMetrics().widthPixels * 0.76f)));
+        TextView bubble=tv(m.optString("message",""),14,mine?Color.WHITE:TEXT,false); bubble.setPadding(dp(12),dp(9),dp(12),dp(9)); bubble.setBackground(round(mine?BLUE:Color.WHITE,dp(16))); bubble.setMaxWidth(Math.max(dp(120), (int)(getResources().getDisplayMetrics().widthPixels * 0.76f)));
         line.addView(bubble); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(3),0,dp(3));messages.addView(line,lp);
     }
 

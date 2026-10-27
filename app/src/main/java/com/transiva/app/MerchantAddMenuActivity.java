@@ -18,6 +18,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.ScrollView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -72,7 +73,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         root = new LinearLayout(this);
         setContentView(page(root));
         root.addView(title(editMode ? "Edit Menu" : "Tambah Menu"));
-        root.addView(sub("Atur menu, kategori, varian dan topping dengan tampilan yang lebih rapi."));
+        root.addView(sub("Lengkapi menu yang akan dilihat pelanggan."));
 
         root.addView(label("Nama Menu"));
         nameInput = input("Contoh: Nasi Goreng Spesial", InputType.TYPE_CLASS_TEXT);
@@ -96,7 +97,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         root.addView(label("Deskripsi Menu"));
         descriptionInput = input("Contoh: Nasi goreng dengan ayam dan telur", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         descriptionInput.setMinLines(2);
-        descriptionInput.setLayoutParams(heightLp(78));
+        descriptionInput.setMinimumHeight(dp(72));
+        descriptionInput.setLayoutParams(new LinearLayout.LayoutParams(-1,-2));
         root.addView(descriptionInput);
 
         trackStockInput = new CheckBox(this);
@@ -105,26 +107,32 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         stockInput = input("Jumlah stok, contoh: 25", InputType.TYPE_CLASS_NUMBER);
         root.addView(stockInput);
 
-        root.addView(sectionTitle("Varian"));
-        root.addView(sub("Nama varian dan tambahan harga dibuat berdampingan. Varian pertama otomatis Regular • Rp 0."));
+        LinearLayout options=new LinearLayout(this);options.setOrientation(LinearLayout.VERTICAL);
+        options.setVisibility(editMode?View.VISIBLE:View.GONE);
+        Button optionsToggle=outlineBtn("Varian & topping ⋯");
+        optionsToggle.setOnClickListener(v->options.setVisibility(options.getVisibility()==View.VISIBLE?View.GONE:View.VISIBLE));
+        root.addView(optionsToggle);
+        options.addView(sectionTitle("Varian"));
+        options.addView(sub("Nama varian dan tambahan harga dibuat berdampingan. Varian pertama otomatis Reguler • Rp 0."));
         variantsBox = new LinearLayout(this);
         variantsBox.setOrientation(LinearLayout.VERTICAL);
-        root.addView(variantsBox);
+        options.addView(variantsBox);
         addOptionRow(variantsBox, variantRows, "Reguler", "0", true, "Nama varian");
         Button addVariant = outlineBtn("＋ Tambah Varian");
         addVariant.setOnClickListener(v -> addOptionRow(variantsBox, variantRows, "", "", false, "Nama varian"));
-        root.addView(addVariant);
+        options.addView(addVariant);
 
-        root.addView(sectionTitle("Topping"));
-        root.addView(sub("Isi nama topping dan harga tambahannya. Kosongkan jika menu tidak memakai topping."));
+        options.addView(sectionTitle("Topping"));
+        options.addView(sub("Isi nama topping dan harga tambahannya. Kosongkan jika menu tidak memakai topping."));
         toppingsBox = new LinearLayout(this);
         toppingsBox.setOrientation(LinearLayout.VERTICAL);
-        root.addView(toppingsBox);
+        options.addView(toppingsBox);
         addOptionRow(toppingsBox, toppingRows, "", "", false, "Nama topping");
         Button addTopping = outlineBtn("＋ Tambah Topping");
         addTopping.setOnClickListener(v -> addOptionRow(toppingsBox, toppingRows, "", "", false, "Nama topping"));
-        root.addView(addTopping);
+        options.addView(addTopping);
 
+        root.addView(options);
         originalText = card("Harga Asli: Rp 0\nFee Gross Up: memuat...\nHarga Tampil: Rp 0");
         root.addView(originalText);
 
@@ -133,7 +141,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
         addWatchers();
 
-        root.addView(sub("✨ AI Resize to WebP aktif — foto besar otomatis diringankan sebelum upload, foto kecil tetap dipertahankan."));
+        root.addView(sub("Foto dioptimalkan otomatis agar cepat dibuka."));
         pickImageButton = outlineBtn("📷 Pilih Gambar Menu");
         pickImageButton.setOnClickListener(v -> chooseImage());
         root.addView(pickImageButton);
@@ -156,13 +164,14 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(14), dp(12), dp(12), dp(12));
         card.setBackground(stroke(Color.WHITE, Color.parseColor("#CFE2FF"), dp(16)));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(66));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, dp(4), 0, dp(12));
         card.setLayoutParams(lp);
+        card.setMinimumHeight(dp(52));
 
         TextView icon = tv("🍽️", 25, NAVY, false);
         icon.setGravity(Gravity.CENTER);
-        card.addView(icon, new LinearLayout.LayoutParams(dp(44), -1));
+        card.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
         categoryValue = tv("Pilih kategori menu", 14, NAVY, true);
         categoryValue.setPadding(dp(8), 0, 0, 0);
         card.addView(categoryValue, new LinearLayout.LayoutParams(0, -2, 1));
@@ -177,7 +186,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         LinearLayout wrap = new LinearLayout(this);
         wrap.setOrientation(LinearLayout.VERTICAL);
         wrap.setPadding(dp(18), dp(18), dp(18), dp(12));
-        wrap.setBackgroundColor(Color.WHITE);
+        wrap.setBackgroundColor(BG);
         TextView h = tv("Pilih Kategori Menu", 20, NAVY, true);
         wrap.addView(h);
         TextView sh = tv("Kategori membantu customer menemukan menu lebih cepat.", 12, MUTED, false);
@@ -210,7 +219,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         Button cancel = outlineBtn("Batal");
         cancel.setOnClickListener(v -> dialog.dismiss());
         wrap.addView(cancel);
-        dialog.setView(wrap);
+        ScrollView categoryScroll=new ScrollView(this);categoryScroll.addView(wrap);
+        dialog.setView(categoryScroll);
         dialog.show();
     }
 
@@ -232,21 +242,21 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private void addOptionRow(LinearLayout parent, List<OptionRow> list, String name, String price, boolean locked, String nameHint) {
         LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setOrientation(stackControls()?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(54));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
         rowLp.setMargins(0, 0, 0, dp(8));
         row.setLayoutParams(rowLp);
 
         EditText nameInput = smallInput(nameHint, InputType.TYPE_CLASS_TEXT);
         nameInput.setText(name);
         if (locked) nameInput.setEnabled(false);
-        row.addView(nameInput, new LinearLayout.LayoutParams(0, -1, 1.55f));
+        row.addView(nameInput, actionLp());
 
         EditText priceInput = smallInput("Harga", InputType.TYPE_CLASS_NUMBER);
         priceInput.setText(price);
         if (locked) priceInput.setEnabled(false);
-        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(0, -1, 0.9f);
+        LinearLayout.LayoutParams pp = actionLp();
         pp.setMargins(dp(8), 0, 0, 0);
         row.addView(priceInput, pp);
 
@@ -259,7 +269,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             remove.setAllCaps(false);
             remove.setPadding(0, 0, 0, 0);
             remove.setBackground(round(Color.parseColor("#FFF1F0"), dp(12)));
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(dp(46), -1);
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(dp(48), dp(48));
             rp.setMargins(dp(8), 0, 0, 0);
             row.addView(remove, rp);
         }
@@ -281,7 +291,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         e.setTextSize(13);
         e.setTextColor(TEXT);
         e.setHintTextColor(Color.parseColor("#98A2B3"));
-        e.setPadding(dp(12), 0, dp(12), 0);
+        e.setPadding(dp(10), dp(10), dp(10), dp(10));
+        e.setMinHeight(dp(48));
         e.setBackground(stroke(Color.WHITE, Color.parseColor("#DDE7F3"), dp(13)));
         return e;
     }
@@ -363,7 +374,10 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         nameInput.addTextChangedListener(watcher);
         priceInput.addTextChangedListener(watcher);
         if (discountInput != null) discountInput.addTextChangedListener(watcher);
-        if (discountActiveInput != null) discountActiveInput.setOnCheckedChangeListener((buttonView, isChecked) -> updatePreview());
+        if (discountActiveInput != null) discountActiveInput.setOnCheckedChangeListener((buttonView, isChecked) -> {discountInput.setVisibility(isChecked?View.VISIBLE:View.GONE);updatePreview();});
+        discountInput.setVisibility(discountActiveInput.isChecked()?View.VISIBLE:View.GONE);
+        stockInput.setVisibility(trackStockInput.isChecked()?View.VISIBLE:View.GONE);
+        trackStockInput.setOnCheckedChangeListener((v,checked)->stockInput.setVisibility(checked?View.VISIBLE:View.GONE));
     }
 
     private void loadGrossupRules() {

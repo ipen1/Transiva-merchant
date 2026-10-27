@@ -31,82 +31,36 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
     }
 
     private void build(LinearLayout root) {
-        root.addView(title("Pengaturan Merchant"));
-        root.addView(sub("Atur aplikasi, keamanan akun, dan sesi Transiva Merchant"));
-
-        addSection(root, "Tampilan", 8);
-        LinearLayout card = settingCard();
-        card.addView(actionRow("Tema aplikasi", MerchantAppSettings.themeLabel(this)
-                + " • otomatis sesuai perangkat atau pilih manual",
-                () -> MerchantAppSettings.showThemePicker(this)));
-        root.addView(card);
-
-        addSection(root, "Pembaruan", 18);
-        LinearLayout updateCard = settingCard();
-        updateCard.addView(actionRow("Cek Resource Merchant",
-                "Aplikasi v" + AppUpdateClient.installedVersionName(this) + " • resource v" + MerchantResourceUpdater.installedVersion(this),
-                () -> MerchantResourceUpdater.checkAsync(this, true, (updated, message) -> {
-                    if (message != null && !message.isEmpty()) toast(message);
-                    if (updated) recreate();
-                })));
-        updateCard.addView(divider());
-        updateCard.addView(actionRow("Versi Aplikasi",
-                "APK/AAB diperbarui melalui build resmi dan Google Play; aplikasi tidak memasang APK sendiri.",
-                () -> toast("Versi terpasang " + AppUpdateClient.installedVersionName(this))));
-        root.addView(updateCard);
-
-        addSection(root, "Akun Merchant", 18);
-        LinearLayout accountCard = settingCard();
-        accountCard.addView(actionRow("Profil Merchant",
-                "Kelola nama restoran dan banner merchant",
-                () -> open(MerchantRestaurantProfileActivity.class)));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Lokasi Merchant", "Kunci titik pickup + preview peta", () -> open(MerchantLocationActivity.class)));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Privasi & Data", "Kebijakan privasi dan kontrol penghapusan akun", () -> open(MerchantPrivacyActivity.class)));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Pusat Notifikasi", "Riwayat notifikasi penting di perangkat", () -> open(MerchantNotificationCenterActivity.class)));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Diagnostik", "Periksa internet, FCM, lokasi, notifikasi, dan sesi", () -> open(MerchantDiagnosticsActivity.class)));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Perangkat & Sesi", "Lihat dan keluarkan sesi merchant di perangkat lain", () -> open(MerchantDeviceSessionsActivity.class)));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Ubah Username",
-                "Ganti nama pengguna untuk login merchant",
-                this::showChangeUsername));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Ubah Password",
-                "Gunakan password baru yang kuat dan unik",
-                this::showChangePassword));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Ubah PIN",
-                "PIN keamanan 6 angka untuk akses aplikasi",
-                this::showChangePin));
-        accountCard.addView(divider());
-        accountCard.addView(actionRow("Hapus Akun Permanen",
-                "Hapus akun merchant, restoran, dan data terkait",
-                this::showDeleteAccount));
-        root.addView(accountCard);
-
-        TextView securityNote = tv(
-                "Untuk keamanan, perubahan username dikonfirmasi dengan password saat ini. Perubahan password memerlukan password saat ini + PIN 6 angka. Setelah berhasil, seluruh sesi lama akan dikeluarkan dan Anda perlu login kembali.",
-                11, MUTED, false);
-        LinearLayout.LayoutParams noteLp = new LinearLayout.LayoutParams(-1, -2);
-        noteLp.setMargins(dp(4), dp(12), dp(4), dp(4));
-        root.addView(securityNote, noteLp);
-
-        addSection(root, "Sesi", 18);
-        Button logout = new Button(this);
-        logout.setText("Keluar dari Akun");
-        logout.setAllCaps(false);
-        logout.setTextSize(15);
-        logout.setTextColor(Color.WHITE);
-        logout.setGravity(Gravity.CENTER);
-        logout.setBackground(round(Color.parseColor("#D92D20"), dp(16)));
-        logout.setOnClickListener(v -> confirmLogout());
-        LinearLayout.LayoutParams logoutLp = new LinearLayout.LayoutParams(-1, dp(52));
-        logoutLp.setMargins(0, 0, 0, dp(20));
-        root.addView(logout, logoutLp);
+        root.addView(title("Pengaturan"));root.addView(sub("Usaha, tampilan, dan keamanan akun"));
+        LinearLayout main=settingCard();
+        main.addView(actionRow("Profil toko","Nama dan banner",()->open(MerchantRestaurantProfileActivity.class)));
+        main.addView(divider());main.addView(actionRow("Operasional","Jam buka dan persiapan pesanan",()->open(MerchantOperationsActivity.class)));
+        main.addView(divider());main.addView(actionRow("Tema aplikasi",MerchantAppSettings.themeLabel(this),()->MerchantAppSettings.showThemePicker(this)));
+        root.addView(main);
+        addSection(root,"Keamanan",12);
+        LinearLayout security=settingCard();
+        security.addView(actionRow("Akses akun","Username, kata sandi, dan PIN",()->new AlertDialog.Builder(this)
+            .setTitle("Akses akun").setItems(new String[]{"Ubah username","Ubah kata sandi","Ubah PIN"},(d,w)->{
+                if(w==0)showChangeUsername();else if(w==1)showChangePassword();else showChangePin();
+            }).setNegativeButton("Batal",null).show()));
+        security.addView(divider());security.addView(actionRow("Perangkat & sesi","Kelola perangkat yang masuk",()->open(MerchantDeviceSessionsActivity.class)));
+        security.addView(divider());security.addView(actionRow("Privasi & data","Kebijakan dan penghapusan akun",()->new AlertDialog.Builder(this)
+            .setTitle("Privasi & data").setItems(new String[]{"Kebijakan & pengelolaan data","Hapus akun permanen"},(d,w)->{
+                if(w==0)open(MerchantPrivacyActivity.class);else showDeleteAccount();
+            }).setNegativeButton("Batal",null).show()));root.addView(security);
+        addSection(root,"Bantuan & aplikasi",12);
+        LinearLayout tools=settingCard();
+        tools.addView(actionRow("Notifikasi","Riwayat pemberitahuan",()->open(MerchantNotificationCenterActivity.class)));
+        tools.addView(divider());tools.addView(actionRow("Diagnostik","Periksa koneksi dan notifikasi",()->open(MerchantDiagnosticsActivity.class)));
+        tools.addView(divider());tools.addView(actionRow("Pembaruan aplikasi","Versi "+AppUpdateClient.installedVersionName(this),()->new AlertDialog.Builder(this)
+            .setTitle("Pembaruan").setItems(new String[]{"Cek pembaruan tampilan","Informasi versi"},(d,w)->{
+                if(w==0)MerchantResourceUpdater.checkAsync(this,true,(updated,message)->{
+                    if(isFinishing()||isDestroyed())return;
+                    if(message!=null&&!message.isEmpty())toast(message);if(updated)recreate();
+                });else alert("Versi aplikasi", "Aplikasi v"+AppUpdateClient.installedVersionName(this)+" • resource v"+MerchantResourceUpdater.installedVersion(this)+"\nPerbarui aplikasi melalui Google Play atau distribusi resmi Transiva.");
+            }).setNegativeButton("Tutup",null).show()));root.addView(tools);
+        Button logout=outlineBtn("Keluar dari akun");logout.setTextColor(Color.parseColor("#DC2626"));
+        logout.setOnClickListener(v->confirmLogout());root.addView(logout);
     }
 
     private void addSection(LinearLayout root, String text, int topMargin) {
@@ -120,7 +74,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         View line = new View(this);
         line.setBackgroundColor(Color.parseColor("#E9EEF5"));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(1));
-        lp.setMargins(0, dp(12), 0, dp(12));
+        lp.setMargins(0, dp(5), 0, dp(5));
         line.setLayoutParams(lp);
         return line;
     }
@@ -128,14 +82,15 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
     private LinearLayout actionRow(String title, String subtitle, Runnable action) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(4), 0, dp(4));
+        row.setPadding(0, dp(5), 0, dp(5));
+        row.setMinimumHeight(dp(48));
 
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
-        labels.addView(tv(title, 15, NAVY, true));
+        labels.addView(tv(title, 14, NAVY, true));
         labels.addView(tv(subtitle, 11, MUTED, false));
         row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1f));
-        row.addView(tv("›", 30, BLUE, true));
+        row.addView(tv("›", 24, BLUE, true));
         row.setOnClickListener(v -> action.run());
         return row;
     }
@@ -144,10 +99,11 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
                                    CompoundButton.OnCheckedChangeListener listener) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(0, dp(4), 0, dp(4));
+        row.setPadding(0, dp(5), 0, dp(5));
+        row.setMinimumHeight(dp(48));
         LinearLayout labels = new LinearLayout(this);
         labels.setOrientation(LinearLayout.VERTICAL);
-        labels.addView(tv(title, 15, NAVY, true));
+        labels.addView(tv(title, 14, NAVY, true));
         labels.addView(tv(subtitle, 11, MUTED, false));
         row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1f));
         Switch toggle = new Switch(this);
@@ -160,9 +116,9 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
     private LinearLayout settingCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
-        card.setBackground(round(Color.WHITE, dp(20)));
-        card.setElevation(dp(2));
+        card.setPadding(dp(12), dp(8), dp(12), dp(8));
+        card.setBackground(round(Color.WHITE, dp(16)));
+        card.setElevation(0);
         return card;
     }
 

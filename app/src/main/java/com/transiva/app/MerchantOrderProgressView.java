@@ -40,13 +40,18 @@ final class MerchantOrderProgressView {
             bindCountdown(countdown, order.optString("estimated_ready_at", ""), order.optInt("cook_minutes", 0));
         }
 
-        card.addView(step(a, "✓", "Pesanan diterima merchant", !"pending".equals(global)));
-        card.addView(step(a, "🍳", "Makanan sedang diproses", isKitchenStarted(global, merchant)));
-        card.addView(step(a, "🛵", "Driver mengambil pesanan", rank(global) >= rank("driver_accepted")));
-        card.addView(step(a, "📍", "Driver tiba di restoran", rank(global) >= rank("arrived_pickup")));
-        card.addView(step(a, "🛣", "Makanan dalam perjalanan", rank(global) >= rank("on_delivery")));
-        card.addView(step(a, "🏠", "Driver tiba di customer", rank(global) >= rank("arrived_delivery")));
-        card.addView(step(a, "✓", "Pesanan selesai", rank(global) >= rank("finished")));
+        LinearLayout details=new LinearLayout(a);details.setOrientation(LinearLayout.VERTICAL);details.setVisibility(android.view.View.GONE);
+        TextView expand=text(a,"Lihat tahapan pesanan ▾",12,a.BLUE,true);expand.setMinHeight(dp(a,48));expand.setGravity(Gravity.CENTER_VERTICAL);
+        expand.setOnClickListener(v->{boolean show=details.getVisibility()!=android.view.View.VISIBLE;details.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);expand.setText(show?"Sembunyikan tahapan ▴":"Lihat tahapan pesanan ▾");});
+        card.addView(expand);
+        details.addView(step(a, "✓", "Pesanan diterima merchant", !"pending".equals(global)));
+        details.addView(step(a, "🍳", "Makanan sedang diproses", isKitchenStarted(global, merchant)));
+        details.addView(step(a, "🛵", "Driver mengambil pesanan", rank(global) >= rank("driver_accepted")));
+        details.addView(step(a, "📍", "Driver tiba di restoran", rank(global) >= rank("arrived_pickup")));
+        details.addView(step(a, "🛣", "Makanan dalam perjalanan", rank(global) >= rank("on_delivery")));
+        details.addView(step(a, "🏠", "Driver tiba di customer", rank(global) >= rank("arrived_delivery")));
+        details.addView(step(a, "✓", "Pesanan selesai", rank(global) >= rank("finished")));
+        card.addView(details);
         parent.addView(card);
     }
 
@@ -138,7 +143,7 @@ final class MerchantOrderProgressView {
         TextView l = text(a, "  " + label, 12, active ? Color.parseColor("#344054") : Color.parseColor("#98A2B3"), active); row.addView(l);
         return row;
     }
-    private static TextView text(MerchantBaseActivity a, String s, int sp, int c, boolean b) { TextView t=new TextView(a); t.setText(s); t.setTextSize(sp); t.setTextColor(c); if(b)t.setTypeface(Typeface.DEFAULT,Typeface.BOLD); return t; }
+    private static TextView text(MerchantBaseActivity a, String s, int sp, int c, boolean b) { return a.tv(s,sp,c,b); }
     private static int dp(MerchantBaseActivity a,int v){ return Math.round(v*a.getResources().getDisplayMetrics().density); }
     private static String lower(String s){ return s==null?"":s.trim().toLowerCase(Locale.US); }
 }

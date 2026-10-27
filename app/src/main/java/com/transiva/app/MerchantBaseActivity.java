@@ -45,15 +45,19 @@ public class MerchantBaseActivity extends Activity {
     protected final int BLUE = Color.parseColor("#0B78FF");
     protected final int CYAN = Color.parseColor("#14C8FF");
     protected final int SOFT_BLUE = Color.parseColor("#EAF4FF");
-    protected final int NAVY = Color.parseColor("#0A1A2E");
-    protected final int TEXT = Color.parseColor("#172033");
-    protected final int MUTED = Color.parseColor("#667085");
-    protected final int BG = Color.parseColor("#F4F8FE");
+    protected int NAVY = Color.parseColor("#0A1A2E");
+    protected int TEXT = Color.parseColor("#172033");
+    protected int MUTED = Color.parseColor("#667085");
+    protected int BG = Color.parseColor("#F4F8FE");
 
     @Override protected void onCreate(Bundle b){
         setTheme(MerchantAppSettings.isDarkMode(this) ? android.R.style.Theme_Material_NoActionBar
                 : android.R.style.Theme_Material_Light_NoActionBar);
         super.onCreate(b);
+        if (MerchantAppSettings.isDarkMode(this)) {
+            NAVY = MerchantAppSettings.DARK_TEXT; TEXT = MerchantAppSettings.DARK_TEXT;
+            MUTED = MerchantAppSettings.DARK_MUTED; BG = MerchantAppSettings.DARK_PAGE;
+        }
         try {
             getWindow().setStatusBarColor(Color.parseColor("#F4F8FE"));
             getWindow().setNavigationBarColor(Color.WHITE);
@@ -100,8 +104,8 @@ public class MerchantBaseActivity extends Activity {
 
     protected View page(LinearLayout root){
         root.setOrientation(LinearLayout.VERTICAL);
-        int side = compactScreen() ? 12 : 16;
-        root.setPadding(dp(side), dp(compactScreen() ? 12 : 16), dp(side), dp(28));
+        int side = Math.max(12, (screenWidthDp() - 840) / 2);
+        root.setPadding(dp(side), dp(10), dp(side), dp(14));
         root.setBackgroundColor(BG);
 
         LinearLayout shell = new LinearLayout(this);
@@ -115,10 +119,14 @@ public class MerchantBaseActivity extends Activity {
         shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
         View bottom = MerchantBottomNavigation.build(this, MerchantBottomNavigation.resolve(this));
-        shell.addView(bottom, new LinearLayout.LayoutParams(-1, dp(bottomNavHeightDp())));
+        bottom.setMinimumHeight(dp(bottomNavHeightDp()));
+        shell.addView(bottom, new LinearLayout.LayoutParams(-1, -2));
         ViewCompat.setOnApplyWindowInsetsListener(shell, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-            v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            boolean keyboard = insets.isVisible(WindowInsetsCompat.Type.ime());
+            bottom.setVisibility(keyboard ? View.GONE : View.VISIBLE);
+            v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
             return insets;
         });
         ViewCompat.requestApplyInsets(shell);
@@ -126,16 +134,15 @@ public class MerchantBaseActivity extends Activity {
     }
 
     protected TextView title(String text){
-        TextView v = tv(text, compactScreen() ? 21 : 24, NAVY, true);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(v, 18, compactScreen() ? 22 : 26, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
-        v.setPadding(dp(4), dp(6), dp(4), dp(4));
+        TextView v = tv(text, 21, NAVY, true);
+        v.setPadding(dp(2), dp(2), dp(2), dp(4));
         v.setLetterSpacing(-0.015f);
         return v;
     }
 
     protected TextView sub(String text){
         TextView v = tv(text, 13, MUTED, false);
-        v.setPadding(dp(4), 0, dp(4), dp(14));
+        v.setPadding(dp(2), 0, dp(2), dp(8));
         return v;
     }
 
@@ -143,6 +150,9 @@ public class MerchantBaseActivity extends Activity {
         TextView v = new TextView(this);
         v.setText(text);
         v.setTextSize(sp);
+        if(MerchantAppSettings.isDarkMode(this) && Color.alpha(color)>180){
+            if(Color.red(color)<105 && Color.green(color)<125 && Color.blue(color)<155) color=MerchantAppSettings.DARK_TEXT;
+        }
         v.setTextColor(color);
         v.setIncludeFontPadding(true);
         if(bold) v.setTypeface(Typeface.DEFAULT_BOLD);
@@ -151,12 +161,12 @@ public class MerchantBaseActivity extends Activity {
 
     protected TextView card(String text){
         TextView v = tv(text, 14, TEXT, false);
-        v.setPadding(dp(17), dp(16), dp(17), dp(16));
-        v.setBackground(stroke(Color.WHITE, Color.parseColor("#E3ECF7"), dp(20)));
+        v.setPadding(dp(12), dp(10), dp(12), dp(10));
+        v.setBackground(stroke(Color.WHITE, Color.parseColor("#E3ECF7"), dp(14)));
         v.setLineSpacing(dp(2), 1f);
-        v.setElevation(dp(3));
+        v.setElevation(dp(1));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, 0, 0, dp(12));
+        lp.setMargins(0, 0, 0, dp(8));
         v.setLayoutParams(lp);
         return v;
     }
@@ -165,17 +175,19 @@ public class MerchantBaseActivity extends Activity {
         Button b = new Button(this);
         b.setAllCaps(false);
         b.setText(text);
-        b.setTextSize(compactScreen() ? 13 : 15);
-        TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(b, 10, compactScreen() ? 14 : 16, 1, android.util.TypedValue.COMPLEX_UNIT_SP);
+        b.setTextSize(14);
+        b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48));
+        b.setMinWidth(0); b.setMinimumWidth(0);
+        b.setMaxLines(2);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(Color.WHITE);
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{BLUE, Color.parseColor("#279DFF")});
         bg.setCornerRadius(dp(16));
         b.setBackground(bg);
-        b.setElevation(dp(3));
-        b.setPadding(dp(10), 0, dp(10), 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(compactScreen() ? 48 : 50));
-        lp.setMargins(0, dp(5), 0, dp(8));
+        b.setElevation(0);
+        b.setPadding(dp(10), dp(9), dp(10), dp(9));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(3), 0, dp(5));
         b.setLayoutParams(lp);
         return b;
     }
@@ -192,16 +204,17 @@ public class MerchantBaseActivity extends Activity {
         EditText e = new EditText(this);
         e.setHint(hint);
         e.setInputType(type);
-        e.setSingleLine(false);
+        e.setSingleLine((type & android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE) == 0);
         e.setMinLines(1);
         e.setTextSize(14);
         e.setTextColor(TEXT);
         e.setHintTextColor(Color.parseColor("#98A2B3"));
-        e.setPadding(dp(14), 0, dp(14), 0);
+        e.setPadding(dp(12), dp(10), dp(12), dp(10));
+        e.setMinHeight(dp(48));
         e.setBackground(stroke(Color.WHITE, Color.parseColor("#D8E4F2"), dp(15)));
         e.setElevation(dp(1));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(50));
-        lp.setMargins(0, dp(4), 0, dp(12));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(3), 0, dp(8));
         e.setLayoutParams(lp);
         return e;
     }
@@ -216,18 +229,24 @@ public class MerchantBaseActivity extends Activity {
         LinearLayout r = new LinearLayout(this);
         r.setOrientation(LinearLayout.HORIZONTAL);
         r.setGravity(Gravity.CENTER);
-        r.setPadding(0, 0, 0, dp(8));
+        r.setPadding(0, 0, 0, dp(4));
         return r;
     }
 
     protected GradientDrawable round(int color, int radius){
         GradientDrawable g = new GradientDrawable();
+        if (MerchantAppSettings.isDarkMode(this) && Color.alpha(color) > 180
+                && Color.red(color) >= 218 && Color.green(color) >= 226 && Color.blue(color) >= 232)
+            color = MerchantAppSettings.DARK_CARD;
         g.setColor(color);
         g.setCornerRadius(radius);
         return g;
     }
     protected GradientDrawable stroke(int color, int stroke, int radius){
         GradientDrawable g = round(color, radius);
+        if (MerchantAppSettings.isDarkMode(this) && Color.red(stroke) >= 175
+                && Color.green(stroke) >= 185 && Color.blue(stroke) >= 195)
+            stroke = MerchantAppSettings.DARK_BORDER;
         g.setStroke(dp(1), stroke);
         return g;
     }
@@ -237,8 +256,18 @@ public class MerchantBaseActivity extends Activity {
     protected boolean compactScreen(){ return screenWidthDp() > 0 && screenWidthDp() < 380; }
     protected int bottomNavHeightDp(){
         float fs = getResources().getConfiguration().fontScale;
-        int base = compactScreen() ? 64 : 66;
-        return Math.max(base, Math.round(base * Math.min(1.22f, Math.max(1f, fs))));
+        // Keep labels readable at large font scales without shrinking their text.
+        return 60 + Math.round(16 * Math.max(0f, fs - 1f));
+    }
+    protected boolean stackControls(){
+        return screenWidthDp() < 360 || getResources().getConfiguration().fontScale > 1.2f;
+    }
+    protected LinearLayout.LayoutParams actionLp(){
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(stackControls() ? -1 : 0, -2, stackControls() ? 0 : 1);
+        lp.setMargins(dp(2), dp(2), dp(2), dp(2)); return lp;
+    }
+    protected LinearLayout actionRow(){
+        LinearLayout r = row(); if(stackControls()) r.setOrientation(LinearLayout.VERTICAL); return r;
     }
     protected int dp(int v){ return (int)(v * getResources().getDisplayMetrics().density + .5f); }
     protected String enc(String v){ try{return URLEncoder.encode(v == null ? "" : v, "UTF-8");}catch(Exception e){return "";} }

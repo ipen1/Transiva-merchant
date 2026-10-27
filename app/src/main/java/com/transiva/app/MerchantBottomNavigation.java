@@ -27,8 +27,8 @@ public final class MerchantBottomNavigation {
         nav.setOrientation(LinearLayout.HORIZONTAL);
         nav.setGravity(Gravity.CENTER);
         nav.setPadding(dp(activity, 5), dp(activity, 4), dp(activity, 5), dp(activity, 4));
-        nav.setBackgroundColor(Color.WHITE);
-        nav.setElevation(dp(activity, 10));
+        nav.setBackgroundColor(MerchantAppSettings.isDarkMode(activity) ? Color.parseColor("#0C1C2E") : Color.WHITE);
+        nav.setElevation(dp(activity, 2));
 
         add(nav, item(activity, "Beranda", "ic_nav_home", ActiveItem.HOME, activeItem, MerchantDashboardActivity.class));
         add(nav, item(activity, "Pesanan", "ic_nav_activity", ActiveItem.ORDERS, activeItem, MerchantOrdersActivity.class));
@@ -47,7 +47,7 @@ public final class MerchantBottomNavigation {
         if (activity instanceof MerchantOrdersActivity) return ActiveItem.ORDERS;
         if (activity instanceof MerchantMenuListActivity || activity instanceof MerchantAddMenuActivity || activity instanceof MerchantCategoriesActivity) return ActiveItem.MENU;
         if (activity instanceof MerchantReviewsActivity) return ActiveItem.REVIEWS;
-        if (activity instanceof MerchantSettingsActivity || activity instanceof MerchantRestaurantProfileActivity || activity instanceof MerchantOperationsActivity) return ActiveItem.SETTINGS;
+        if (activity instanceof MerchantSettingsActivity || activity instanceof MerchantRestaurantProfileActivity || activity instanceof MerchantOperationsActivity || activity instanceof MerchantDiagnosticsActivity || activity instanceof MerchantDeviceSessionsActivity || activity instanceof MerchantPrivacyActivity || activity instanceof MerchantLocationActivity) return ActiveItem.SETTINGS;
         return ActiveItem.HOME;
     }
 
@@ -62,16 +62,17 @@ public final class MerchantBottomNavigation {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4));
-        root.setClickable(!active);
-        root.setFocusable(!active);
+        boolean samePage = activity.getClass() == target;
+        root.setClickable(!samePage); root.setFocusable(!samePage);
+        root.setMinimumHeight(dp(activity,48));
+        root.setContentDescription(label);
 
         if (active) {
             GradientDrawable bg = new GradientDrawable();
-            bg.setColor(Color.parseColor(ACTIVE_BG));
-            bg.setCornerRadius(dp(activity, 18));
+            bg.setColor(MerchantAppSettings.isDarkMode(activity) ? Color.parseColor("#17334E") : Color.parseColor(ACTIVE_BG));
+            bg.setCornerRadius(dp(activity, 14));
             root.setBackground(bg);
-            root.setScaleX(1.02f);
-            root.setScaleY(1.02f);
+
         }
 
         ImageView icon = new ImageView(activity);
@@ -85,16 +86,17 @@ public final class MerchantBottomNavigation {
 
         TextView title = new TextView(activity);
         title.setText(label);
-        title.setTextSize(activity.getResources().getConfiguration().screenWidthDp < 380 ? 8f : 9f);
+        title.setTextSize(10f);
+        title.setMaxLines(2);
         title.setGravity(Gravity.CENTER);
         title.setIncludeFontPadding(false);
-        title.setTextColor(Color.parseColor(active ? ACTIVE_COLOR : INACTIVE_COLOR));
+        title.setTextColor(Color.parseColor(active ? (MerchantAppSettings.isDarkMode(activity) ? "#68B5FF" : ACTIVE_COLOR) : (MerchantAppSettings.isDarkMode(activity) ? "#B7C9DB" : INACTIVE_COLOR)));
         title.setTypeface(Typeface.DEFAULT, active ? Typeface.BOLD : Typeface.NORMAL);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
         titleLp.setMargins(0, dp(activity, 2), 0, 0);
         root.addView(title, titleLp);
 
-        if (!active) {
+        if (!samePage) {
             root.setOnClickListener(v -> v.animate().scaleX(.90f).scaleY(.90f).setDuration(70L)
                     .withEndAction(() -> v.animate().scaleX(1f).scaleY(1f).setDuration(110L)
                             .setInterpolator(new DecelerateInterpolator(1.7f))
@@ -104,6 +106,7 @@ public final class MerchantBottomNavigation {
     }
 
     private static void open(Activity activity, Class<?> target) {
+        if (activity.isFinishing() || activity.isDestroyed()) return;
         Intent i = new Intent(activity, target);
         i.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         activity.startActivity(i);
