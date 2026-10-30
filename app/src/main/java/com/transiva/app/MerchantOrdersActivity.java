@@ -31,6 +31,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private TextView realtimeStatus;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable task;
+    private String screenAccountKey="";
     private boolean firstLoad = true;
     private boolean updating = false;
     private boolean loading = false;
@@ -42,7 +43,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private String focusOrderId = "";
     private JSONArray cached = new JSONArray();
     private boolean degradedOffline = false;
-    private static final String ORDER_CACHE_PREF="merchant_order_cache_v1";
+    private static final String ORDER_CACHE_PREF="merchant_order_cache_v2";
     private Spinner periodSpinner;
 
     private final BroadcastReceiver realtimeReceiver = new BroadcastReceiver() {
@@ -55,6 +56,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        screenAccountKey=currentAccountCacheName();
         focusOrderId = getIntent().getStringExtra("order_id");
         if (focusOrderId == null) focusOrderId = "";
         if(b!=null){historyMode=b.getBoolean("history",false);focusOrderId=b.getString("focus_order",focusOrderId);}
@@ -179,6 +181,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
 
     private void load(boolean showLoading) {
+        if(!sameAccount()){invalidateRead();finish();return;}
         if(updating){refreshQueued=true;return;}
         if (loading) {
             refreshQueued=true;
@@ -211,7 +214,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 if (orders == null) orders = new JSONArray();
                 JSONArray finalOrders = orders;
                 runOnUiThread(() -> {
-                    if(isFinishing()||isDestroyed()||requestGeneration!=readGeneration)return;
+                    if(!sameAccount()||isFinishing()||isDestroyed()||requestGeneration!=readGeneration)return;
                     MerchantServerClock.sync(r,sent,received);
                     loading = false;activeRead=null;
                     if(requestedHistory!=historyMode){load(true);return;}
@@ -225,7 +228,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    if(isFinishing()||isDestroyed()||requestGeneration!=readGeneration)return;
+                    if(!sameAccount()||isFinishing()||isDestroyed()||requestGeneration!=readGeneration)return;
                     loading = false;activeRead=null;
                     if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
@@ -248,13 +251,21 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void invalidateRead(){readGeneration++;if(activeRead!=null)activeRead.cancel(true);activeRead=null;loading=false;refreshQueued=false;}
 
 
-    private String orderCacheName(){
+    private String currentAccountCacheName(){
         SessionManager session = new SessionManager(this);
         return ORDER_CACHE_PREF + "_" + session.getId() + "_" + session.getRestaurantId();
     }
 
-    private void saveOrderCache(String scope, JSONArray orders, long serverTimeMs){try{getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}}
-    private JSONArray loadOrderCache(String scope){try{long saved=getSharedPreferences(orderCacheName(),MODE_PRIVATE).getLong(scope+"_saved",0L);if(saved<=0||System.currentTimeMillis()-saved>86400000L)return new JSONArray();String raw=getSharedPreferences(orderCacheName(),MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}}
+    private String orderCacheName(){return screenAccountKey.isEmpty()?currentAccountCacheName():screenAccountKey;}
+    private boolean sameAccount(){return !screenAccountKey.isEmpty()&&screenAccountKey.equals(currentAccountCacheName());}
+    private void saveOrderCache(String scope,JSONArray orders,long serverTimeMs){
+        if(!sameAccount())return;
+        try{getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}
+    }
+    private JSONArray loadOrderCache(String scope){
+        if(!sameAccount())return new JSONArray();
+        try{long saved=getSharedPreferences(orderCacheName(),MODE_PRIVATE).getLong(scope+"_saved",0L);long age=System.currentTimeMillis()-saved;if(saved<=0||age<0||age>86400000L)return new JSONArray();String raw=getSharedPreferences(orderCacheName(),MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}
+    }
 
     private boolean countdownRenderQueued;
     void onKitchenCountdownFinished(){
@@ -543,7 +554,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             case "arrived_pickup": return 3;
             case "on_delivery": return 4;
             case "arrived_delivery": return 5;
-            case "finished": case "completed": return 6;
+            case "finished": case "completed": case "finish": case "done": case "delivered": case "selesai": return 6;
             default: return 0;
         }
     }
@@ -564,7 +575,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             case "on_delivery": return "Menuju Customer";
             case "arrived_delivery": return "Driver Tiba di Customer";
             case "finished":
-            case "completed": return "Selesai";
+            case "completed": case "finish": case "done": case "delivered": case "selesai": return "Selesai";
             case "canceled":
             case "cancelled": return "Dibatalkan";
             default: return s;
@@ -572,6 +583,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
 
     private void update(String id, String displayId, String status, String rejectReason, int cookMinutes) {
+        if(!sameAccount()){finish();return;}
         if (updating) return;
         if (id == null || id.trim().isEmpty()) {
             alert("Data tidak lengkap", "ID pesanan tidak ditemukan.");
@@ -581,6 +593,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
         MerchantOrderRepository.updateStatus(this, id, displayId, status, rejectReason, cookMinutes, (success, message, networkError, receipt) -> {
+            if(!sameAccount()||isFinishing()||isDestroyed())return;
             updating = false;
             if (success) {
                 toast(message);
@@ -588,7 +601,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 try{cached=MerchantOrderUiState.acknowledge(cached,id,displayId,status,rejectReason,cookMinutes,receipt,historyMode,MerchantServerClock.now());}catch(Exception ignored){}
                 degradedOffline=false;
                 saveOrderCache(historyMode?"history":"active",cached,MerchantServerClock.now());
-                getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().remove(historyMode?"active":"history").apply();
+                String otherScope=historyMode?"active":"history";getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().remove(otherScope).remove(otherScope+"_saved").remove(otherScope+"_server").apply();
                 render();
                 load(false);
             } else {

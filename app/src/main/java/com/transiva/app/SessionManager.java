@@ -239,6 +239,7 @@ public class SessionManager {
         try {
             String cacheName = "merchant_order_cache_v1_" + getId() + "_" + getRestaurantId();
             appContext.getSharedPreferences(cacheName, Context.MODE_PRIVATE).edit().clear().apply();
+            appContext.getSharedPreferences("merchant_order_cache_v2_" + getId() + "_" + getRestaurantId(), Context.MODE_PRIVATE).edit().clear().apply();
             appContext.getSharedPreferences("merchant_order_cache_v1", Context.MODE_PRIVATE).edit().clear().apply();
             String fcmToken = prefs.getString("fcm_token", "");
             long fcmSavedAt = prefs.getLong("fcm_token_saved_at", 0L);
