@@ -12,8 +12,8 @@ android {
         // Google Play automatic protection requires Android 7.0 (API 24)+.
         minSdk 24
         targetSdk 36
-        versionCode 18
-        versionName '1.9.18'
+        versionCode 19
+        versionName '1.9.19'
     }
 
     signingConfigs {
