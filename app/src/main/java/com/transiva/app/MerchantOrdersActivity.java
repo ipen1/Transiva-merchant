@@ -217,9 +217,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
                     cached = finalOrders;
-                    degradedOffline=false;
+                    degradedOffline=r.optBoolean("stale",false);
                     saveOrderCache(scope, finalOrders, r.optLong("server_time_epoch_ms",System.currentTimeMillis()));
-                    setConnectionState(true, "● Real-time aktif • server terhubung");
+                    setConnectionState(!degradedOffline, degradedOffline ? "● Sinkronisasi tertunda • mode baca saja" : "● Real-time aktif • server terhubung");
                     render();
                     drainRefresh();
                 });
@@ -248,8 +248,13 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void invalidateRead(){readGeneration++;if(activeRead!=null)activeRead.cancel(true);activeRead=null;loading=false;refreshQueued=false;}
 
 
-    private void saveOrderCache(String scope, JSONArray orders, long serverTimeMs){try{getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}}
-    private JSONArray loadOrderCache(String scope){try{String raw=getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}}
+    private String orderCacheName(){
+        SessionManager session = new SessionManager(this);
+        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + session.getRestaurantId();
+    }
+
+    private void saveOrderCache(String scope, JSONArray orders, long serverTimeMs){try{getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}}
+    private JSONArray loadOrderCache(String scope){try{long saved=getSharedPreferences(orderCacheName(),MODE_PRIVATE).getLong(scope+"_saved",0L);if(saved<=0||System.currentTimeMillis()-saved>86400000L)return new JSONArray();String raw=getSharedPreferences(orderCacheName(),MODE_PRIVATE).getString(scope,"[]");return new JSONArray(raw==null?"[]":raw);}catch(Exception ignored){return new JSONArray();}}
 
     private boolean countdownRenderQueued;
     void onKitchenCountdownFinished(){
@@ -583,7 +588,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 try{cached=MerchantOrderUiState.acknowledge(cached,id,displayId,status,rejectReason,cookMinutes,receipt,historyMode,MerchantServerClock.now());}catch(Exception ignored){}
                 degradedOffline=false;
                 saveOrderCache(historyMode?"history":"active",cached,MerchantServerClock.now());
-                getSharedPreferences(ORDER_CACHE_PREF,MODE_PRIVATE).edit().remove(historyMode?"active":"history").apply();
+                getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().remove(historyMode?"active":"history").apply();
                 render();
                 load(false);
             } else {
