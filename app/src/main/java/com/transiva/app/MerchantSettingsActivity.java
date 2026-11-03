@@ -198,7 +198,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         EditText pass = secureInput("Password akun", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         AlertDialog dialog = new AlertDialog.Builder(this)
                 .setTitle("Hapus akun permanen?")
-                .setMessage("Tindakan ini menghapus akun merchant, restoran, menu, dan data terkait. Tindakan tidak dapat dibatalkan.")
+                .setMessage("Akses akun dan data operasional toko akan dihapus. Catatan transaksi yang diperlukan untuk rekonsiliasi dan sengketa tetap disimpan sesuai kebijakan privasi. Selesaikan pesanan aktif dan saldo lebih dahulu. Tindakan ini tidak dapat dibatalkan.")
                 .setView(dialogForm(pass))
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Hapus Permanen", null)

@@ -237,6 +237,9 @@ public class SessionManager {
 
     public void forceLogout(String reason) {
         try {
+            MerchantNotificationStore.clear(appContext);
+            android.app.NotificationManager nm=(android.app.NotificationManager)appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+            if(nm!=null)nm.cancelAll();
             String cacheName = "merchant_order_cache_v1_" + getId() + "_" + getRestaurantId();
             appContext.getSharedPreferences(cacheName, Context.MODE_PRIVATE).edit().clear().apply();
             appContext.getSharedPreferences("merchant_order_cache_v2_" + getId() + "_" + getRestaurantId(), Context.MODE_PRIVATE).edit().clear().apply();

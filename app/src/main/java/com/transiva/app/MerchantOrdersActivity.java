@@ -45,6 +45,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private boolean degradedOffline = false;
     private static final String ORDER_CACHE_PREF="merchant_order_cache_v2";
     private Spinner periodSpinner;
+    private boolean historyHasMore;
+    private long historyBeforeId;
 
     private final BroadcastReceiver realtimeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -163,7 +165,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         firstLoad = true;
         load(true);
         task = () -> {
-            if (!updating && !loading) load(false);
+            if (!historyMode && !updating && !loading) load(false);
             handler.postDelayed(task, WaveLoadGuard.jitter(FALLBACK_POLL_MS));
         };
         handler.postDelayed(task, WaveLoadGuard.jitter(FALLBACK_POLL_MS));
@@ -180,7 +182,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
     }
 
-    private void load(boolean showLoading) {
+    private void load(boolean showLoading) { load(showLoading,false); }
+
+    private void load(boolean showLoading, boolean append) {
+        if(append && (!historyMode || !historyHasMore || degradedOffline || loading || updating))return;
         if(!sameAccount()){invalidateRead();finish();return;}
         if(updating){refreshQueued=true;return;}
         if (loading) {
@@ -192,6 +197,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         refreshQueued=false;
         final boolean requestedHistory=historyMode;
         final String scope=requestedHistory?"history":"active";
+        final long before=append?historyBeforeId:0;
         loading = true;
         if (showLoading && firstLoad) {
             list.removeAllViews();
@@ -207,7 +213,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "orders:"+requestGeneration, () -> {
             try {
                 long sent=android.os.SystemClock.elapsedRealtime();
-                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + "&v=" + System.currentTimeMillis()));
+                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
                 final long received=android.os.SystemClock.elapsedRealtime();
                 if(!r.optBoolean("success",false))throw new Exception(r.optString("message","Gagal memuat pesanan"));
                 JSONArray orders = r.optJSONArray("orders");
@@ -219,9 +225,17 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     loading = false;activeRead=null;
                     if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
-                    cached = finalOrders;
+                    if(append){
+                        JSONArray merged=new JSONArray();java.util.HashSet<String> ids=new java.util.HashSet<>();
+                        for(int i=0;i<cached.length();i++){JSONObject o=cached.optJSONObject(i);if(o!=null&&ids.add(s(o,"id","order_id")))merged.put(o);}
+                        for(int i=0;i<finalOrders.length();i++){JSONObject o=finalOrders.optJSONObject(i);if(o!=null&&ids.add(s(o,"id","order_id")))merged.put(o);}
+                        cached=merged;
+                    }else cached=finalOrders;
+                    long next=r.optLong("next_before_id",0);
+                    historyHasMore=requestedHistory&&r.optBoolean("has_more",false)&&next>0&&(!append||next<before);
+                    historyBeforeId=historyHasMore?next:0;
                     degradedOffline=r.optBoolean("stale",false);
-                    saveOrderCache(scope, finalOrders, r.optLong("server_time_epoch_ms",System.currentTimeMillis()));
+                    saveOrderCache(scope, cached, r.optLong("server_time_epoch_ms",System.currentTimeMillis()));
                     setConnectionState(!degradedOffline, degradedOffline ? "● Sinkronisasi tertunda • mode baca saja" : "● Real-time aktif • server terhubung");
                     render();
                     drainRefresh();
@@ -234,7 +248,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     firstLoad = false;
                     setConnectionState(false, "● Offline • mode baca saja • data terakhir");
                     degradedOffline=true;
-                    if(cached.length()==0) cached=loadOrderCache(historyMode?"history":"active");
+                    if(!append || cached.length()==0) cached=loadOrderCache(historyMode?"history":"active");
+                    historyHasMore=false;historyBeforeId=0;
                     if(cached.length()>0) render();
                     if (cached.length() == 0) {
                         list.removeAllViews();
@@ -313,6 +328,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             shown++;
         }
 
+        if(historyMode && historyHasMore && !degradedOffline){
+            Button more=outlineBtn(loading?"Memuat...":"Muat riwayat berikutnya");more.setEnabled(!loading&&!updating);
+            more.setOnClickListener(v->load(false,true));list.addView(more);
+        }
         if (shown == 0) {
             list.addView(card(historyMode ? "Belum ada riwayat pada periode ini." : "Belum ada pesanan aktif."));
         }
@@ -473,12 +492,11 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             // Setelah Terima tidak ada lagi tombol Terima/Tolak maupun Mulai Siapkan.
             // Server otomatis memasukkan dapur ke status preparing dan countdown ditampilkan di progress card.
         } else if ("preparing".equals(st) || "merchant_preparing".equals(st)) {
-            if (MerchantOrderProgressView.countdownFinished(order)) {
-                Button r = btn(updating ? "Memproses..." : "✓ Pesanan Siap Diambil");
-                r.setEnabled(!updating);
-                r.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) update(actionId, displayId, "ready", "", 0); });
-                box.addView(r);
-            }
+            // Estimasi memasak bukan syarat kesiapan makanan.
+            Button r = btn(updating ? "Memproses..." : "✓ Pesanan Siap Diambil");
+            r.setEnabled(!updating);
+            r.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) update(actionId, displayId, "ready", "", 0); });
+            box.addView(r);
         }
     }
 

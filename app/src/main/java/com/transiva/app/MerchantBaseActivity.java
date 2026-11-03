@@ -298,7 +298,23 @@ public class MerchantBaseActivity extends Activity {
     protected String humanBytes(long bytes){return MerchantUiHelpers.humanBytes(bytes);}
     void handleSessionExpired(){toast("Sesi merchant berakhir. Silakan login ulang.");logout();}
 
+    private boolean logoutPending;
     protected void logout(){
+        if(logoutPending)return;
+        if(sessionManager==null || sessionManager.getToken().isEmpty()){completeLogout();return;}
+        logoutPending=true;
+        String token=sessionManager.getToken();
+        toast("Mengakhiri sesi perangkat ini...");
+        MerchantLogout.revoke(this,token,(success)->{
+            logoutPending=false;
+            if(isFinishing()||isDestroyed()||!token.equals(sessionManager.getToken()))return;
+            if(success)completeLogout();
+            else new android.app.AlertDialog.Builder(this).setTitle("Belum dapat keluar")
+                .setMessage("Sesi server belum berhasil dicabut. Periksa koneksi lalu coba kembali.")
+                .setNegativeButton("Tutup",null).setPositiveButton("Coba lagi",(d,w)->logout()).show();
+        });
+    }
+    private void completeLogout(){
         try { sessionManager.clearSession(); } catch(Exception ignored){}
         Intent i = new Intent(this, LoginActivity.class);
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
