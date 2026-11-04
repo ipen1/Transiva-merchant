@@ -32,7 +32,13 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
     private static final int REQ_LOCATION=501;
     private static final float TARGET_ACCURACY_M=25f, MAX_ACCEPTED_ACCURACY_M=40f;
     private static final long LOCATION_TIMEOUT_MS=25000L;
-    private EditText name,category,username,email,phone,password,latitude,longitude;
+    private static final String[] BUSINESS_CATEGORIES = {
+            "Makanan & Restoran", "Minuman & Kopi", "Roti & Camilan",
+            "Sembako", "Pasar Segar", "Frozen Food"
+    };
+    private EditText name,username,email,phone,password,latitude,longitude;
+    private Button categoryPicker;
+    private int selectedCategory = -1;
     private TextView accuracyText,statusText,gpsHint;
     private Button locationButton,submitButton;
     private float locationAccuracy=0f; private Location bestLocation;
@@ -54,11 +60,16 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b); buildUi();
         if (b != null) {
-            EditText[] fields = {name, category, username, email, phone};
-            String[] keys = {"name", "category", "username", "email", "phone"};
+            EditText[] fields = {name, username, email, phone};
+            String[] keys = {"name", "username", "email", "phone"};
             for (int i = 0; i < fields.length; i++) fields[i].setText(b.getString(keys[i], ""));
+            String savedCategory = b.getString("category", "");
+            for (int i = 0; i < BUSINESS_CATEGORIES.length; i++) {
+                if (BUSINESS_CATEGORIES[i].equals(savedCategory)) selectedCategory = i;
+            }
+            updateCategoryPicker();
             // Passwords and GPS fixes are deliberately reacquired after recreation.
-            step = Math.min(2, Math.max(0, b.getInt("step", 0)));
+            step = selectedCategory < 0 ? 0 : Math.min(2, Math.max(0, b.getInt("step", 0)));
         }
         showStep(false);
     }
@@ -76,7 +87,29 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
         formCard.addView(description, lp(-1,-2,0,6,0,16));
         for (int i=0; i<steps.length; i++) {steps[i]=new LinearLayout(this); steps[i].setOrientation(LinearLayout.VERTICAL); formCard.addView(steps[i]);}
         name=field(steps[0],"Nama restoran / merchant",InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_WORDS);
-        category=field(steps[0],"Kategori usaha",InputType.TYPE_CLASS_TEXT);
+        steps[0].addView(label("Kategori usaha"));
+        categoryPicker = new Button(this);
+        categoryPicker.setAllCaps(false);
+        categoryPicker.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        categoryPicker.setPadding(dp(14), dp(10), dp(14), dp(10));
+        categoryPicker.setTextSize(14);
+        categoryPicker.setMinHeight(dp(54));
+        categoryPicker.setBackground(authShape(surfaceColor, 16));
+        categoryPicker.setOnClickListener(v -> {
+            if (busy) return;
+            new AlertDialog.Builder(this)
+                    .setTitle("Pilih kategori usaha")
+                    .setSingleChoiceItems(BUSINESS_CATEGORIES, selectedCategory, (dialog, which) -> {
+                        selectedCategory = which;
+                        updateCategoryPicker();
+                        statusText.setVisibility(View.GONE);
+                        dialog.dismiss();
+                    })
+                    .setNegativeButton("Batal", null)
+                    .show();
+        });
+        updateCategoryPicker();
+        steps[0].addView(categoryPicker, lp(-1, -2, 0, 4, 0, 12));
         username=field(steps[1],"Nama pengguna",InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         email=field(steps[1],"Email",InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
         phone=field(steps[1],"Nomor HP • 08… atau +628…",InputType.TYPE_CLASS_PHONE);
@@ -109,6 +142,13 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
         back.setOnClickListener(v->goBack()); login.setOnClickListener(v->{if(!busy)finish();});
         mountAuth();
     }
+    private void updateCategoryPicker() {
+        String value = selectedCategory < 0 ? "Pilih kategori usaha" : BUSINESS_CATEGORIES[selectedCategory];
+        categoryPicker.setText(value + "  ▾");
+        categoryPicker.setTextColor(selectedCategory < 0 ? mutedColor : inkColor);
+        categoryPicker.setContentDescription("Kategori usaha. " + value);
+    }
+
     private void showStep(boolean animate) {
         position.setText("LANGKAH "+(step+1)+" DARI 4"); progress.setProgress(step+1);
         heading.setText(titles[step]); description.setText(descriptions[step]);
@@ -128,7 +168,14 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
         return value;
     }
     private boolean validateStep() {
-        if(step==0) return required(name)&&required(category);
+        if (step == 0) {
+            if (!required(name)) return false;
+            if (selectedCategory < 0) {
+                showStatus("Pilih kategori usaha untuk melanjutkan.", false);
+                categoryPicker.requestFocus();
+                return false;
+            }
+        }
         if(step==1) {
             if(!required(username)||!required(email)||!required(phone)) return false;
             if(!username.getText().toString().trim().toLowerCase(Locale.US).matches("[a-z0-9._-]{4,40}")) {username.setError("Gunakan 4–40 huruf, angka, titik, _ atau -");username.requestFocus();return false;}
@@ -145,8 +192,9 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
     @Override public void onBackPressed(){goBack();}
     @Override protected boolean canChangeTheme() { return !busy; }
     @Override protected void onSaveInstanceState(Bundle state){
-        EditText[] fields={name,category,username,email,phone};String[] keys={"name","category","username","email","phone"};
+        EditText[] fields={name,username,email,phone};String[] keys={"name","username","email","phone"};
         for(int i=0;i<fields.length;i++)state.putString(keys[i],fields[i].getText().toString());
+        state.putString("category", selectedCategory < 0 ? "" : BUSINESS_CATEGORIES[selectedCategory]);
         state.putInt("step",step);super.onSaveInstanceState(state);
     }
     @Override protected void onStop(){
@@ -182,7 +230,7 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
         if(bestLocation==null||locationAccuracy<=0||locationAccuracy>MAX_ACCEPTED_ACCURACY_M){showStatus("Ambil lokasi dengan akurasi maksimal ±40 meter.",false);return;}
         final JSONObject body=new JSONObject();
         try {
-            body.put("name",name.getText().toString().trim());body.put("category",category.getText().toString().trim());
+            body.put("name",name.getText().toString().trim());body.put("category",BUSINESS_CATEGORIES[selectedCategory]);
             body.put("username",username.getText().toString().trim().toLowerCase(Locale.US));
             body.put("email",email.getText().toString().trim().toLowerCase(Locale.US));body.put("phone",normalizedPhone());
             body.put("password",password.getText().toString());
