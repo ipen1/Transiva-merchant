@@ -27,6 +27,40 @@ final class MerchantLoginRepository {
         static Result fail(String message){return new Result(false,message,"",null);}
     }
 
+    static Result preview(String username) {
+        HttpURLConnection connection = null;
+        try {
+            URL endpoint = new URL("https://transiva.my.id/server/merchant_login_preview.php");
+            connection = (HttpURLConnection) endpoint.openConnection();
+            connection.setRequestMethod("POST");
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(12000);
+            connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(false);
+            connection.setDoOutput(true);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setRequestProperty("Accept", "application/json");
+            byte[] body = new JSONObject().put("username", username).toString()
+                    .getBytes(StandardCharsets.UTF_8);
+            try (OutputStream output = connection.getOutputStream()) {
+                output.write(body);
+            }
+            int code = connection.getResponseCode();
+            JSONObject response = new JSONObject(read(code >= 200 && code < 300
+                    ? connection.getInputStream() : connection.getErrorStream()));
+            JSONObject profile = response.optJSONObject("profile");
+            if (code != 200 || !response.optBoolean("success") || !response.optBoolean("found")
+                    || profile == null || profile.optString("username").trim().isEmpty()) {
+                return Result.fail(response.optString("message", "Akun Merchant belum bisa diperiksa."));
+            }
+            return Result.ok("", "merchant", profile);
+        } catch (Exception ignored) {
+            return Result.fail("Akun belum bisa diperiksa. Periksa koneksi dan coba lagi.");
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
     static Result login(Activity a,String username,String password){
         HttpURLConnection c=null;
         try{

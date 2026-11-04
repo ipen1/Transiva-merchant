@@ -65,6 +65,10 @@ public class LoginActivity extends MerchantAuthActivity {
     private int loginStep;
     private TextView stepLabel, previous, identity, usernameLabel, passwordLabel;
     private View passwordBox;
+    private LinearLayout profileCard;
+    private ImageView profilePhoto;
+    private TextView profileInitial;
+    private JSONObject verifiedProfile;
     private LinearLayout loginCard;
     private boolean loading;
     private boolean passwordVisible;
@@ -76,7 +80,7 @@ public class LoginActivity extends MerchantAuthActivity {
         buildScreen();
         if (savedInstanceState != null) {
             usernameInput.setText(savedInstanceState.getString("username", ""));
-            loginStep = savedInstanceState.getInt("step", 0) == 1 ? 1 : 0;
+            // Require a fresh lookup after activity recreation.
             updateLoginStep(false);
         }
 
@@ -92,7 +96,27 @@ public class LoginActivity extends MerchantAuthActivity {
         loginCard = authCard();
         stepLabel = authText("", 12, true); stepLabel.setTextColor(Color.rgb(52, 145, 255));
         stepLabel.setPadding(0, 0, 0, dp(16)); loginCard.addView(stepLabel);
-        identity = authText("", 20, true); identity.setPadding(0, 0, 0, dp(16)); loginCard.addView(identity);
+        profileCard = new LinearLayout(this);
+        profileCard.setGravity(Gravity.CENTER_VERTICAL);
+        profileCard.setPadding(dp(12), dp(12), dp(12), dp(12));
+        boolean dark = MerchantAppSettings.isDarkMode(this);
+        profileCard.setBackground(authShape(Color.parseColor(dark ? "#20354F" : "#F0F5FD"), 18));
+        FrameLayout avatar = new FrameLayout(this);
+        profileInitial = authText("", 24, true);
+        profileInitial.setGravity(Gravity.CENTER);
+        profileInitial.setBackground(authShape(Color.parseColor(dark ? "#2C496B" : "#D9E9FE"), 32));
+        avatar.addView(profileInitial, new FrameLayout.LayoutParams(-1, -1));
+        profilePhoto = new ImageView(this);
+        profilePhoto.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        profilePhoto.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        avatar.addView(profilePhoto, new FrameLayout.LayoutParams(-1, -1));
+        profileCard.addView(avatar, new LinearLayout.LayoutParams(dp(60), dp(60)));
+        identity = authText("", 20, true);
+        identity.setPadding(dp(12), 0, 0, 0);
+        profileCard.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
+        LinearLayout.LayoutParams profileLayout = new LinearLayout.LayoutParams(-1, -2);
+        profileLayout.bottomMargin = dp(16);
+        loginCard.addView(profileCard, profileLayout);
         messageText = authText("", 13, false); messageText.setPadding(dp(12), dp(10), dp(12), dp(10));
         messageText.setVisibility(View.GONE); loginCard.addView(messageText);
         usernameLabel = authText("Nama pengguna", 14, true); loginCard.addView(usernameLabel);
@@ -138,7 +162,29 @@ public class LoginActivity extends MerchantAuthActivity {
         if (loading) return;
         if (loginStep == 1) {attemptLogin(); return;}
         if (usernameInput.getText().toString().trim().isEmpty()) {usernameInput.setError("Masukkan nama pengguna"); return;}
-        clearMessage(); loginStep = 1; updateLoginStep(true); passwordInput.requestFocus();
+        String username = usernameInput.getText().toString().trim();
+        clearMessage();
+        setLoading(true);
+        loginButton.setText("Memeriksa akun…");
+        if (MerchantNetworkExecutor.executeRead(this, "merchant-login-preview", () -> {
+            MerchantLoginRepository.Result result = MerchantLoginRepository.preview(username);
+            mainHandler.post(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                setLoading(false);
+                if (!result.success) {
+                    showMessage(result.message, false);
+                    return;
+                }
+                if (!username.equals(usernameInput.getText().toString().trim())) return;
+                verifiedProfile = result.user;
+                loginStep = 1;
+                updateLoginStep(true);
+                passwordInput.requestFocus();
+            });
+        }) == null) {
+            setLoading(false);
+            showMessage("Pemeriksaan sedang sibuk. Coba lagi.", false);
+        }
     }
     private void updateLoginStep(boolean animate) {
         boolean password = loginStep == 1;
@@ -147,15 +193,25 @@ public class LoginActivity extends MerchantAuthActivity {
         usernameInput.setVisibility(password ? View.GONE : View.VISIBLE);
         passwordLabel.setVisibility(password ? View.VISIBLE : View.GONE);
         passwordBox.setVisibility(password ? View.VISIBLE : View.GONE);
-        identity.setText("Halo, " + usernameInput.getText().toString().trim());
-        identity.setVisibility(password ? View.VISIBLE : View.GONE);
+        profileCard.setVisibility(password && verifiedProfile != null ? View.VISIBLE : View.GONE);
+        com.bumptech.glide.Glide.with(this).clear(profilePhoto);
+        profilePhoto.setImageDrawable(null);
+        if (password && verifiedProfile != null) {
+            String name = verifiedProfile.optString("username");
+            identity.setText("@" + name);
+            profileInitial.setText(name.isEmpty() ? "M" : name.substring(0, 1).toUpperCase(Locale.ROOT));
+            String photo = verifiedProfile.optString("photo");
+            if (photo.startsWith(BASE_URL + "server/uploads/profile")) {
+                com.bumptech.glide.Glide.with(this).load(photo).circleCrop().into(profilePhoto);
+            }
+        }
         previous.setVisibility(password ? View.VISIBLE : View.GONE);
         loginButton.setText(password ? "Masuk →" : "Lanjut →");
         if (animate) animateStep(loginCard);
     }
     private void returnToUsername() {
         if (loading) return;
-        passwordInput.setText(""); loginStep = 0; clearMessage(); updateLoginStep(true); usernameInput.requestFocus();
+        passwordInput.setText(""); verifiedProfile = null; loginStep = 0; clearMessage(); updateLoginStep(true); usernameInput.requestFocus();
     }
     @Override public void onBackPressed() {
         if (loading) return;
@@ -163,7 +219,7 @@ public class LoginActivity extends MerchantAuthActivity {
     }
     @Override protected boolean canChangeTheme() { return !loading; }
     @Override protected void onSaveInstanceState(Bundle state) {
-        state.putString("username", usernameInput.getText().toString()); state.putInt("step", loginStep);
+        state.putString("username", usernameInput.getText().toString());
         super.onSaveInstanceState(state);
     }
     @Override protected void onDestroy() {
@@ -175,8 +231,7 @@ public class LoginActivity extends MerchantAuthActivity {
 
         clearMessage();
 
-        String username =
-                usernameInput.getText().toString().trim();
+        String username = verifiedProfile == null ? "" : verifiedProfile.optString("username");
         String password =
                 passwordInput.getText().toString();
 
