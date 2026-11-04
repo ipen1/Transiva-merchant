@@ -1,5 +1,6 @@
 package com.transiva.app;
 
+import android.os.Build;
 import android.view.View;
 import android.view.Window;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -14,11 +15,15 @@ final class MerchantWindowInsets {
     private MerchantWindowInsets() {}
 
     static void enable(Window window, boolean lightBars) {
-        WindowCompat.enableEdgeToEdge(window);
+        // Keep insets dispatch for older Android versions and full-size dialogs.
+        // enableEdgeToEdge also bundles legacy system-bar color calls.
+        WindowCompat.setDecorFitsSystemWindows(window, false);
         setBarAppearance(window, lightBars);
     }
 
     static void setBarAppearance(Window window, boolean lightBars) {
+        // Older versions retain the icon appearance of their window theme.
+        if (Build.VERSION.SDK_INT < 35) return;
         WindowInsetsControllerCompat controller =
                 WindowCompat.getInsetsController(window, window.getDecorView());
         controller.setAppearanceLightStatusBars(lightBars);
