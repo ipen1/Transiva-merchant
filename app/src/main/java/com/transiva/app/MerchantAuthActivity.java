@@ -77,7 +77,9 @@ public abstract class MerchantAuthActivity extends Activity {
     }
     protected boolean canChangeTheme() { return true; }
     protected void mountAuth() {
-        setContentView(authScroll); MerchantWindowInsets.applyIme(this, authScroll);
+        MerchantWindowInsets.enable(getWindow(), !MerchantAppSettings.isDarkMode(this));
+        setContentView(authScroll);
+        MerchantWindowInsets.applyIme(authScroll);
         MerchantAppSettings.apply(this);
     }
     protected TextView authText(String value, int size, boolean bold) {

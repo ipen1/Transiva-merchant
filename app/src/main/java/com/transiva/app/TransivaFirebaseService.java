@@ -61,12 +61,17 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
         SessionManager session = new SessionManager(this);
         if (!session.isLoggedIn() || !"merchant".equalsIgnoreCase(session.getRole())) return;
+        String receivedForToken = session.getToken();
         String targetUser = value(data, "target_user_id", "");
         if (!targetUser.isEmpty() && !targetUser.equals(session.getUserId())) return;
         if (!value(data, "target_app_scope", "merchant").equals("merchant")) return;
         String targetSession = value(data, "target_session_hash", "");
+        boolean sessionBound = "merchant_driver_chat".equalsIgnoreCase(type)
+                || "merchant_driver_arrived_pickup".equalsIgnoreCase(type);
+        if (sessionBound && (targetUser.isEmpty() || targetSession.isEmpty()
+                || !"merchant".equals(value(data, "target_app_scope", "")))) return;
         try {
-            if (!targetSession.isEmpty() && !targetSession.equals(MerchantPushRegistration.hash(session.getToken()))) return;
+            if (!targetSession.isEmpty() && !targetSession.equals(MerchantPushRegistration.hash(receivedForToken))) return;
             long expiry = Long.parseLong(value(data, "merchant_expires_epoch", "0"));
             if (expiry > 0 && System.currentTimeMillis() / 1000L >= expiry) return;
         } catch (Exception invalid) { return; }
@@ -97,11 +102,14 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             }
         }
 
+        if (!receivedForToken.equals(session.getToken()) || !session.isLoggedIn()) return;
+
         // Refresh visible screens immediately. Polling remains only as a fallback.
         MerchantRealtime.publish(this, incomingOrder ? "new_order" : (driverArrived ? "driver_arrived" : (merchantDriverChat ? "merchant_driver_chat" : "update")), orderId);
 
 
-        String dedupeKey = (orderId + "|" + type + "|" + status + "|" + title).toLowerCase(Locale.US);
+        String dedupeKey = (targetSession + "|" + orderId + "|" + type + "|" + status + "|"
+                + value(data, "chat_id", "") + "|" + title).toLowerCase(Locale.US);
         if (isDuplicate(dedupeKey)) return;
         MerchantNotificationStore.add(this, title, body, type, orderId);
 
@@ -153,6 +161,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit().putString("display", "Notifikasi/kanal dinonaktifkan").apply();
                 return;
             }
+            if (!receivedForToken.equals(session.getToken()) || !session.isLoggedIn()) return;
             nm.notify(requestCode, b.build());
             getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit()
                     .putString("display", "Notifikasi ditampilkan").putLong("displayed_at", System.currentTimeMillis()).apply();

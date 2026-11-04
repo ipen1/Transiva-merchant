@@ -19,7 +19,6 @@ import android.provider.OpenableColumns;
 import androidx.exifinterface.media.ExifInterface;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.widget.TextViewCompat;
 import android.view.Gravity;
@@ -58,11 +57,7 @@ public class MerchantBaseActivity extends Activity {
             NAVY = MerchantAppSettings.DARK_TEXT; TEXT = MerchantAppSettings.DARK_TEXT;
             MUTED = MerchantAppSettings.DARK_MUTED; BG = MerchantAppSettings.DARK_PAGE;
         }
-        try {
-            getWindow().setStatusBarColor(Color.parseColor("#F4F8FE"));
-            getWindow().setNavigationBarColor(Color.WHITE);
-        } catch(Exception ignored){}
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        MerchantWindowInsets.enable(getWindow(), !MerchantAppSettings.isDarkMode(this));
         sessionManager = new SessionManager(this);
     }
 
@@ -129,7 +124,7 @@ public class MerchantBaseActivity extends Activity {
             v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
             return insets;
         });
-        ViewCompat.requestApplyInsets(shell);
+        MerchantWindowInsets.requestWhenAttached(shell);
         return shell;
     }
 

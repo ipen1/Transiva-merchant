@@ -4,10 +4,29 @@ import android.app.Activity;import android.content.Intent;import android.graphic
 
 public class MerchantTransAssistantActivity extends Activity {
     private LinearLayout messages;private ScrollView scroll;private EditText input;private MerchantTransAssistantEngine engine;
-    @Override protected void onCreate(Bundle b){super.onCreate(b);getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);getWindow().setStatusBarColor(Color.parseColor("#071B3A"));engine=new MerchantTransAssistantEngine();setContentView(build());addBot("Halo! Saya Trans Asisten Merchant. Saya siap membantu operasional bisnis Anda di Transiva.","","");}
+    @Override protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        MerchantWindowInsets.enable(getWindow(), true);
+        engine = new MerchantTransAssistantEngine();
+        View root = build();
+        setContentView(root);
+        MerchantWindowInsets.applyIme(root);
+        addBot("Halo! Saya Trans Asisten Merchant. Saya siap membantu operasional bisnis Anda di Transiva.", "", "");
+        if (state != null) input.setText(state.getString("assistant_draft", ""));
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        if (input != null) out.putString("assistant_draft", input.getText().toString());
+    }
+
     private View build(){LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.parseColor("#F4F8FE"));
+        int side=dp(Math.max(0,(getResources().getConfiguration().screenWidthDp-840)/2));
+        root.setPadding(side,0,side,0);
+        boolean compact=getResources().getConfiguration().screenHeightDp<480;
         LinearLayout hero=new LinearLayout(this);hero.setOrientation(LinearLayout.VERTICAL);hero.setPadding(dp(14),dp(12),dp(14),dp(14));GradientDrawable hg=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.parseColor("#061A39"),Color.parseColor("#0876F9"),Color.parseColor("#20BAFF")});hero.setBackground(hg);
-        LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);TextView back=tv("‹",36,Color.WHITE,false);back.setGravity(Gravity.CENTER);back.setOnClickListener(v->finish());bar.addView(back,new LinearLayout.LayoutParams(dp(42),dp(46)));LinearLayout t=new LinearLayout(this);t.setOrientation(LinearLayout.VERTICAL);t.addView(tv("Trans Asisten",20,Color.WHITE,true));t.addView(tv("Merchant Intelligence • lokal • 24/7",11,Color.parseColor("#D7F1FF"),false));bar.addView(t,new LinearLayout.LayoutParams(0,-2,1));TextView badge=tv("● LOKAL",10,Color.parseColor("#C8FAFF"),true);badge.setPadding(dp(10),dp(6),dp(10),dp(6));badge.setBackground(stroke("#244D9A","#68E8FF",18));bar.addView(badge);hero.addView(bar);TextView mascot=tv("🤖",58,Color.WHITE,true);mascot.setGravity(Gravity.CENTER);mascot.setPadding(0,dp(4),0,dp(2));hero.addView(mascot);TextView state=tv("TRANS ASISTEN MERCHANT 3.0",11,Color.parseColor("#E0F6FF"),true);state.setGravity(Gravity.CENTER);hero.addView(state);root.addView(hero);
+        LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);TextView back=tv("‹",36,Color.WHITE,false);back.setGravity(Gravity.CENTER);back.setOnClickListener(v->finish());bar.addView(back,new LinearLayout.LayoutParams(dp(42),dp(46)));LinearLayout t=new LinearLayout(this);t.setOrientation(LinearLayout.VERTICAL);t.addView(tv("Trans Asisten",20,Color.WHITE,true));t.addView(tv("Merchant Intelligence • lokal • 24/7",11,Color.parseColor("#D7F1FF"),false));bar.addView(t,new LinearLayout.LayoutParams(0,-2,1));TextView badge=tv("● LOKAL",10,Color.parseColor("#C8FAFF"),true);badge.setPadding(dp(10),dp(6),dp(10),dp(6));badge.setBackground(stroke("#244D9A","#68E8FF",18));bar.addView(badge);hero.addView(bar);TextView mascot=tv("🤖",58,Color.WHITE,true);mascot.setGravity(Gravity.CENTER);mascot.setPadding(0,dp(4),0,dp(2));if (!compact) hero.addView(mascot);TextView state=tv("TRANS ASISTEN MERCHANT 3.0",11,Color.parseColor("#E0F6FF"),true);state.setGravity(Gravity.CENTER);if (!compact) hero.addView(state);root.addView(hero);
         HorizontalScrollView hs=new HorizontalScrollView(this);hs.setHorizontalScrollBarEnabled(false);LinearLayout chips=new LinearLayout(this);chips.setPadding(dp(12),dp(10),dp(12),dp(8));String[] p={"📦 Cek pesanan","🍽 Tambah menu","🏪 Status toko","💰 Cek keuangan","📍 Lokasi merchant"};for(String x:p){TextView c=tv(x,12,Color.parseColor("#0B4E9B"),true);c.setPadding(dp(12),dp(9),dp(12),dp(9));c.setBackground(stroke("#FFFFFF","#CDE4FF",18));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,0,dp(7),0);chips.addView(c,lp);c.setOnClickListener(v->{input.setText(x.substring(x.indexOf(' ')+1));send();});}hs.addView(chips);root.addView(hs);
         scroll=new ScrollView(this);scroll.setFillViewport(true);messages=new LinearLayout(this);messages.setOrientation(LinearLayout.VERTICAL);messages.setPadding(dp(12),dp(4),dp(12),dp(12));scroll.addView(messages);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout composer=new LinearLayout(this);composer.setGravity(Gravity.CENTER_VERTICAL);composer.setPadding(dp(10),dp(8),dp(10),dp(10));composer.setBackgroundColor(Color.WHITE);input=new EditText(this);input.setHint("Tanya Trans Asisten...");input.setTextSize(14);input.setTextColor(Color.parseColor("#17324D"));input.setHintTextColor(Color.parseColor("#8296AD"));input.setPadding(dp(14),dp(10),dp(14),dp(10));input.setBackground(stroke("#F3F8FF","#CFE3F8",22));input.setSingleLine(false);input.setMaxLines(3);input.setImeOptions(EditorInfo.IME_ACTION_SEND);input.setOnEditorActionListener((v,a,e)->{if(a==EditorInfo.IME_ACTION_SEND){send();return true;}return false;});composer.addView(input,new LinearLayout.LayoutParams(0,-2,1));TextView send=tv("➤",24,Color.WHITE,true);send.setGravity(Gravity.CENTER);send.setBackground(fill("#0878F9",24));send.setOnClickListener(v->send());LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(48),dp(48));sp.setMargins(dp(8),0,0,0);composer.addView(send,sp);root.addView(composer);return root;}

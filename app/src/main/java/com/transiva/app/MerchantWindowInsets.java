@@ -1,7 +1,8 @@
 package com.transiva.app;
 
-import android.app.Activity;
 import android.view.View;
+import android.view.Window;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -12,12 +13,37 @@ import androidx.core.view.WindowInsetsCompat;
 final class MerchantWindowInsets {
     private MerchantWindowInsets() {}
 
-    static void apply(Activity a, View root) { apply(a, root, false); }
-    static void applyIme(Activity a, View root) { apply(a, root, true); }
+    static void enable(Window window, boolean lightBars) {
+        WindowCompat.enableEdgeToEdge(window);
+        setBarAppearance(window, lightBars);
+    }
 
-    private static void apply(Activity a, View root, boolean includeIme) {
+    static void setBarAppearance(Window window, boolean lightBars) {
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        controller.setAppearanceLightStatusBars(lightBars);
+        controller.setAppearanceLightNavigationBars(lightBars);
+    }
+
+    static void requestWhenAttached(View root) {
+        if (ViewCompat.isAttachedToWindow(root)) {
+            ViewCompat.requestApplyInsets(root);
+            return;
+        }
+        root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View view) {
+                view.removeOnAttachStateChangeListener(this);
+                ViewCompat.requestApplyInsets(view);
+            }
+            @Override public void onViewDetachedFromWindow(View view) {}
+        });
+    }
+
+    static void apply(View root) { apply(root, false); }
+    static void applyIme(View root) { apply(root, true); }
+
+    private static void apply(View root, boolean includeIme) {
         if (root == null) return;
-        WindowCompat.setDecorFitsSystemWindows(a.getWindow(), false);
         final int l = root.getPaddingLeft(), t = root.getPaddingTop();
         final int r = root.getPaddingRight(), b = root.getPaddingBottom();
         ViewCompat.setOnApplyWindowInsetsListener(root, (v, in) -> {
@@ -30,6 +56,6 @@ final class MerchantWindowInsets {
             v.setPadding(l + bars.left, t + bars.top, r + bars.right, b + bottom);
             return in;
         });
-        ViewCompat.requestApplyInsets(root);
+        requestWhenAttached(root);
     }
 }

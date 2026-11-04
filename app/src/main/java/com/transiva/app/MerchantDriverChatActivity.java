@@ -66,12 +66,18 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         driverName = first(getIntent().getStringExtra("driver_name"), "Driver");
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         build();
+        if (b != null) input.setText(b.getString("chat_draft", ""));
         if (orderId.isEmpty() && orderDbId.isEmpty()) {
             alert("Chat tidak tersedia", "ID order tidak ditemukan.");
             send.setEnabled(false);
             return;
         }
         load(true);
+    }
+
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        if (input != null) out.putString("chat_draft", input.getText().toString());
     }
 
     @Override protected void onResume() {
@@ -127,17 +133,18 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     }
 
     private void applyChatInsets(LinearLayout page) {
-        final int baseLeft = dp(14), baseTop = dp(14), baseRight = dp(14), baseBottom = dp(12);
+        final int side = dp(Math.max(14, (screenWidthDp() - 840) / 2));
+        final int baseTop = dp(14), baseBottom = dp(12);
         ViewCompat.setOnApplyWindowInsetsListener(page, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
             int bottomInset = Math.max(bars.bottom, ime.bottom);
-            v.setPadding(baseLeft + bars.left, baseTop + bars.top, baseRight + bars.right, baseBottom + bottomInset);
+            v.setPadding(side + bars.left, baseTop + bars.top, side + bars.right, baseBottom + bottomInset);
             // Weighted message area menyusut otomatis; composer selalu berada tepat di atas keyboard.
             if (input != null && input.hasFocus()) scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
             return insets;
         });
-        ViewCompat.requestApplyInsets(page);
+        MerchantWindowInsets.requestWhenAttached(page);
         page.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> {
             if (b != oldB && input != null && input.hasFocus()) {
                 scroll.postDelayed(() -> scroll.fullScroll(View.FOCUS_DOWN), 60L);

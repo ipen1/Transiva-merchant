@@ -63,10 +63,7 @@ public class PinActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        try {
-            getWindow().setStatusBarColor(Color.parseColor("#081423"));
-            getWindow().setNavigationBarColor(Color.parseColor("#081423"));
-        } catch (Exception ignored) {}
+        MerchantWindowInsets.enable(getWindow(), false);
 
         session = new SessionManager(this);
         if (!session.isLoggedIn() || safe(session.getToken()).trim().isEmpty()) {
@@ -80,7 +77,7 @@ public class PinActivity extends Activity {
 
         View screen = buildScreen();
         setContentView(screen);
-        MerchantWindowInsets.apply(this, screen);
+        MerchantWindowInsets.apply(screen);
         checkPinStatus();
     }
 
@@ -512,11 +509,27 @@ public class PinActivity extends Activity {
         finish();
     }
 
+    private boolean logoutPending;
     private void logout() {
-        try {
+        if (logoutPending) return;
+        String token = session.getToken();
+        if (token.isEmpty()) {
             session.forceLogout("pin_gate_logout");
-        } catch (Exception ignored) {}
-        openLogin();
+            openLogin();
+            return;
+        }
+        logoutPending = true;
+        MerchantLogout.revoke(this, token, success -> {
+            logoutPending = false;
+            if (isFinishing() || isDestroyed() || !token.equals(session.getToken())) return;
+            if (success) {
+                session.forceLogout("pin_gate_logout");
+                openLogin();
+            } else {
+                android.widget.Toast.makeText(this, "Belum bisa keluar. Periksa koneksi lalu coba lagi.",
+                        android.widget.Toast.LENGTH_LONG).show();
+            }
+        });
     }
 
     private void openLogin() {

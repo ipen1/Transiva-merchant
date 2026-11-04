@@ -1,7 +1,6 @@
 package com.transiva.app;
 
 import android.app.*;
-import androidx.core.view.WindowCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.graphics.Insets;
@@ -91,8 +90,8 @@ final class MerchantStoryViewer {
         };
         a.getApplication().registerActivityLifecycleCallbacks(lifecycle);
         dialog.setOnDismissListener(d->{closing=true;handler.removeCallbacksAndMessages(null);root.animate().cancel();media.animate().cancel();try{com.bumptech.glide.Glide.with(a).clear(photo);com.bumptech.glide.Glide.with(a).clear(avatar.photo);}catch(Exception ignored){}a.getApplication().unregisterActivityLifecycleCallbacks(lifecycle);Runnable action=afterClose;afterClose=null;if(action!=null&&!a.isFinishing()&&!a.isDestroyed())action.run();});
-        dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setLayout(-1,-1);w.setWindowAnimations(0);w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);WindowCompat.setDecorFitsSystemWindows(w,false);w.setStatusBarColor(0xFF071221);w.setNavigationBarColor(0xFF071221);WindowCompat.getInsetsController(w,w.getDecorView()).setAppearanceLightStatusBars(false);WindowCompat.getInsetsController(w,w.getDecorView()).setAppearanceLightNavigationBars(false);
-            ViewCompat.setOnApplyWindowInsetsListener(root,(view,insets)->{Insets bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());view.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets;});ViewCompat.requestApplyInsets(root);}
+        dialog.show();Window w=dialog.getWindow();if(w!=null){w.setBackgroundDrawableResource(android.R.color.transparent);w.setLayout(-1,-1);w.setWindowAnimations(0);w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);MerchantWindowInsets.enable(w,false);
+            ViewCompat.setOnApplyWindowInsetsListener(root,(view,insets)->{Insets bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());view.setPadding(bars.left,bars.top,bars.right,bars.bottom);return insets;});MerchantWindowInsets.requestWhenAttached(root);}
         root.setAlpha(0f);root.setScaleX(.96f);root.setScaleY(.96f);root.animate().alpha(1).scaleX(1).scaleY(1).setDuration(220).setInterpolator(new DecelerateInterpolator()).start();
         show();handler.post(tick);
     }

@@ -129,27 +129,7 @@ public final class MerchantAppSettings {
             APPLIED_ACTIVITY_THEMES.put(activity, dark);
         }
 
-        activity.getWindow().setStatusBarColor(
-                dark ? Color.rgb(5, 16, 29) : Color.parseColor("#F4F8FE")
-        );
-        activity.getWindow().setNavigationBarColor(dark ? DARK_PAGE : Color.WHITE);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            int flags = activity.getWindow().getDecorView().getSystemUiVisibility();
-            if (dark) {
-                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            } else {
-                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-            }
-            activity.getWindow().getDecorView().setSystemUiVisibility(flags);
-        }
-
-        if (Build.VERSION.SDK_INT >= 26) {
-            int flags = activity.getWindow().getDecorView().getSystemUiVisibility();
-            activity.getWindow().getDecorView().setSystemUiVisibility(dark
-                    ? flags & ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-                    : flags | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
-        }
+        MerchantWindowInsets.setBarAppearance(activity.getWindow(), !dark);
         View content = activity.findViewById(android.R.id.content);
         if (content == null) return;
 

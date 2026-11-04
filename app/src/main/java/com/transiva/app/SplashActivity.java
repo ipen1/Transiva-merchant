@@ -35,10 +35,7 @@ public class SplashActivity extends Activity {
         super.onCreate(state);
         shownAt = SystemClock.elapsedRealtime();
         animate = Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled();
-        getWindow().setStatusBarColor(Color.TRANSPARENT);
-        getWindow().setNavigationBarColor(Color.parseColor("#06142E"));
-        getWindow().getDecorView().setSystemUiVisibility(0);
-        if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
+        MerchantWindowInsets.enable(getWindow(), false);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
@@ -106,7 +103,7 @@ public class SplashActivity extends Activity {
         if (compact) footer.setVisibility(View.GONE);
         column.addView(footer, new LinearLayout.LayoutParams(-1, -2));
         setContentView(root);
-        MerchantWindowInsets.apply(this, root);
+        MerchantWindowInsets.apply(root);
         if (animate && state == null) {
             hero.setAlpha(0f); hero.setTranslationY(dp(14));
             hero.animate().alpha(1f).translationY(0f).setDuration(650)
