@@ -26,22 +26,27 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
   content=new LinearLayout(this);setContentView(page(content));
   LinearLayout header=row();header.setGravity(android.view.Gravity.CENTER_VERTICAL);
   header.addView(title("Cerita Toko"),new LinearLayout.LayoutParams(0,-2,1));
-  count=tv("Pengikut…",12,BLUE,true);count.setMinHeight(dp(48));count.setGravity(android.view.Gravity.CENTER);count.setOnClickListener(v->showFollowers(true));header.addView(count);content.addView(header);
+  count=tv("Pengikut…",12,BLUE,true);count.setMinHeight(dp(48));count.setGravity(android.view.Gravity.CENTER);count.setOnClickListener(v->showFollowers(true));header.addView(count);
+  Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui cerita dan pengikut");refresh.setPadding(0,0,0,0);refresh.setElevation(0);refresh.setOnClickListener(v->load(false));
+  LinearLayout.LayoutParams refreshLp=new LinearLayout.LayoutParams(dp(48),dp(48));refreshLp.leftMargin=dp(6);header.addView(refresh,refreshLp);content.addView(header);
   storyContent=new LinearLayout(this);storyContent.setOrientation(LinearLayout.VERTICAL);content.addView(storyContent);
-  LinearLayout composer=ui.box();composer.addView(tv("Bagikan kabar • tampil 24 jam",14,NAVY,true));
+  LinearLayout composer=ui.box();composer.addView(tv("Cerita baru • 24 jam",14,NAVY,true));
   preview=new ImageView(this);preview.setScaleType(ImageView.ScaleType.FIT_CENTER);preview.setContentDescription("Pratinjau foto cerita");preview.setVisibility(View.GONE);composer.addView(preview,new LinearLayout.LayoutParams(-1,dp(112)));
-  imageInfo=tv("Foto akan diperkecil otomatis tanpa dipotong.",11,MUTED,false);imageInfo.setPadding(0,dp(4),0,dp(6));composer.addView(imageInfo);
-  caption=input("Kabar singkat dari tokomu • opsional",android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);caption.setMinLines(1);caption.setMaxLines(3);caption.setFilters(new InputFilter[]{new InputFilter.LengthFilter(300)});composer.addView(caption);
+  imageInfo=tv("Pilih foto menu atau promo hari ini.",11,MUTED,false);imageInfo.setPadding(0,dp(4),0,dp(6));composer.addView(imageInfo);
+  caption=input("Tulis kabar singkat • opsional",android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE);caption.setTextSize(13);caption.setPadding(dp(10),dp(7),dp(10),dp(7));caption.setMinLines(1);caption.setMaxLines(3);caption.setFilters(new InputFilter[]{new InputFilter.LengthFilter(300)});composer.addView(caption);
   LinearLayout actions=actionRow();pick=outlineBtn("Pilih foto");publish=btn("Terbitkan");
   pick.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("image/*");i.addCategory(Intent.CATEGORY_OPENABLE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);startActivityForResult(i,708);});publish.setOnClickListener(v->publish());
-  actions.addView(pick,actionLp());actions.addView(publish,actionLp());composer.addView(actions);
+  pick.setTextSize(13);publish.setTextSize(13);pick.setElevation(0);publish.setElevation(0);
+  pick.setPadding(dp(8),0,dp(8),0);publish.setPadding(dp(8),0,dp(8),0);
+  LinearLayout.LayoutParams pickLp=new LinearLayout.LayoutParams(0,dp(48),1);pickLp.rightMargin=dp(4);
+  LinearLayout.LayoutParams publishLp=new LinearLayout.LayoutParams(0,dp(48),1);publishLp.leftMargin=dp(4);
+  actions.addView(pick,pickLp);actions.addView(publish,publishLp);composer.addView(actions);
   status=tv("",12,MUTED,false);status.setVisibility(View.GONE);status.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int st,int c,int a){}public void onTextChanged(CharSequence t,int st,int b,int c){status.setVisibility(t.length()==0?View.GONE:View.VISIBLE);}public void afterTextChanged(android.text.Editable e){}});content.addView(status,1);storyContent.addView(composer);
   storyContent.addView(label("Cerita aktif"));stories=new LinearLayout(this);stories.setOrientation(LinearLayout.VERTICAL);storyContent.addView(stories);
   followerContent=new LinearLayout(this);followerContent.setOrientation(LinearLayout.VERTICAL);content.addView(followerContent);
   Button back=outlineBtn("← Kembali ke cerita");back.setOnClickListener(v->showFollowers(false));followerContent.addView(back);
   followerContent.addView(label("Pengikut toko"));followers=new LinearLayout(this);followers.setOrientation(LinearLayout.VERTICAL);followerContent.addView(followers);
   more=outlineBtn("Pengikut berikutnya");more.setVisibility(View.GONE);more.setOnClickListener(v->load(true));followerContent.addView(more);
-  Button refresh=outlineBtn("↻ Perbarui");refresh.setOnClickListener(v->load(false));content.addView(refresh);
   lock(false);showFollowers(getIntent().getBooleanExtra("show_followers",false));
  }
  private void showFollowers(boolean value){getIntent().putExtra("show_followers",value);storyContent.setVisibility(value?View.GONE:View.VISIBLE);followerContent.setVisibility(value?View.VISIBLE:View.GONE);content.post(()->content.requestRectangleOnScreen(new android.graphics.Rect(0,0,content.getWidth(),dp(48)),true));}
@@ -63,7 +68,7 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
      if(isFinishing()||isDestroyed()||request!=photoGeneration){deletePrepared(result);return;}
      photoTask=null;imagePreparing=false;preparedStory=result;lock(false);
      preview.setVisibility(View.VISIBLE);com.bumptech.glide.Glide.with(this).load(result.uri).into(preview);
-     imageInfo.setText(humanBytes(result.originalBytes)+" → "+humanBytes(result.finalBytes)+" · siap diterbitkan");
+     imageInfo.setText("Foto siap diterbitkan • tampil 24 jam");
     });
    }catch(Exception e){runOnUiThread(()->{if(isFinishing()||isDestroyed()||request!=photoGeneration)return;photoTask=null;imagePreparing=false;preparedStory=null;lock(false);imageInfo.setText("Foto belum siap. Pilih ulang foto untuk mencoba lagi.");status.setText(e.getMessage()==null?"Foto tidak dapat diproses.":e.getMessage());});}
   });
@@ -86,11 +91,11 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
   for(int i=0;i<current.length();i++){
    JSONObject item=current.optJSONObject(i);LinearLayout box=ui.box();LinearLayout line=new LinearLayout(this);line.setGravity(android.view.Gravity.CENTER_VERTICAL);
    ImageView image=new ImageView(this);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setBackground(round(SOFT_BLUE,dp(10)));image.setClipToOutline(true);ui.image(image,item.optString("image"));
-   LinearLayout.LayoutParams imageLp=new LinearLayout.LayoutParams(dp(52),dp(64));imageLp.setMargins(0,0,dp(10),0);line.addView(image,imageLp);
+   LinearLayout.LayoutParams imageLp=new LinearLayout.LayoutParams(dp(48),dp(56));imageLp.setMargins(0,0,dp(10),0);line.addView(image,imageLp);
    LinearLayout labels=new LinearLayout(this);labels.setOrientation(LinearLayout.VERTICAL);TextView title=tv(item.optString("caption").isEmpty()?"Cerita foto":item.optString("caption"),14,TEXT,true);title.setMaxLines(2);title.setEllipsize(android.text.TextUtils.TruncateAt.END);labels.addView(title);
-   long minutes=Math.max(1,(item.optLong("expires_at")-now+59)/60);String remaining=minutes>=60?(minutes/60)+" j "+(minutes%60)+" m":minutes+" menit";
-   labels.addView(tv("Berakhir dalam "+remaining,12,MUTED,false));line.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
-   Button options=outlineBtn("⋯");options.setContentDescription("Pilihan cerita");line.addView(options,new LinearLayout.LayoutParams(dp(48),-2));
+   long minutes=Math.max(1,(item.optLong("expires_at")-now+59)/60);String remaining=minutes>=60?(minutes/60)+" jam":minutes+" menit";
+   labels.addView(tv("Tersisa "+remaining,12,MUTED,false));line.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
+   Button options=outlineBtn("⋯");options.setPadding(0,0,0,0);options.setElevation(0);options.setBackgroundColor(android.graphics.Color.TRANSPARENT);options.setContentDescription("Pilihan cerita");line.addView(options,new LinearLayout.LayoutParams(dp(48),dp(48)));
    options.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Cerita toko").setItems(new String[]{"Lihat cerita","Hapus cerita"},(d,w)->{
     if(w==0)ui.viewer(visible,item.optInt("restaurant_id"),clock+(SystemClock.elapsedRealtime()-anchor)/1000);
     else new android.app.AlertDialog.Builder(this).setTitle("Hapus cerita ini?").setMessage("Cerita ini akan berhenti tampil ke pelanggan.").setNegativeButton("Batal",null).setPositiveButton("Hapus",(x,y)->delete(item.optLong("id"),options)).show();
@@ -98,7 +103,7 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
    image.setOnClickListener(v->ui.viewer(visible,item.optInt("restaurant_id"),clock+(SystemClock.elapsedRealtime()-anchor)/1000));box.addView(line);stories.addView(box);
   }
  }
- private void lock(boolean value){writing=value;publish.setEnabled(!value&&!imagePreparing&&preparedStory!=null);pick.setEnabled(!value);caption.setEnabled(!value);publish.setText(value?"Menerbitkan…":imagePreparing?"Menyiapkan…":"Terbitkan");}
+ private void lock(boolean value){writing=value;publish.setEnabled(!value&&!imagePreparing&&preparedStory!=null);publish.setAlpha(publish.isEnabled()?1f:0.42f);pick.setEnabled(!value);caption.setEnabled(!value);publish.setText(value?"Menerbitkan…":imagePreparing?"Menyiapkan…":"Terbitkan");}
  private void publish(){
   if(writing)return;if(imagePreparing){status.setText("Tunggu sebentar, foto masih disiapkan.");return;}
   if(photo==null||preparedStory==null){status.setText("Pilih foto dan tunggu sampai siap diterbitkan.");return;}
@@ -109,7 +114,7 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
    JSONObject res=new JSONObject(postFormPrepared(BASE+"merchant_kabar_mitra.php",payload,selected,"image"));
    boolean success=res.optBoolean("success");if(success)deletePrepared(selected);
    runOnUiThread(()->{if(isFinishing()||isDestroyed())return;
-    if(success){photo=null;preparedStory=null;preview.setImageDrawable(null);preview.setVisibility(View.GONE);caption.setText("");publishKey=UUID.randomUUID().toString();imageInfo.setText("Foto akan diperkecil otomatis tanpa dipotong.");}
+    if(success){photo=null;preparedStory=null;preview.setImageDrawable(null);preview.setVisibility(View.GONE);caption.setText("");publishKey=UUID.randomUUID().toString();imageInfo.setText("Pilih foto menu atau promo hari ini.");}
     lock(false);status.setText(res.optString("message","Gagal menerbitkan cerita."));if(success)load(false);
    });
   }catch(Exception e){runOnUiThread(()->{if(!isFinishing()&&!isDestroyed()){lock(false);status.setText("Koneksi belum berhasil. Tekan Terbitkan untuk mencoba lagi.");}});}});

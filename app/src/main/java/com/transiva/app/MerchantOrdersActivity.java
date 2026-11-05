@@ -104,8 +104,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         setContentView(page(root));
         LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title("Pesanan"),new LinearLayout.LayoutParams(0,-2,1));
-        Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui pesanan");
-        refresh.setOnClickListener(v->load(false));header.addView(refresh,new LinearLayout.LayoutParams(dp(48),-2));root.addView(header);
+        Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui pesanan");refresh.setPadding(0,0,0,0);refresh.setElevation(0);
+        refresh.setOnClickListener(v->load(false));header.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(header);
 
         realtimeStatus = tv("● Menghubungkan ke server...", 12, Color.parseColor("#B54708"), true);
         realtimeStatus.setPadding(dp(2), dp(3), dp(2), dp(5));
@@ -114,16 +114,32 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         statusLp.setMargins(0, 0, 0, dp(5));
         root.addView(realtimeStatus, statusLp);
 
-        LinearLayout tabs = row();
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setPadding(dp(4), dp(4), dp(4), dp(4));
+        tabs.setBackground(stroke(Color.WHITE, Color.parseColor("#DDE7F4"), dp(15)));
         Button active = btn("Aktif");
         Button hist = outlineBtn("Riwayat");
-        tabs.addView(active, new LinearLayout.LayoutParams(0, -2, 1));
-        tabs.addView(hist, new LinearLayout.LayoutParams(0, -2, 1));
-        root.addView(tabs);
-        Runnable updateTabs=()->{
-            active.setTextColor(historyMode?BLUE:Color.WHITE);hist.setTextColor(historyMode?Color.WHITE:BLUE);
-            active.setBackground(historyMode?stroke(Color.WHITE,Color.parseColor("#B9D7FF"),dp(12)):round(BLUE,dp(12)));
-            hist.setBackground(historyMode?round(BLUE,dp(12)):stroke(Color.WHITE,Color.parseColor("#B9D7FF"),dp(12)));
+        for (Button tab : new Button[]{active, hist}) {
+            tab.setTextSize(13);
+            tab.setPadding(dp(8), 0, dp(8), 0);
+            tab.setElevation(0);
+        }
+        LinearLayout.LayoutParams activeLp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        activeLp.rightMargin = dp(3);
+        tabs.addView(active, activeLp);
+        LinearLayout.LayoutParams historyLp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        historyLp.leftMargin = dp(3);
+        tabs.addView(hist, historyLp);
+        LinearLayout.LayoutParams tabsLp = new LinearLayout.LayoutParams(-1, -2);
+        tabsLp.bottomMargin = dp(10);
+        root.addView(tabs, tabsLp);
+        Runnable updateTabs = () -> {
+            active.setTextColor(historyMode ? BLUE : Color.WHITE);
+            hist.setTextColor(historyMode ? Color.WHITE : BLUE);
+            active.setBackground(historyMode ? round(Color.TRANSPARENT, dp(11)) : round(BLUE, dp(11)));
+            hist.setBackground(historyMode ? round(BLUE, dp(11)) : round(Color.TRANSPARENT, dp(11)));
+            active.setSelected(!historyMode);
+            hist.setSelected(historyMode);
         };
         updateTabs.run();
         active.setOnClickListener(v -> {
@@ -177,7 +193,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void setConnectionState(boolean connected, String message) {
         if (realtimeStatus == null) return;
-        realtimeStatus.setText(connected ? "● Pesanan tersinkron" : message);
+        realtimeStatus.setText(connected ? "● Terhubung • pesanan tersinkron" : message);
         realtimeStatus.setTextColor(Color.parseColor(MerchantAppSettings.isDarkMode(this) ? (connected?"#70E0AE":"#FFB4AB") : (connected ? "#16803A" : "#D92D20")));
         realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
     }
@@ -333,8 +349,34 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             more.setOnClickListener(v->load(false,true));list.addView(more);
         }
         if (shown == 0) {
-            list.addView(card(historyMode ? "Belum ada riwayat pada periode ini." : "Belum ada pesanan aktif."));
+            list.addView(emptyOrders());
         }
+    }
+
+    private LinearLayout emptyOrders() {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        box.setPadding(dp(18), dp(22), dp(18), dp(22));
+        box.setBackground(stroke(Color.WHITE, Color.parseColor("#DFE9F5"), dp(18)));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        box.setLayoutParams(params);
+        TextView icon = tv(historyMode ? "↶" : "☷", 25, BLUE, true);
+        icon.setGravity(Gravity.CENTER);
+        icon.setBackground(round(SOFT_BLUE, dp(14)));
+        box.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView heading = tv(historyMode ? "Belum ada riwayat" : "Belum ada pesanan aktif", 15, TEXT, true);
+        heading.setGravity(Gravity.CENTER);
+        heading.setPadding(0, dp(10), 0, dp(3));
+        box.addView(heading);
+        String message = historyMode ? "Coba pilih periode lain untuk melihat pesanan."
+                : "Pesanan baru akan muncul di sini.";
+        if (degradedOffline) message = "Data terakhir ditampilkan. Menunggu koneksi kembali.";
+        TextView description = tv(message, 12, MUTED, false);
+        description.setGravity(Gravity.CENTER);
+        box.addView(description);
+        return box;
     }
 
     private boolean sameOrder(JSONObject o, String id) {
