@@ -200,9 +200,18 @@ public class LoginActivity extends MerchantAuthActivity {
             String name = verifiedProfile.optString("username");
             identity.setText("@" + name);
             profileInitial.setText(name.isEmpty() ? "M" : name.substring(0, 1).toUpperCase(Locale.ROOT));
+            String banner = verifiedProfile.optString("banner");
             String photo = verifiedProfile.optString("photo");
-            if (photo.startsWith(BASE_URL + "server/uploads/profile")) {
-                com.bumptech.glide.Glide.with(this).load(photo).circleCrop().into(profilePhoto);
+            boolean hasBanner = banner.startsWith(BASE_URL + "uploads/restaurants/")
+                    || banner.startsWith(BASE_URL + "server/uploads/restaurants/");
+            boolean hasPhoto = photo.startsWith(BASE_URL + "server/uploads/profile/")
+                    || photo.startsWith(BASE_URL + "server/uploads/profiles/");
+            if (hasBanner || hasPhoto) {
+                com.bumptech.glide.RequestManager images = com.bumptech.glide.Glide.with(this);
+                com.bumptech.glide.RequestBuilder<android.graphics.drawable.Drawable> request =
+                        images.load(hasBanner ? banner : photo).circleCrop();
+                if (hasBanner && hasPhoto) request.error(images.load(photo).circleCrop());
+                request.into(profilePhoto);
             }
         }
         previous.setVisibility(password ? View.VISIBLE : View.GONE);
