@@ -60,11 +60,13 @@ jobs:
       - name: Build signed release APK and AAB
         shell: bash
         env:
+          MERCHANT_MAPS_API_KEY: ${{ secrets.MERCHANT_MAPS_API_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          test -n "${MERCHANT_MAPS_API_KEY:-}" || { echo "::error::Tambahkan secret MERCHANT_MAPS_API_KEY untuk Google Maps Merchant"; exit 1; }
           gradle --version
           gradle clean testReleaseUnitTest assembleRelease bundleRelease \
             --no-daemon --stacktrace --warning-mode all
@@ -74,6 +76,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
+          MERCHANT_MAPS_API_KEY: ${{ secrets.MERCHANT_MAPS_API_KEY }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
