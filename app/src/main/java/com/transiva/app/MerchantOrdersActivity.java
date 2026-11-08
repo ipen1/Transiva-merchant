@@ -61,7 +61,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         screenAccountKey=currentAccountCacheName();
         focusOrderId = getIntent().getStringExtra("order_id");
         if (focusOrderId == null) focusOrderId = "";
-        if(b!=null){historyMode=b.getBoolean("history",false);focusOrderId=b.getString("focus_order",focusOrderId);}
+        if(b!=null && focusOrderId.isEmpty()){historyMode=b.getBoolean("history",false);focusOrderId=b.getString("focus_order",focusOrderId);}
         build();
         if(b!=null)periodSpinner.setSelection(b.getInt("period",0));
     }
@@ -73,6 +73,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        if (isBranchChange(intent)) return;
         setIntent(intent);
         String id = intent == null ? "" : intent.getStringExtra("order_id");
         if (id != null && !id.trim().isEmpty()) focusOrderId = id.trim();
@@ -284,7 +285,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private String currentAccountCacheName(){
         SessionManager session = new SessionManager(this);
-        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + session.getRestaurantId();
+        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + (branchId().isEmpty() ? session.getRestaurantId() : branchId());
     }
 
     private String orderCacheName(){return screenAccountKey.isEmpty()?currentAccountCacheName():screenAccountKey;}

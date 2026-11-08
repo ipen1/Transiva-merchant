@@ -41,6 +41,19 @@ import java.util.Locale;
 public class MerchantBaseActivity extends Activity {
     protected static final String BASE = "https://transiva.my.id/server/";
     protected SessionManager sessionManager;
+    static final String EXTRA_BRANCH = "transiva_selected_branch";
+    private String branchId;
+
+    final String branchId() { return branchId == null ? "" : branchId; }
+
+    @Override public void startActivity(Intent intent) {
+        if (intent.getComponent() != null && getPackageName().equals(intent.getComponent().getPackageName())
+                && !intent.hasExtra(EXTRA_BRANCH)) {
+            intent.putExtra(EXTRA_BRANCH, branchId());
+        }
+        super.startActivity(intent);
+    }
+
     protected final int BLUE = Color.parseColor("#0B78FF");
     protected final int CYAN = Color.parseColor("#14C8FF");
     protected final int SOFT_BLUE = Color.parseColor("#EAF4FF");
@@ -59,6 +72,23 @@ public class MerchantBaseActivity extends Activity {
         }
         MerchantWindowInsets.enable(getWindow(), !MerchantAppSettings.isDarkMode(this));
         sessionManager = new SessionManager(this);
+        branchId = getIntent().getStringExtra(EXTRA_BRANCH);
+        if (branchId == null) branchId = sessionManager.get("selected_merchant_branch");
+        if (!branchId.matches("[1-9][0-9]{0,9}")) branchId = "";
+
+    }
+
+    final boolean isBranchChange(Intent intent) {
+        String requested = intent == null ? null : intent.getStringExtra(EXTRA_BRANCH);
+        return requested != null && !requested.equals(branchId());
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        if (isBranchChange(intent)) {
+            setIntent(intent);
+            recreate();
+        }
     }
 
     @Override protected void onResume(){

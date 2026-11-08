@@ -41,6 +41,10 @@ public final class MerchantApiClient {
         if (uuid != null && !uuid.trim().isEmpty()) {
             connection.setRequestProperty("X-Device-UUID", uuid.trim());
         }
+        if (context instanceof MerchantBaseActivity) {
+            String branch = ((MerchantBaseActivity) context).branchId();
+            if (!branch.isEmpty()) connection.setRequestProperty("X-Merchant-Branch", branch);
+        }
         connection.setRequestProperty("X-App-Scope", "merchant");
         connection.setRequestProperty("X-Transiva-App", "Android-Merchant");
         connection.setRequestProperty("Accept", "application/json");

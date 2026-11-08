@@ -1,6 +1,5 @@
 package com.transiva.app;
 
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -18,7 +17,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.ScrollView;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,20 +39,23 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     };
 
     private LinearLayout root;
+    private View formPage;
+    private boolean categoryPage;
     private EditText nameInput, priceInput, descriptionInput, stockInput, discountInput;
     private CheckBox trackStockInput, discountActiveInput;
     private TextView categoryValue, originalText, fileText, previewName, previewPrice, previewCategory, previewIcon;
     private ImageView previewImage;
+    private TextView formError;
     private Button pickImageButton, saveMenuButton;
-    private LinearLayout variantsBox, toppingsBox;
-    private final List<OptionRow> variantRows = new ArrayList<>();
-    private final List<OptionRow> toppingRows = new ArrayList<>();
+    private String legacyOptions = "[]";
     private Uri imageUri;
     private PreparedImage preparedMenuImage;
     private volatile boolean imagePreparing;
     private final List<GrossupRule> grossupRules = new ArrayList<>();
     private volatile boolean grossupLoaded;
     private boolean editMode;
+    private int initialStock;
+    private boolean initialTrack;
     private String editMenuId = "";
     private String existingImage = "";
     private String selectedCategory = "";
@@ -64,45 +65,46 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         editMode = getIntent().getBooleanExtra("edit_mode", false);
         editMenuId = safe(getIntent().getStringExtra("menu_id"));
         existingImage = safe(getIntent().getStringExtra("image"));
+        String options = getIntent().getStringExtra("options_json");
+        if (editMode && options != null && !options.isEmpty()) legacyOptions = options;
         build();
         prefillEditData();
         loadGrossupRules();
     }
 
     private void build() {
-        root=new LinearLayout(this);setContentView(page(root));
+        root=new LinearLayout(this);formPage=page(root);setContentView(formPage);
         root.addView(title(editMode?"Edit Menu":"Tambah Menu"));
         root.addView(sub("Foto yang jelas dan informasi singkat membantu pelanggan memilih."));
         root.addView(previewCard());
         pickImageButton=outlineBtn("Pilih foto menu");pickImageButton.setOnClickListener(v->chooseImage());root.addView(pickImageButton);
-        fileText=sub("Foto dioptimalkan otomatis. Tanpa foto, gambar bawaan akan dipakai.");root.addView(fileText);
+        fileText=sub("Foto menu dioptimalkan otomatis.");root.addView(fileText);
 
         LinearLayout core=formSection("Informasi menu");root.addView(core);
-        core.addView(label("Nama menu"));nameInput=input("Contoh: Risol Mayo",InputType.TYPE_CLASS_TEXT);core.addView(nameInput);
-        core.addView(label("Harga untuk toko (Rp)"));priceInput=input("Contoh: 10000",InputType.TYPE_CLASS_NUMBER);core.addView(priceInput);
+        core.addView(label("Nama menu"));nameInput=input("Contoh: Milo Topping Oreo",InputType.TYPE_CLASS_TEXT);core.addView(nameInput);
+        core.addView(label("Harga jual di toko (Rp)"));priceInput=input("Contoh: 7000",InputType.TYPE_CLASS_NUMBER);core.addView(priceInput);
+        core.addView(sub("Masukkan harga satu porsi lengkap. Transiva menambahkan biaya aplikasi otomatis."));
         core.addView(label("Kategori"));core.addView(categorySelector());
         core.addView(label("Deskripsi • opsional"));descriptionInput=input("Isi, rasa, atau ukuran porsi",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         descriptionInput.setMinLines(2);descriptionInput.setMaxLines(4);core.addView(descriptionInput);
 
         LinearLayout extras=formSection("Pengaturan tambahan");root.addView(extras);
         LinearLayout advanced=new LinearLayout(this);advanced.setOrientation(LinearLayout.VERTICAL);advanced.setVisibility(editMode?View.VISIBLE:View.GONE);
-        Button toggle=outlineBtn(editMode?"Tutup stok, diskon & pilihan ▴":"Atur stok, diskon & pilihan ▾");
-        toggle.setOnClickListener(v->{boolean show=advanced.getVisibility()!=View.VISIBLE;advanced.setVisibility(show?View.VISIBLE:View.GONE);toggle.setText(show?"Tutup stok, diskon & pilihan ▴":"Atur stok, diskon & pilihan ▾");});extras.addView(toggle);
+        Button toggle=outlineBtn(editMode?"Tutup stok & diskon ▴":"Atur stok & diskon ▾");
+        toggle.setOnClickListener(v->{boolean show=advanced.getVisibility()!=View.VISIBLE;advanced.setVisibility(show?View.VISIBLE:View.GONE);toggle.setText(show?"Tutup stok & diskon ▴":"Atur stok & diskon ▾");});extras.addView(toggle);
         trackStockInput=new CheckBox(this);trackStockInput.setText("Batasi stok menu");trackStockInput.setMinHeight(dp(48));trackStockInput.setTextColor(TEXT);advanced.addView(trackStockInput);
         stockInput=input("Jumlah stok tersedia",InputType.TYPE_CLASS_NUMBER);advanced.addView(stockInput);
         discountActiveInput=new CheckBox(this);discountActiveInput.setText("Berikan diskon • maksimal 90%");discountActiveInput.setMinHeight(dp(48));discountActiveInput.setTextColor(TEXT);advanced.addView(discountActiveInput);
         discountInput=input("Persen diskon, contoh: 10",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);advanced.addView(discountInput);
-        advanced.addView(sectionTitle("Varian"));
-        variantsBox=new LinearLayout(this);variantsBox.setOrientation(LinearLayout.VERTICAL);advanced.addView(variantsBox);
-        addOptionRow(variantsBox,variantRows,"Reguler","0",true,"Nama varian");
-        Button addVariant=outlineBtn("＋ Varian");addVariant.setOnClickListener(v->addOptionRow(variantsBox,variantRows,"","",false,"Nama varian"));advanced.addView(addVariant);
-        advanced.addView(sectionTitle("Topping • opsional"));
-        toppingsBox=new LinearLayout(this);toppingsBox.setOrientation(LinearLayout.VERTICAL);advanced.addView(toppingsBox);
-        addOptionRow(toppingsBox,toppingRows,"","",false,"Nama topping");
-        Button addTopping=outlineBtn("＋ Topping");addTopping.setOnClickListener(v->addOptionRow(toppingsBox,toppingRows,"","",false,"Nama topping"));advanced.addView(addTopping);
+        if (hasLegacyChoices()) {
+            advanced.addView(sub("Pilihan lama tetap tersedia untuk pelanggan. Untuk paket baru, buat menu terpisah dengan nama dan harga lengkap."));
+        }
         extras.addView(advanced);
 
         originalText=card("Menyiapkan ringkasan harga…");root.addView(originalText);
+        formError = sub("");
+        formError.setVisibility(View.GONE);
+        root.addView(formError);
         addWatchers();
         saveMenuButton=btn(editMode?"Simpan perubahan":"Simpan menu");saveMenuButton.setOnClickListener(v->save(saveMenuButton));root.addView(saveMenuButton);
         Button back=outlineBtn("Batal / kembali ke menu toko");back.setOnClickListener(v->finish());root.addView(back);
@@ -134,21 +136,16 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         card.addView(categoryValue, new LinearLayout.LayoutParams(0, -2, 1));
         TextView arrow = tv("›", 28, BLUE, true);
         card.addView(arrow);
-        card.setOnClickListener(v -> showCategoryDialog());
+        card.setOnClickListener(v -> showCategoryPage());
         return card;
     }
 
-    private void showCategoryDialog() {
-        final AlertDialog dialog = new AlertDialog.Builder(this).create();
+    private void showCategoryPage() {
+        categoryPage = true;
         LinearLayout wrap = new LinearLayout(this);
-        wrap.setOrientation(LinearLayout.VERTICAL);
-        wrap.setPadding(dp(18), dp(18), dp(18), dp(12));
-        wrap.setBackgroundColor(BG);
-        TextView h = tv("Pilih Kategori Menu", 20, NAVY, true);
-        wrap.addView(h);
-        TextView sh = tv("Kategori membantu customer menemukan menu lebih cepat.", 12, MUTED, false);
-        sh.setPadding(0, dp(4), 0, dp(12));
-        wrap.addView(sh);
+        wrap.addView(title("Pilih Kategori Menu"));
+        wrap.addView(sub("Pilih kategori yang sesuai dengan menu ini."));
+        Runnable back = this::showFormPage;
         for (String[] item : CATEGORIES) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
@@ -169,16 +166,26 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             row.addView(texts, new LinearLayout.LayoutParams(0, -2, 1));
             row.setOnClickListener(v -> {
                 setCategory(item[1]);
-                dialog.dismiss();
+                back.run();
             });
             wrap.addView(row);
         }
         Button cancel = outlineBtn("Batal");
-        cancel.setOnClickListener(v -> dialog.dismiss());
+        cancel.setOnClickListener(v -> back.run());
         wrap.addView(cancel);
-        ScrollView categoryScroll=new ScrollView(this);categoryScroll.addView(wrap);
-        dialog.setView(categoryScroll);
-        dialog.show();
+        setContentView(page(wrap));
+    }
+
+    private void showFormPage() {
+        categoryPage = false;
+        android.view.ViewGroup parent = (android.view.ViewGroup) formPage.getParent();
+        if (parent != null) parent.removeView(formPage);
+        setContentView(formPage);
+    }
+
+    @Override public void onBackPressed() {
+        if (categoryPage) showFormPage();
+        else super.onBackPressed();
     }
 
     private void setCategory(String category) {
@@ -191,94 +198,25 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private String normalizeCategory(String raw) { return MerchantMenuRules.normalizeCategory(raw); }
 
-    private TextView sectionTitle(String text) {
-        TextView t = tv(text, 16, NAVY, true);
-        t.setPadding(dp(4), dp(8), dp(4), 0);
-        return t;
-    }
-
-    private void addOptionRow(LinearLayout parent, List<OptionRow> list, String name, String price, boolean locked, String nameHint) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(stackControls()?LinearLayout.VERTICAL:LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
-        rowLp.setMargins(0, 0, 0, dp(8));
-        row.setLayoutParams(rowLp);
-
-        EditText nameInput = smallInput(nameHint, InputType.TYPE_CLASS_TEXT);
-        nameInput.setText(name);
-        if (locked) nameInput.setEnabled(false);
-        row.addView(nameInput, actionLp());
-
-        EditText priceInput = smallInput("Harga", InputType.TYPE_CLASS_NUMBER);
-        priceInput.setText(price);
-        if (locked) priceInput.setEnabled(false);
-        LinearLayout.LayoutParams pp = actionLp();
-        pp.setMargins(dp(8), 0, 0, 0);
-        row.addView(priceInput, pp);
-
-        Button remove = null;
-        if (!locked) {
-            remove = new Button(this);
-            remove.setText("×");
-            remove.setTextSize(19);
-            remove.setTextColor(Color.parseColor("#D92D20"));
-            remove.setAllCaps(false);
-            remove.setPadding(0, 0, 0, 0);
-            remove.setBackground(round(Color.parseColor("#FFF1F0"), dp(12)));
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(dp(48), dp(48));
-            rp.setMargins(dp(8), 0, 0, 0);
-            row.addView(remove, rp);
-        }
-        OptionRow option = new OptionRow(row, nameInput, priceInput, locked);
-        list.add(option);
-        if (remove != null) remove.setOnClickListener(v -> {
-            parent.removeView(row);
-            list.remove(option);
-            if (parent == toppingsBox && list.isEmpty()) addOptionRow(parent, list, "", "", false, "Nama topping");
-        });
-        parent.addView(row);
-    }
-
-    private EditText smallInput(String hint, int type) {
-        EditText e = new EditText(this);
-        e.setHint(hint);
-        e.setInputType(type);
-        e.setSingleLine(true);
-        e.setTextSize(13);
-        e.setTextColor(TEXT);
-        e.setHintTextColor(Color.parseColor("#98A2B3"));
-        e.setPadding(dp(10), dp(10), dp(10), dp(10));
-        e.setMinHeight(dp(48));
-        e.setBackground(stroke(Color.WHITE, Color.parseColor("#DDE7F3"), dp(13)));
-        return e;
-    }
-
-    private LinearLayout.LayoutParams heightLp(int h) {
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(h));
-        lp.setMargins(0, dp(3), 0, dp(8));
-        return lp;
-    }
-
     private void prefillEditData() {
         if (!editMode) return;
         nameInput.setText(safe(getIntent().getStringExtra("name")));
         setCategory(safe(getIntent().getStringExtra("category")));
         descriptionInput.setText(safe(getIntent().getStringExtra("description")));
-        trackStockInput.setChecked(getIntent().getIntExtra("track_stock", 0) == 1);
-        stockInput.setText(String.valueOf(getIntent().getIntExtra("stock", 0)));
+        initialTrack = getIntent().getIntExtra("track_stock", 0) == 1;
+        initialStock = getIntent().getIntExtra("stock", 0);
+        trackStockInput.setChecked(initialTrack);
+        stockInput.setText(String.valueOf(initialStock));
         discountActiveInput.setChecked(getIntent().getIntExtra("discount_active", 0) == 1);
         double dpct = getIntent().getDoubleExtra("discount_percent", 0);
         if (dpct > 0) discountInput.setText(dpct == Math.rint(dpct) ? String.valueOf((int)dpct) : String.valueOf(dpct));
-        applyOptionsJson(getIntent().getStringExtra("options_json"));
         long displayPrice = getIntent().getLongExtra("price", 0L);
         long original = getIntent().getLongExtra("original_price", 0L);
         long storedGrossup = Math.max(0L, getIntent().getLongExtra("grossup_fee", 0L));
 
         // Proteksi edit menu: field merchant harus selalu berisi harga sebelum gross-up.
         // Jika payload lama tidak konsisten, turunkan kembali dari harga tampil - gross-up.
-        if (storedGrossup > 0 && displayPrice > storedGrossup &&
-                (original <= 0 || original + storedGrossup != displayPrice)) {
+        if (original <= 0 && storedGrossup > 0 && displayPrice > storedGrossup) {
             original = displayPrice - storedGrossup;
         }
         if (original <= 0) original = displayPrice;
@@ -378,52 +316,19 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         previewPrice.setText(rupiah(appPrice));
     }
 
-    private void applyOptionsJson(String raw) {
-        variantRows.clear(); variantsBox.removeAllViews();
-        toppingRows.clear(); toppingsBox.removeAllViews();
-        addOptionRow(variantsBox, variantRows, "Reguler", "0", true, "Nama varian");
-        if (raw != null && !raw.trim().isEmpty()) {
-            try {
-                JSONArray groups = new JSONArray(raw);
-                for (int i = 0; i < groups.length(); i++) {
-                    JSONObject g = groups.optJSONObject(i); if (g == null) continue;
-                    String type = g.optString("type", ""); JSONArray items = g.optJSONArray("items"); if (items == null) continue;
-                    for (int j = 0; j < items.length(); j++) {
-                        JSONObject it = items.optJSONObject(j); if (it == null) continue;
-                        String nm = it.optString("name", "").trim();
-                        if (nm.isEmpty()) continue;
-                        String pr = String.valueOf(Math.max(0, it.optLong("price", 0)));
-                        if ("topping".equals(type)) {
-                            addOptionRow(toppingsBox, toppingRows, nm, pr, false, "Nama topping");
-                        } else if (!nm.equalsIgnoreCase("regular") && !nm.equalsIgnoreCase("reguler")) {
-                            addOptionRow(variantsBox, variantRows, nm, pr, false, "Nama varian");
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
-        }
-        if (toppingRows.isEmpty()) addOptionRow(toppingsBox, toppingRows, "", "", false, "Nama topping");
-    }
-
-    private JSONArray buildOptions() {
-        JSONArray groups = new JSONArray();
+    private boolean hasLegacyChoices() {
         try {
-            groups.put(optionGroup("variant", "Varian", variantRows, true));
-            groups.put(optionGroup("topping", "Topping", toppingRows, false));
+            JSONArray groups = new JSONArray(legacyOptions);
+            for (int i = 0; i < groups.length(); i++) {
+                JSONObject group = groups.optJSONObject(i);
+                JSONArray items = group == null ? null : group.optJSONArray("items");
+                if (items == null || items.length() == 0) continue;
+                if (!"variant".equals(group.optString("type")) || items.length() > 1) return true;
+                JSONObject item = items.optJSONObject(0);
+                if (item != null && item.optLong("price", 0) > 0) return true;
+            }
         } catch (Exception ignored) {}
-        return groups;
-    }
-
-    private JSONObject optionGroup(String type, String label, List<OptionRow> rows, boolean ensureRegular) throws Exception {
-        JSONObject g = new JSONObject(); g.put("type", type); g.put("label", label); JSONArray items = new JSONArray();
-        if (ensureRegular) { JSONObject regular = new JSONObject(); regular.put("name", "Reguler"); regular.put("price", 0); items.put(regular); }
-        for (OptionRow r : rows) {
-            if (r.locked && ensureRegular) continue;
-            String name = r.name.getText().toString().trim();
-            if (name.isEmpty()) continue;
-            JSONObject it = new JSONObject(); it.put("name", name); it.put("price", Math.max(0, parseLong(r.price.getText().toString()))); items.put(it);
-        }
-        g.put("items", items); return g;
+        return false;
     }
 
     private void chooseImage() {
@@ -476,50 +381,71 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         } catch (Exception e) { toast("Preview gambar gagal, tetapi file tetap dapat diupload."); }
     }
 
+    private void showFormError(String message) {
+        formError.setText(message);
+        formError.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
     private void save(Button save) {
+        showFormError("");
         String name = nameInput.getText().toString().trim();
         String cat = selectedCategory.trim();
         long original = parseLong(priceInput.getText().toString());
-        if (name.isEmpty() || cat.isEmpty() || original <= 0) { alert("Lengkapi Data", "Nama, harga, dan kategori wajib diisi."); return; }
-        if (!grossupLoaded) { alert("Aturan Harga Belum Siap", "Aturan gross-up belum berhasil dimuat dari server. Coba buka ulang halaman atau periksa API server."); return; }
+        if (name.isEmpty() || cat.isEmpty() || original <= 0) { showFormError("Nama, harga, dan kategori wajib diisi."); return; }
+        if (!grossupLoaded) { showFormError("Biaya aplikasi belum berhasil dimuat. Buka ulang halaman untuk mencoba lagi."); return; }
         double discountPercent = Math.max(0d, Math.min(90d, parseDouble(discountInput == null ? "0" : discountInput.getText().toString())));
         boolean discountActive = discountActiveInput != null && discountActiveInput.isChecked() && discountPercent > 0;
         long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
         long fee = gross(effectiveOriginal), appPrice = effectiveOriginal + fee;
-        if (imagePreparing) { alert("AI Resize Masih Berjalan", "Tunggu sebentar sampai gambar selesai disiapkan."); return; }
-        if (!editMode && imageUri == null) { alert("Gambar Wajib", "Pilih gambar menu terlebih dahulu."); return; }
-        if (imageUri != null && preparedMenuImage == null) { alert("Gambar Belum Siap", "Pilih ulang gambar lalu tunggu proses AI Resize selesai."); return; }
+        if (imagePreparing) { showFormError("Tunggu sampai gambar selesai disiapkan."); return; }
+        if (!editMode && imageUri == null) { showFormError("Pilih gambar menu terlebih dahulu."); return; }
+        if (imageUri != null && preparedMenuImage == null) { showFormError("Pilih ulang gambar lalu tunggu sampai siap."); return; }
         String normalButton = editMode ? "Simpan Perubahan" : "Simpan Menu";
         setButtonLoading(save, true, normalButton, imageUri == null ? "Menyimpan..." : "Mengupload menu...");
-        MerchantNetworkExecutor.executeWrite("menu-save:" + (editMode ? editMenuId : "new") + ":" + name, () -> {
+        String description = descriptionInput.getText().toString().trim();
+        boolean trackStock = trackStockInput.isChecked();
+        long parsedStock = parseLong(stockInput.getText().toString());
+        if (parsedStock > Integer.MAX_VALUE) {
+            setButtonLoading(save, false, normalButton, "");
+            showFormError("Jumlah stok terlalu besar.");
+            return;
+        }
+        int stock = (int)Math.max(0, parsedStock);
+        boolean changeStock = !editMode || trackStock != initialTrack || stock != initialStock;
+        PreparedImage image = preparedMenuImage;
+        boolean queued = MerchantNetworkExecutor.executeWrite("menu-save:" + (editMode ? editMenuId : "new") + ":" + name, () -> {
             try {
                 JSONObject f = new JSONObject();
                 f.put("name", name); f.put("price", appPrice); f.put("original_price", original); f.put("grossup_fee", fee); f.put("category", cat);
                 f.put("discount_percent", discountPercent); f.put("discount_active", discountActive ? 1 : 0);
-                f.put("description", descriptionInput.getText().toString().trim()); f.put("track_stock", trackStockInput.isChecked() ? 1 : 0);
-                f.put("stock", Math.max(0, (int)parseLong(stockInput.getText().toString()))); f.put("options_json", buildOptions().toString());
+                f.put("description", description);
+                if (!editMode) f.put("menu_format", "single_price");
+                if (changeStock) {
+                    f.put("track_stock", trackStock ? 1 : 0);
+                    f.put("stock", stock);
+                }
                 if (editMode) { f.put("menu_id", editMenuId); f.put("id", editMenuId); f.put("action", "update"); }
                 String endpoint = editMode ? BASE + "merchant_update_menu.php" : BASE + "add_food_menu.php";
-                JSONObject res = new JSONObject(postFormPrepared(endpoint, f, preparedMenuImage, "image"));
+                JSONObject res = new JSONObject(postFormPrepared(endpoint, f, image, "image"));
                 runOnUiThread(() -> {
                     setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", "");
                     if (res.optBoolean("success", false)) { toast(res.optString("message", editMode ? "Menu berhasil diperbarui" : "Menu berhasil disimpan")); finish(); }
-                    else alert("Gagal", res.optString("message", editMode ? "Gagal memperbarui menu" : "Gagal menyimpan menu"));
+                    else showFormError(res.optString("message", editMode ? "Gagal memperbarui menu" : "Gagal menyimpan menu"));
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> { setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", ""); alert("Error", "Server error / koneksi gagal."); });
+                runOnUiThread(() -> { setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", ""); showFormError("Server atau koneksi sedang bermasalah. Coba lagi."); });
             }
         });
+        if (!queued) {
+            setButtonLoading(save, false, normalButton, "");
+            showFormError("Permintaan sedang antre. Coba lagi.");
+        }
     }
 
     private long parseLong(String s) { try { return Long.parseLong(s == null ? "0" : s.trim()); } catch (Exception e) { return 0; } }
     private double parseDouble(String s) { try { return Double.parseDouble(s == null ? "0" : s.trim().replace(",", ".")); } catch (Exception e) { return 0d; } }
     private String safe(String s) { return s == null ? "" : s; }
 
-    private static class OptionRow {
-        final LinearLayout row; final EditText name; final EditText price; final boolean locked;
-        OptionRow(LinearLayout row, EditText name, EditText price, boolean locked) { this.row = row; this.name = name; this.price = price; this.locked = locked; }
-    }
     private static class GrossupRule {
         final long min; final Long max; final long fee;
         GrossupRule(long min, Long max, long fee) { this.min = min; this.max = max; this.fee = fee; }

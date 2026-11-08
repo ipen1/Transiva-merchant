@@ -62,8 +62,12 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         nameText = tv("Halo, " + (username().isEmpty() ? "Merchant" : username()), 21, NAVY, true);
         identity.addView(nameText); header.addView(identity, new LinearLayout.LayoutParams(stackControls()?-1:0,-2,stackControls()?0:1));
         Button more = outlineBtn("Lainnya ⋯");
-        more.setOnClickListener(v -> showMore());
+        more.setOnClickListener(v -> open(MerchantMoreActivity.class));
         header.addView(more, new LinearLayout.LayoutParams(stackControls()?-1:dp(100),-2)); root.addView(header);
+
+        Button branches = outlineBtn("Kelola toko & cabang");
+        branches.setOnClickListener(v -> open(MerchantBranchesActivity.class));
+        root.addView(branches);
 
         LinearLayout statusCard = new LinearLayout(this); statusCard.setOrientation(LinearLayout.VERTICAL);
         statusCard.setPadding(dp(12),dp(10),dp(12),dp(10));
@@ -100,20 +104,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         Intent i=new Intent(this,MerchantKabarMitraActivity.class);
         i.putExtra("show_followers",true);startActivity(i);
     }
-    private void showMore(){
-        new android.app.AlertDialog.Builder(this).setTitle("Menu Merchant")
-            .setItems(new String[]{"Profil toko","Rating & ulasan","Trans Asisten","Notifikasi","Diagnostik","Pengaturan"},(d,w)->{
-                switch(w){
-                    case 0:open(MerchantRestaurantProfileActivity.class);break;
-                    case 1:open(MerchantReviewsActivity.class);break;
-                    case 2:open(MerchantTransAssistantActivity.class);break;
-                    case 3:open(MerchantNotificationCenterActivity.class);break;
-                    case 4:open(MerchantDiagnosticsActivity.class);break;
-                    case 5:open(MerchantSettingsActivity.class);break;
-                }
-            }).setNegativeButton("Tutup",null).show();
-    }
-
     private TextView stat(LinearLayout parent, String label, String value){
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);

@@ -127,6 +127,11 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             }
         }
 
+        String restaurant = value(data, "restaurant_id", "");
+        if (restaurant.matches("[1-9][0-9]{0,9}")) {
+            target.putExtra(MerchantBaseActivity.EXTRA_BRANCH, restaurant);
+        }
+
         int requestCode = !orderId.isEmpty()
                 ? (orderId + "|" + status + "|" + type).hashCode()
                 : (int) (System.currentTimeMillis() & 0x7fffffff);

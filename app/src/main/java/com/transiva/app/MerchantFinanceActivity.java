@@ -17,7 +17,7 @@ public class MerchantFinanceActivity extends MerchantBaseActivity {
   LinearLayout info=ui.box();note=tv("Memeriksa ketersediaan penarikan…",12,NAVY,true);info.addView(note);TextView details=tv("Cara hitung pendapatan  ⌄",12,BLUE,true);details.setMinHeight(dp(44));details.setGravity(Gravity.CENTER_VERTICAL);info.addView(details);explanation=tv("",12,MUTED,false);explanation.setVisibility(View.GONE);info.addView(explanation);details.setOnClickListener(v->{boolean open=explanation.getVisibility()!=View.VISIBLE;explanation.setVisibility(open?View.VISIBLE:View.GONE);details.setText(open?"Tutup penjelasan  ⌃":"Cara hitung pendapatan  ⌄");});root.addView(info);
   ui.section(root,"Riwayat pendapatan");list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);root.addView(list);more=outlineBtn("Tampilkan 10 lagi");more.setVisibility(View.GONE);more.setOnClickListener(v->{if(loading)return;if(visible<transactions.length()){visible+=10;renderList();}else if(hasMore)loadPage(true);});root.addView(more);
  }
- private String currentAccountKey(){SessionManager session=new SessionManager(this);return session.getId()+"|"+session.getRestaurantId();}
+ private String currentAccountKey(){SessionManager session=new SessionManager(this);return session.getId()+"|"+(branchId().isEmpty() ? session.getRestaurantId() : branchId());}
  private boolean sameAccount(){return !screenAccountKey.isEmpty()&&screenAccountKey.equals(currentAccountKey());}
  @Override protected void onResume(){super.onResume();if(root!=null&&!loading)load();}
  @Override protected void onDestroy(){generation++;if(activeRead!=null)activeRead.cancel(true);super.onDestroy();}
