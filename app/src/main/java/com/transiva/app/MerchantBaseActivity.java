@@ -128,6 +128,11 @@ public class MerchantBaseActivity extends Activity {
     }
 
     protected View page(LinearLayout root){
+        return page(root, null);
+    }
+
+    /** Edit screens can reserve the bottom area for the current form action. */
+    protected View page(LinearLayout root, View actionBar){
         root.setOrientation(LinearLayout.VERTICAL);
         int side = Math.max(12, (screenWidthDp() - 840) / 2);
         root.setPadding(dp(side), dp(10), dp(side), dp(14));
@@ -143,14 +148,15 @@ public class MerchantBaseActivity extends Activity {
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
         shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        View bottom = MerchantBottomNavigation.build(this, MerchantBottomNavigation.resolve(this));
-        bottom.setMinimumHeight(dp(bottomNavHeightDp()));
+        View bottom = actionBar == null
+                ? MerchantBottomNavigation.build(this, MerchantBottomNavigation.resolve(this)) : actionBar;
+        if (actionBar == null) bottom.setMinimumHeight(dp(bottomNavHeightDp()));
         shell.addView(bottom, new LinearLayout.LayoutParams(-1, -2));
         ViewCompat.setOnApplyWindowInsetsListener(shell, (v, insets) -> {
             Insets bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
             Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
             boolean keyboard = insets.isVisible(WindowInsetsCompat.Type.ime());
-            bottom.setVisibility(keyboard ? View.GONE : View.VISIBLE);
+            bottom.setVisibility(keyboard && actionBar==null ? View.GONE : View.VISIBLE);
             v.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, ime.bottom));
             return insets;
         });

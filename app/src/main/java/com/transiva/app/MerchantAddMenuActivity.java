@@ -43,7 +43,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private boolean categoryPage;
     private EditText nameInput, priceInput, descriptionInput, stockInput, discountInput;
     private CheckBox trackStockInput, discountActiveInput;
-    private TextView categoryValue, originalText, fileText, previewName, previewPrice, previewCategory, previewIcon;
+    private TextView categoryValue, originalText, fileText, previewName, previewPrice, previewIcon;
     private ImageView previewImage;
     private TextView formError;
     private Button pickImageButton, saveMenuButton;
@@ -93,7 +93,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 fileText.setText("Foto menu siap.");
             }
             toppingEditor.restoreState(b.getBundle("topping_editor"));
-            toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan");
+            toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan ›");
         }
         loadGrossupRules();
     }
@@ -113,22 +113,33 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private void build() {
-        root=new LinearLayout(this);formPage=page(root);setContentView(formPage);
-        root.addView(title(editMode?"Edit Menu":"Tambah Menu"));
-        root.addView(sub("Foto yang jelas dan informasi singkat membantu pelanggan memilih."));
+        root=new LinearLayout(this);
+        saveMenuButton=editorButton(editMode?"Simpan perubahan":"Simpan menu",true);
+        saveMenuButton.setOnClickListener(v->save(saveMenuButton));
+        formError=tv("",12,Color.parseColor("#B42318"),true);
+        formError.setVisibility(View.GONE);
+        LinearLayout footer=editorFooter(saveMenuButton);
+        footer.addView(formError,0);
+        formPage=page(root,footer);
+        setContentView(formPage);
+        root.addView(editorHeader(editMode?"Edit Menu":"Tambah Menu",this::finish));
         root.addView(previewCard());
-        pickImageButton=outlineBtn("Pilih foto menu");pickImageButton.setOnClickListener(v->chooseImage());root.addView(pickImageButton);
-        fileText=sub("Foto menu dioptimalkan otomatis.");root.addView(fileText);
 
-        LinearLayout core=formSection("Informasi menu");root.addView(core);
-        core.addView(label("Nama menu"));nameInput=input("Contoh: Milo Topping Oreo",InputType.TYPE_CLASS_TEXT);core.addView(nameInput);
-        core.addView(label("Harga jual di toko (Rp)"));priceInput=input("Contoh: 7000",InputType.TYPE_CLASS_NUMBER);core.addView(priceInput);
-        core.addView(sub("Masukkan harga satu porsi lengkap. Transiva menambahkan biaya aplikasi otomatis."));
-        core.addView(label("Kategori"));core.addView(categorySelector());
-        core.addView(label("Deskripsi • opsional"));descriptionInput=input("Isi, rasa, atau ukuran porsi",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
-        descriptionInput.setMinLines(2);descriptionInput.setMaxLines(4);core.addView(descriptionInput);
+        LinearLayout core=editorSection();
+        root.addView(core);
+        core.addView(editorLabel("Nama menu"));
+        nameInput=editorField("Contoh: Risol Original",InputType.TYPE_CLASS_TEXT);
+        core.addView(nameInput);
+        core.addView(editorLabel("Harga toko / porsi (Rp)"));
+        priceInput=editorField("Contoh: 7000",InputType.TYPE_CLASS_NUMBER);
+        core.addView(priceInput);
+        core.addView(categorySelector());
+        core.addView(editorLabel("Deskripsi · opsional"));
+        descriptionInput=editorField("Rasa, isi, atau ukuran",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        descriptionInput.setMaxLines(3);
+        core.addView(descriptionInput);
 
-        toppingButton=outlineBtn("Topping · "+toppingEditor.size()+" pilihan");
+        toppingButton=editorButton("Topping · "+toppingEditor.size()+" pilihan ›",false);
         toppingButton.setOnClickListener(v -> {
             if (!grossupLoaded || baseToppingPrice()<=0) {
                 toast("Isi harga menu dan tunggu aturan harga dimuat.");
@@ -138,62 +149,121 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         });
         root.addView(toppingButton);
 
-        LinearLayout extras=formSection("Pengaturan tambahan");root.addView(extras);
-        LinearLayout advanced=new LinearLayout(this);advanced.setOrientation(LinearLayout.VERTICAL);advanced.setVisibility(editMode?View.VISIBLE:View.GONE);
-        Button toggle=outlineBtn(editMode?"Tutup stok & diskon ▴":"Atur stok & diskon ▾");
-        toggle.setOnClickListener(v->{boolean show=advanced.getVisibility()!=View.VISIBLE;advanced.setVisibility(show?View.VISIBLE:View.GONE);toggle.setText(show?"Tutup stok & diskon ▴":"Atur stok & diskon ▾");});extras.addView(toggle);
-        trackStockInput=new CheckBox(this);trackStockInput.setText("Batasi stok menu");trackStockInput.setMinHeight(dp(48));trackStockInput.setTextColor(TEXT);advanced.addView(trackStockInput);
-        stockInput=input("Jumlah stok tersedia",InputType.TYPE_CLASS_NUMBER);advanced.addView(stockInput);
-        discountActiveInput=new CheckBox(this);discountActiveInput.setText("Berikan diskon • maksimal 90%");discountActiveInput.setMinHeight(dp(48));discountActiveInput.setTextColor(TEXT);advanced.addView(discountActiveInput);
-        discountInput=input("Persen diskon, contoh: 10",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);advanced.addView(discountInput);
-        if (hasLegacyChoices()) {
-            advanced.addView(sub("Varian dan tambahan lama tetap tersedia untuk pelanggan."));
-        }
-        extras.addView(advanced);
+        LinearLayout advanced=editorSection();
+        advanced.setVisibility(View.GONE);
+        Button toggle=editorButton("Stok & diskon ▾",false);
+        toggle.setOnClickListener(v->{
+            boolean expanded=advanced.getVisibility()!=View.VISIBLE;
+            advanced.setVisibility(expanded?View.VISIBLE:View.GONE);
+            toggle.setText(expanded?"Stok & diskon ▴":"Stok & diskon ▾");
+        });
+        root.addView(toggle);
+        trackStockInput=new CheckBox(this);
+        trackStockInput.setText("Batasi stok menu");
+        trackStockInput.setMinHeight(dp(44));
+        trackStockInput.setTextColor(TEXT);
+        advanced.addView(trackStockInput);
+        stockInput=editorField("Jumlah stok tersedia",InputType.TYPE_CLASS_NUMBER);
+        advanced.addView(stockInput);
+        discountActiveInput=new CheckBox(this);
+        discountActiveInput.setText("Aktifkan diskon");
+        discountActiveInput.setMinHeight(dp(44));
+        discountActiveInput.setTextColor(TEXT);
+        advanced.addView(discountActiveInput);
+        discountInput=editorField("Diskon (%) · maksimal 90",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        advanced.addView(discountInput);
+        if (hasLegacyChoices()) advanced.addView(tv("Varian dan tambahan lama tetap tersedia.",11,MUTED,false));
+        root.addView(advanced);
 
-        originalText=card("Menyiapkan ringkasan harga…");root.addView(originalText);
-        formError = sub("");
-        formError.setVisibility(View.GONE);
-        root.addView(formError);
         addWatchers();
-        saveMenuButton=btn(editMode?"Simpan perubahan":"Simpan menu");saveMenuButton.setOnClickListener(v->save(saveMenuButton));root.addView(saveMenuButton);
-        Button back=outlineBtn("Batal / kembali ke menu toko");back.setOnClickListener(v->finish());root.addView(back);
         updatePreview();
     }
-    private LinearLayout formSection(String title){
-        LinearLayout card=new LinearLayout(this);card.setOrientation(LinearLayout.VERTICAL);card.setPadding(dp(12),dp(10),dp(12),dp(8));
-        card.setBackground(stroke(Color.WHITE,Color.parseColor("#DCE6F1"),dp(14)));
-        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(4),0,dp(8));card.setLayoutParams(lp);
-        TextView heading=tv(title,14,NAVY,true);heading.setPadding(0,0,0,dp(6));card.addView(heading);return card;
+
+    LinearLayout editorSection() {
+        LinearLayout box=new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(10),dp(6),dp(10),dp(6));
+        box.setBackground(stroke(Color.WHITE,Color.parseColor("#DCE8F4"),dp(15)));
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
+        params.setMargins(0,0,0,dp(6));
+        box.setLayoutParams(params);
+        return box;
+    }
+
+    LinearLayout editorHeader(String title, Runnable back) {
+        LinearLayout row=new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        Button arrow=editorButton("‹",false);
+        arrow.setTextSize(22);
+        arrow.setContentDescription("Kembali");
+        arrow.setOnClickListener(v->back.run());
+        LinearLayout.LayoutParams arrowLp=new LinearLayout.LayoutParams(dp(44),dp(44));
+        arrowLp.rightMargin=dp(10);
+        row.addView(arrow,arrowLp);
+        row.addView(tv(title,21,NAVY,true),new LinearLayout.LayoutParams(0,-2,1));
+        LinearLayout.LayoutParams outer=new LinearLayout.LayoutParams(-1,-2);
+        outer.bottomMargin=dp(7);
+        row.setLayoutParams(outer);
+        return row;
+    }
+
+    Button editorButton(String label, boolean primary) {
+        Button button=primary?btn(label):outlineBtn(label);
+        button.setTextSize(13);
+        button.setMinimumHeight(dp(44));
+        button.setMinHeight(dp(44));
+        button.setPadding(dp(8),dp(4),dp(8),dp(4));
+        button.setElevation(0);
+        return button;
+    }
+
+    EditText editorField(String hint,int type) {
+        EditText field=input(hint,type);
+        field.setMinHeight(dp(44));
+        field.setPadding(dp(10),dp(6),dp(10),dp(6));
+        field.setElevation(0);
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);
+        params.bottomMargin=dp(5);
+        field.setLayoutParams(params);
+        return field;
+    }
+
+    TextView editorLabel(String title) {
+        TextView field=tv(title,12,NAVY,true);
+        field.setPadding(dp(2),dp(3),0,dp(2));
+        return field;
+    }
+
+    LinearLayout editorFooter(Button action) {
+        LinearLayout bar=new LinearLayout(this);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(dp(12),dp(4),dp(12),dp(3));
+        bar.setBackground(stroke(Color.WHITE,Color.parseColor("#E4EDF7"),dp(12)));
+        bar.addView(action);
+        return bar;
     }
 
     private View categorySelector() {
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.HORIZONTAL);
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(10), dp(8), dp(10), dp(8));
-        card.setBackground(stroke(Color.WHITE, Color.parseColor("#CFE2FF"), dp(16)));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(3), 0, dp(8));
-        card.setLayoutParams(lp);
-        card.setMinimumHeight(dp(52));
-
-        TextView icon = tv("🍽️", 25, NAVY, false);
-        icon.setGravity(Gravity.CENTER);
-        card.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
-        categoryValue = tv("Pilih kategori menu", 14, NAVY, true);
-        categoryValue.setPadding(dp(8), 0, 0, 0);
-        card.addView(categoryValue, new LinearLayout.LayoutParams(0, -2, 1));
-        TextView arrow = tv("›", 28, BLUE, true);
-        card.addView(arrow);
-        card.setOnClickListener(v -> showCategoryPage());
-        return card;
+        LinearLayout row=new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(44));
+        row.setPadding(dp(9),0,dp(9),0);
+        row.setBackground(stroke(Color.WHITE,Color.parseColor("#D5E5F8"),dp(12)));
+        row.addView(tv("Kategori",12,MUTED,true));
+        categoryValue=tv("Pilih kategori",13,NAVY,true);
+        categoryValue.setGravity(Gravity.END|Gravity.CENTER_VERTICAL);
+        categoryValue.setPadding(dp(8),0,dp(6),0);
+        row.addView(categoryValue,new LinearLayout.LayoutParams(0,-2,1));
+        row.addView(tv("›",18,BLUE,true));
+        row.setFocusable(true);
+        row.setOnClickListener(v->showCategoryPage());
+        return row;
     }
 
     private void showCategoryPage() {
         categoryPage = true;
         LinearLayout wrap = new LinearLayout(this);
-        wrap.addView(title("Pilih Kategori Menu"));
+        wrap.addView(editorHeader("Pilih kategori",this::showFormPage));
         wrap.addView(sub("Pilih kategori yang sesuai dengan menu ini."));
         Runnable back = this::showFormPage;
         for (String[] item : CATEGORIES) {
@@ -220,10 +290,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             });
             wrap.addView(row);
         }
-        Button cancel = outlineBtn("Batal");
+        Button cancel=editorButton("Kembali ke menu",false);
         cancel.setOnClickListener(v -> back.run());
-        wrap.addView(cancel);
-        setContentView(page(wrap));
+        setContentView(page(wrap,editorFooter(cancel)));
     }
 
     private void showFormPage() {
@@ -241,9 +310,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private void setCategory(String category) {
         selectedCategory = normalizeCategory(category);
-        String emoji = "🍽️";
-        for (String[] c : CATEGORIES) if (c[1].equalsIgnoreCase(selectedCategory)) { emoji = c[0]; break; }
-        categoryValue.setText(emoji + "  " + (selectedCategory.isEmpty() ? "Pilih kategori menu" : selectedCategory));
+        categoryValue.setText(selectedCategory.isEmpty()?"Pilih kategori":selectedCategory);
         updatePreview();
     }
 
@@ -272,42 +339,47 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         }
         if (original <= 0) original = displayPrice;
         if (original > 0) priceInput.setText(String.valueOf(original));
-        fileText.setText(existingImage.isEmpty() ? "Gambar lama tidak tersedia. Pilih gambar jika ingin mengganti." : "Gambar lama dipertahankan. Pilih gambar baru untuk mengganti.");
+        fileText.setText(existingImage.isEmpty()?"Tambahkan foto menu":"Foto menu saat ini");
         updatePreview();
     }
 
     private LinearLayout previewCard() {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.HORIZONTAL);
-        box.setGravity(Gravity.CENTER_VERTICAL);
-        box.setPadding(dp(12), dp(12), dp(12), dp(12));
-        box.setBackground(round(Color.WHITE, dp(20)));
-        box.setElevation(dp(2));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(4), 0, dp(14));
-        box.setLayoutParams(lp);
-
-        FrameLayout imgWrap = new FrameLayout(this);
-        imgWrap.setBackground(round(Color.parseColor("#EEF6FF"), dp(18)));
-        previewImage = new ImageView(this);
+        LinearLayout box=editorSection();
+        LinearLayout row=new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0,dp(3),0,dp(3));
+        FrameLayout imgWrap=new FrameLayout(this);
+        imgWrap.setBackground(round(Color.parseColor("#EEF6FF"),dp(12)));
+        imgWrap.setClipToOutline(true);
+        previewImage=new ImageView(this);
         previewImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        imgWrap.addView(previewImage, new FrameLayout.LayoutParams(-1, -1));
-        previewIcon = tv("🍽️", 34, BLUE, true);
+        imgWrap.addView(previewImage,new FrameLayout.LayoutParams(-1,-1));
+        previewIcon=tv("🍽️",24,BLUE,true);
         previewIcon.setGravity(Gravity.CENTER);
-        imgWrap.addView(previewIcon, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(dp(72), dp(72));
-        imgLp.setMargins(0, 0, dp(12), 0);
-        box.addView(imgWrap, imgLp);
-
-        LinearLayout info = new LinearLayout(this);
+        imgWrap.addView(previewIcon,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout.LayoutParams imageLp=new LinearLayout.LayoutParams(dp(62),dp(62));
+        imageLp.rightMargin=dp(9);
+        row.addView(imgWrap,imageLp);
+        imgWrap.setContentDescription("Pilih foto menu");
+        imgWrap.setOnClickListener(v->{if(!imagePreparing) chooseImage();});
+        LinearLayout info=new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
-        info.setGravity(Gravity.CENTER_VERTICAL);
-        previewName = tv("Foto & pratinjau menu", 15, NAVY, true);
-        previewPrice = tv("Rp 0", 16, BLUE, true);
-        previewCategory = tv("Kategori", 13, MUTED, false);
-        TextView hint = tv("Pratinjau untuk pelanggan", 11, Color.parseColor("#98A2B3"), false);
-        info.addView(previewName); info.addView(previewPrice); info.addView(previewCategory); info.addView(hint);
-        box.addView(info, new LinearLayout.LayoutParams(0, -2, 1f));
+        info.addView(tv("PRATINJAU PELANGGAN",10,MUTED,true));
+        previewName=tv("Nama menu",14,NAVY,true);
+        previewName.setMaxLines(2);
+        info.addView(previewName);
+        previewPrice=tv("Rp 0",16,BLUE,true);
+        info.addView(previewPrice);
+        row.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+        pickImageButton=editorButton("Foto",false);
+        pickImageButton.setContentDescription("Pilih atau ganti foto menu");
+        pickImageButton.setOnClickListener(v->chooseImage());
+        row.addView(pickImageButton,new LinearLayout.LayoutParams(-2,-2));
+        box.addView(row);
+        originalText=tv("",11,MUTED,false);
+        box.addView(originalText);
+        fileText=tv("Foto dioptimalkan otomatis",11,MUTED,false);
+        box.addView(fileText);
         return box;
     }
 
@@ -363,10 +435,10 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
         long fee = gross(effectiveOriginal);
         long appPrice = effectiveOriginal + fee;
-        originalText.setText("Harga toko: " + rupiah(original) + (discountActive ? "\nDiskon toko: " + String.format(java.util.Locale.US, "%.0f%%", discountPercent) + " → " + rupiah(effectiveOriginal) : "") + "\nBiaya tambahan aplikasi: " + (grossupLoaded ? rupiah(fee) : "memuat...") + "\nHarga untuk pelanggan: " + rupiah(appPrice));
+        originalText.setText("Harga toko "+rupiah(effectiveOriginal)
+                +(discountActive?" setelah diskon":"")+(grossupLoaded?" · Biaya "+rupiah(fee):" · Menghitung biaya…"));
         String name = nameInput.getText().toString().trim();
         previewName.setText(name.isEmpty() ? "Nama menu" : name);
-        previewCategory.setText(selectedCategory.isEmpty() ? "Kategori" : selectedCategory);
         previewPrice.setText(rupiah(appPrice));
     }
 
@@ -405,8 +477,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private void prepareMenuImageAi() {
         if (imageUri == null) return;
         imagePreparing = true;
-        setButtonLoading(pickImageButton, true, "📷 Pilih Gambar Menu", "AI Resize to WebP...");
-        fileText.setText("AI Resize to WebP sedang menganalisis gambar...");
+        setButtonLoading(pickImageButton,true,"Foto","…");
+        fileText.setText("Mengoptimalkan foto…");
         final Uri source = imageUri;
         MerchantTaskExecutor.execute(() -> {
             try {
@@ -414,17 +486,17 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 preparedMenuImage = result;
                 runOnUiThread(() -> {
                     imagePreparing = false;
-                    setButtonLoading(pickImageButton, false, "📷 Pilih Gambar Menu", "");
+                    setButtonLoading(pickImageButton,false,"Foto","");
                     if (result != null && result.transformed) {
-                        fileText.setText("AI Resize to WebP: " + humanBytes(result.originalBytes) + " → " + humanBytes(result.finalBytes) + ". Siap upload.");
+                        fileText.setText("Foto siap · "+humanBytes(result.finalBytes));
                     } else if (result != null) {
-                        fileText.setText("Ukuran sudah kecil (" + humanBytes(result.finalBytes) + "). File asli dipertahankan, tidak diperkecil lagi.");
+                        fileText.setText("Foto siap · "+humanBytes(result.finalBytes));
                     }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     imagePreparing = false; preparedMenuImage = null;
-                    setButtonLoading(pickImageButton, false, "📷 Pilih Gambar Menu", "");
+                    setButtonLoading(pickImageButton,false,"Foto","");
                     alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
                 });
             }
@@ -440,8 +512,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private void showFormError(String message) {
-        formError.setText(message);
-        formError.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
+        String detail=message==null?"Periksa kembali data menu.":message;
+        formError.setText(detail);
+        formError.setVisibility(detail.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
     long baseToppingPrice() { return parseLong(priceInput.getText().toString()); }
@@ -463,7 +536,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     void returnFromToppings() {
-        toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan");
+        toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan ›");
         showFormPage();
     }
 

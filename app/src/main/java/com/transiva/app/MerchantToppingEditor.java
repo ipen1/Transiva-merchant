@@ -1,6 +1,11 @@
 package com.transiva.app;
 
 import android.content.Intent;
+import android.app.AlertDialog;
+import android.graphics.Color;
+import android.view.Gravity;
+import android.view.View;
+import android.text.TextUtils;
 import android.net.Uri;
 import android.os.Bundle;
 import android.text.Editable;
@@ -34,7 +39,7 @@ final class MerchantToppingEditor {
     private LinearLayout root;
     private ImageView photo;
     private TextView photoStatus;
-    private Button photoButton, saveButton;
+    private Button photoButton, saveButton, resetPhotoButton;
     private Runnable refreshPrice;
 
     MerchantToppingEditor(MerchantAddMenuActivity host, Supplier<Object> mainPhoto,
@@ -65,33 +70,60 @@ final class MerchantToppingEditor {
     boolean isOpen() { return opened; }
     boolean isDirty() { return dirty; }
 
-    private LinearLayout page(String title) {
-        root = new LinearLayout(host);
-        host.setContentView(host.page(root));
-        root.addView(host.title(title));
+    private LinearLayout page(String title, LinearLayout footer) {
+        root=new LinearLayout(host);
+        host.setContentView(host.page(root,footer));
+        root.addView(host.editorHeader(title,this::back));
         return root;
     }
 
     void show() {
-        opened = true;
-        draft = null;
-        refreshPrice = null;
-        LinearLayout screen = page("Topping Menu");
-        screen.addView(host.sub("Satu pilihan topping per porsi. Isi harga lengkap menu dengan topping, lalu Transiva menghitung harga pelanggan."));
+        opened=true;
+        draft=null;
+        refreshPrice=null;
+        Button add=host.editorButton("＋ Tambah topping",true);
+        add.setEnabled(toppings.size()<LIMIT);
+        add.setOnClickListener(v->edit(-1));
+        LinearLayout screen=page("Topping Menu",host.editorFooter(add));
+        TextView counter=host.tv(toppings.size()+" dari "+LIMIT+" pilihan · Satu topping per porsi",12,host.MUTED,true);
+        counter.setPadding(host.dp(2),0,0,host.dp(8));
+        screen.addView(counter);
+        if (toppings.isEmpty()) screen.addView(host.card("Belum ada topping. Tambahkan pilihan untuk menu ini."));
         for (int i=0;i<toppings.size();i++) {
             final int index=i;
             Topping topping=toppings.get(i);
-            Button option=host.outlineBtn(topping.name+" · "+host.rupiah(customerPrice.applyAsLong(topping.price)));
-            option.setOnClickListener(v->edit(index));
-            screen.addView(option);
+            LinearLayout card=host.editorSection();
+            LinearLayout row=new LinearLayout(host);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setMinimumHeight(host.dp(62));
+            ImageView thumbnail=new ImageView(host);
+            thumbnail.setBackground(host.round(Color.parseColor("#EAF4FF"),host.dp(10)));
+            thumbnail.setClipToOutline(true);
+            row.addView(thumbnail,new LinearLayout.LayoutParams(host.dp(52),host.dp(52)));
+            Glide.with(host).load(photoFor(topping)).centerCrop().into(thumbnail);
+
+            LinearLayout info=new LinearLayout(host);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setPadding(host.dp(10),0,host.dp(6),0);
+            TextView name=host.tv(topping.name,14,host.NAVY,true);
+            name.setMaxLines(2);
+            name.setEllipsize(TextUtils.TruncateAt.END);
+            info.addView(name);
+            if (!topping.description.isEmpty()) {
+                TextView detail=host.tv(topping.description,11,host.MUTED,false);
+                detail.setMaxLines(1);
+                detail.setEllipsize(TextUtils.TruncateAt.END);
+                info.addView(detail);
+            }
+            info.addView(host.tv(host.rupiah(customerPrice.applyAsLong(topping.price))+" · Harga pelanggan",11,host.BLUE,true));
+            row.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+            row.addView(host.tv("›",20,host.BLUE,true));
+            card.addView(row);
+            card.setFocusable(true);
+            card.setContentDescription("Edit topping "+topping.name+", "+host.rupiah(customerPrice.applyAsLong(topping.price)));
+            card.setOnClickListener(v->edit(index));
+            screen.addView(card);
         }
-        Button add=host.btn("Tambah topping");
-        add.setEnabled(toppings.size()<LIMIT);
-        add.setOnClickListener(v->edit(-1));
-        screen.addView(add);
-        Button back=host.outlineBtn("Kembali ke menu");
-        back.setOnClickListener(v->back());
-        screen.addView(back);
     }
 
     private void edit(int index) {
@@ -102,43 +134,69 @@ final class MerchantToppingEditor {
 
     private void renderDraft() {
         final int index=editingIndex;
-        LinearLayout screen=page(index<0?"Tambah Topping":"Edit Topping");
+        saveButton=host.editorButton("Simpan topping",true);
+        LinearLayout footer=host.editorFooter(saveButton);
+        TextView error=host.tv("",12,Color.parseColor("#B42318"),true);
+        error.setVisibility(View.GONE);
+        footer.addView(error,0);
+        LinearLayout screen=page(index<0?"Tambah Topping":"Edit Topping",footer);
+
+        LinearLayout photoCard=host.editorSection();
+        LinearLayout photoRow=new LinearLayout(host);
+        photoRow.setGravity(Gravity.CENTER_VERTICAL);
         photo=new ImageView(host);
         photo.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        screen.addView(photo,new LinearLayout.LayoutParams(-1,host.dp(168)));
-        photoStatus=host.sub("");
-        screen.addView(photoStatus);
-        photoButton=host.outlineBtn("Pilih foto berbeda");
+        photo.setBackground(host.round(Color.parseColor("#EAF4FF"),host.dp(12)));
+        photo.setClipToOutline(true);
+        photoRow.addView(photo,new LinearLayout.LayoutParams(host.dp(76),host.dp(76)));
+        LinearLayout photoActions=new LinearLayout(host);
+        photoActions.setOrientation(LinearLayout.VERTICAL);
+        photoActions.setPadding(host.dp(9),0,0,0);
+        photoActions.addView(host.tv("Foto topping",13,host.NAVY,true));
+        photoStatus=host.tv("",11,host.MUTED,false);
+        photoActions.addView(photoStatus);
+        photoButton=host.editorButton("Ganti foto",false);
         photoButton.setOnClickListener(v->pickPhoto());
-        screen.addView(photoButton);
-        Button useDefault=host.outlineBtn("Gunakan foto menu utama");
-        useDefault.setOnClickListener(v->{
+        photoActions.addView(photoButton);
+        photoRow.addView(photoActions,new LinearLayout.LayoutParams(0,-2,1));
+        photoCard.addView(photoRow);
+        resetPhotoButton=host.editorButton("Pakai foto menu utama",false);
+        resetPhotoButton.setOnClickListener(v->{
             if (photoLoading) return;
             draft.image="";
             draft.prepared=null;
             showPhoto();
         });
-        screen.addView(useDefault);
+        photoCard.addView(resetPhotoButton);
+        screen.addView(photoCard);
         showPhoto();
 
-        EditText name=host.input("Nama topping · contoh Oreo", InputType.TYPE_CLASS_TEXT);
+        LinearLayout fields=host.editorSection();
+        fields.addView(host.editorLabel("Nama topping"));
+        EditText name=host.editorField("Contoh: Keju",InputType.TYPE_CLASS_TEXT);
         name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(60)});
         name.setText(draft.name);
-        screen.addView(name);
-        EditText description=host.input("Deskripsi · contoh taburan Oreo renyah", InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
+        fields.addView(name);
+        fields.addView(host.editorLabel("Deskripsi · opsional"));
+        EditText description=host.editorField("Contoh: Keju parut",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         description.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(240)});
         description.setText(draft.description);
-        screen.addView(description);
-        EditText price=host.input("Harga jual satu porsi dengan topping (Rp)", InputType.TYPE_CLASS_NUMBER);
+        description.setMaxLines(3);
+        fields.addView(description);
+        fields.addView(host.editorLabel("Harga toko untuk satu porsi (Rp)"));
+        EditText price=host.editorField("Harga menu + topping, contoh: 10000",InputType.TYPE_CLASS_NUMBER);
         if (draft.price>0) price.setText(String.valueOf(draft.price));
-        screen.addView(price);
-        TextView preview=host.card("");
-        screen.addView(preview);
+        fields.addView(price);
+        TextView preview=host.tv("",13,host.BLUE,true);
+        preview.setPadding(0,host.dp(6),0,host.dp(6));
+        fields.addView(preview);
+        screen.addView(fields);
         Runnable update=()->{
             draft.name=name.getText().toString().trim();
             draft.description=description.getText().toString().trim();
             draft.price=parsePrice(price.getText().toString());
-            preview.setText(draft.price>0?"Harga pelanggan · "+host.rupiah(customerPrice.applyAsLong(draft.price)):"Harga pelanggan muncul setelah harga diisi.");
+            preview.setText(draft.price>0?"Harga pelanggan  "+host.rupiah(customerPrice.applyAsLong(draft.price)):"Harga pelanggan dihitung otomatis.");
+            error.setVisibility(View.GONE);
         };
         TextWatcher watcher=new TextWatcher(){
             @Override public void beforeTextChanged(CharSequence s,int start,int count,int after) {}
@@ -151,18 +209,17 @@ final class MerchantToppingEditor {
         refreshPrice=update;
         update.run();
 
-        TextView error=host.sub("");
-        screen.addView(error);
-        saveButton=host.btn("Simpan topping");
         saveButton.setOnClickListener(v->{
             if (photoLoading) return;
             long base=host.baseToppingPrice();
             if (draft.name.isEmpty() || draft.price<=0 || draft.price<base || draft.price>100000000) {
+                error.setVisibility(View.VISIBLE);
                 error.setText("Isi nama dan harga satu porsi. Harga minimal "+host.rupiah(Math.max(1,base))+".");
                 return;
             }
             for (int i=0;i<toppings.size();i++) {
                 if (i!=editingIndex && toppings.get(i).name.equalsIgnoreCase(draft.name)) {
+                    error.setVisibility(View.VISIBLE);
                     error.setText("Nama topping sudah dipakai.");
                     return;
                 }
@@ -171,29 +228,34 @@ final class MerchantToppingEditor {
             dirty=true;
             show();
         });
-        screen.addView(saveButton);
         if (index>=0) {
-            Button delete=host.outlineBtn("Hapus topping ini");
+            Button delete=host.editorButton("Hapus topping",false);
+            delete.setTextColor(Color.parseColor("#B42318"));
             delete.setOnClickListener(v->{
                 if (photoLoading) return;
-                toppings.remove(index);
-                dirty=true;
-                show();
+                new AlertDialog.Builder(host).setTitle("Hapus topping?")
+                        .setMessage(draft.name+" akan dihapus saat menu disimpan.")
+                        .setNegativeButton("Batal",null).setPositiveButton("Hapus",(dialog,which)->{
+                            toppings.remove(index);
+                            dirty=true;
+                            show();
+                        }).show();
             });
             screen.addView(delete);
         }
-        Button back=host.outlineBtn("Batal / kembali");
-        back.setOnClickListener(v->back());
-        screen.addView(back);
+    }
+
+    private Object photoFor(Topping topping) {
+        if (topping.prepared!=null) return topping.prepared.uri;
+        if (!topping.image.isEmpty()) return imageUrl(topping.image);
+        return mainPhoto.get();
     }
 
     private void showPhoto() {
-        Object source=mainPhoto.get();
-        if (!draft.image.isEmpty()) source=imageUrl(draft.image);
-        if (draft.prepared!=null) source=draft.prepared.uri;
-        Glide.with(host).load(source).centerCrop().into(photo);
-        photoStatus.setText(draft.prepared!=null?"Foto topping siap · "+host.humanBytes(draft.prepared.finalBytes)
-                : draft.image.isEmpty()?"Menggunakan foto menu utama":"Menggunakan foto topping");
+        Glide.with(host).load(photoFor(draft)).centerCrop().into(photo);
+        photoStatus.setText(draft.prepared!=null?"Foto siap · "+host.humanBytes(draft.prepared.finalBytes)
+                : draft.image.isEmpty()?"Foto menu utama":"Foto khusus");
+        resetPhotoButton.setVisibility(draft.prepared!=null || !draft.image.isEmpty()?View.VISIBLE:View.GONE);
     }
 
     private void pickPhoto() {
