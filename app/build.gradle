@@ -12,8 +12,9 @@ android {
         // Google Play automatic protection requires Android 7.0 (API 24)+.
         minSdk 24
         targetSdk 36
-        versionCode 26
-        versionName '1.9.26'
+        versionCode 27
+        versionName '1.9.27'
+        manifestPlaceholders = [merchantMapsApiKey: providers.gradleProperty('merchantMapsApiKey').orElse(providers.environmentVariable('MERCHANT_MAPS_API_KEY')).getOrElse('')]
     }
 
     signingConfigs {
@@ -57,8 +58,8 @@ dependencies {
     // P1: lifecycle-aware image loading + memory/disk cache.
     implementation 'com.github.bumptech.glide:glide:4.16.0'
 
-    // Native GPU map renderer. No WebView / Leaflet / JavaScript bridge.
-    implementation 'org.maplibre.gl:android-sdk:13.1.0'
+    // Google Maps SDK, shared with Driver and Customer.
+    implementation 'com.google.android.gms:play-services-maps:20.0.0'
 
     implementation platform('com.google.firebase:firebase-bom:33.7.0')
     implementation 'com.google.firebase:firebase-messaging'
