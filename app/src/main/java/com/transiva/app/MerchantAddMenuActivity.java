@@ -48,6 +48,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private TextView formError;
     private Button pickImageButton, saveMenuButton;
     private String legacyOptions = "[]";
+    private MerchantToppingEditor toppingEditor;
+    private Button toppingButton;
     private Uri imageUri;
     private PreparedImage preparedMenuImage;
     private volatile boolean imagePreparing;
@@ -67,9 +69,47 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         existingImage = safe(getIntent().getStringExtra("image"));
         String options = getIntent().getStringExtra("options_json");
         if (editMode && options != null && !options.isEmpty()) legacyOptions = options;
+        toppingEditor = new MerchantToppingEditor(this, this::mainPhoto, this::toppingCustomerPrice, legacyOptions);
         build();
         prefillEditData();
+        if (!existingImage.isEmpty()) {
+            previewIcon.setVisibility(View.GONE);
+            com.bumptech.glide.Glide.with(this).load(mainPhoto()).centerCrop().into(previewImage);
+        }
+        if (b!=null) {
+            nameInput.setText(b.getString("menu_name",""));
+            priceInput.setText(b.getString("menu_price",""));
+            descriptionInput.setText(b.getString("description",""));
+            stockInput.setText(b.getString("stock",""));
+            trackStockInput.setChecked(b.getBoolean("track_stock"));
+            discountInput.setText(b.getString("discount",""));
+            discountActiveInput.setChecked(b.getBoolean("discount_active"));
+            setCategory(b.getString("category",""));
+            preparedMenuImage=MerchantToppingEditor.unpackPhoto(b.getBundle("menu_photo"));
+            if (preparedMenuImage!=null) {
+                imageUri=preparedMenuImage.uri;
+                previewIcon.setVisibility(View.GONE);
+                com.bumptech.glide.Glide.with(this).load(mainPhoto()).centerCrop().into(previewImage);
+                fileText.setText("Foto menu siap.");
+            }
+            toppingEditor.restoreState(b.getBundle("topping_editor"));
+            toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan");
+        }
         loadGrossupRules();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString("menu_name",nameInput.getText().toString());
+        state.putString("menu_price",priceInput.getText().toString());
+        state.putString("description",descriptionInput.getText().toString());
+        state.putString("stock",stockInput.getText().toString());
+        state.putBoolean("track_stock",trackStockInput.isChecked());
+        state.putString("discount",discountInput.getText().toString());
+        state.putBoolean("discount_active",discountActiveInput.isChecked());
+        state.putString("category",selectedCategory);
+        if (preparedMenuImage!=null) state.putBundle("menu_photo",MerchantToppingEditor.packPhoto(preparedMenuImage));
+        state.putBundle("topping_editor",toppingEditor.saveState());
     }
 
     private void build() {
@@ -88,6 +128,16 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         core.addView(label("Deskripsi • opsional"));descriptionInput=input("Isi, rasa, atau ukuran porsi",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         descriptionInput.setMinLines(2);descriptionInput.setMaxLines(4);core.addView(descriptionInput);
 
+        toppingButton=outlineBtn("Topping · "+toppingEditor.size()+" pilihan");
+        toppingButton.setOnClickListener(v -> {
+            if (!grossupLoaded || baseToppingPrice()<=0) {
+                toast("Isi harga menu dan tunggu aturan harga dimuat.");
+                return;
+            }
+            toppingEditor.show();
+        });
+        root.addView(toppingButton);
+
         LinearLayout extras=formSection("Pengaturan tambahan");root.addView(extras);
         LinearLayout advanced=new LinearLayout(this);advanced.setOrientation(LinearLayout.VERTICAL);advanced.setVisibility(editMode?View.VISIBLE:View.GONE);
         Button toggle=outlineBtn(editMode?"Tutup stok & diskon ▴":"Atur stok & diskon ▾");
@@ -97,7 +147,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         discountActiveInput=new CheckBox(this);discountActiveInput.setText("Berikan diskon • maksimal 90%");discountActiveInput.setMinHeight(dp(48));discountActiveInput.setTextColor(TEXT);advanced.addView(discountActiveInput);
         discountInput=input("Persen diskon, contoh: 10",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);advanced.addView(discountInput);
         if (hasLegacyChoices()) {
-            advanced.addView(sub("Pilihan lama tetap tersedia untuk pelanggan. Untuk paket baru, buat menu terpisah dengan nama dan harga lengkap."));
+            advanced.addView(sub("Varian dan tambahan lama tetap tersedia untuk pelanggan."));
         }
         extras.addView(advanced);
 
@@ -184,7 +234,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     @Override public void onBackPressed() {
-        if (categoryPage) showFormPage();
+        if (toppingEditor.isOpen()) toppingEditor.back();
+        else if (categoryPage) showFormPage();
         else super.onBackPressed();
     }
 
@@ -288,7 +339,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                     Long max = row.isNull("max_amount") ? null : Math.max(min, row.optLong("max_amount", min));
                     loaded.add(new GrossupRule(min, max, Math.max(0L, row.optLong("fee", 0L))));
                 }
-                runOnUiThread(() -> { grossupRules.clear(); grossupRules.addAll(loaded); grossupLoaded = true; updatePreview(); });
+                runOnUiThread(() -> { grossupRules.clear(); grossupRules.addAll(loaded); grossupLoaded = true; updatePreview(); toppingEditor.onRulesLoaded(); });
             } catch (Exception e) {
                 runOnUiThread(() -> { grossupLoaded = false; updatePreview(); Toast.makeText(this, "Aturan gross-up belum dapat dimuat. Periksa API server.", Toast.LENGTH_LONG).show(); });
             }
@@ -297,7 +348,10 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private long gross(long price) {
         if (price <= 0) return 0;
-        for (GrossupRule rule : grossupRules) if (price >= rule.min && (rule.max == null || price <= rule.max)) return rule.fee;
+        for (int i=grossupRules.size()-1;i>=0;i--) {
+            GrossupRule rule=grossupRules.get(i);
+            if (price>=rule.min && (rule.max==null || price<=rule.max)) return rule.fee;
+        }
         return 0;
     }
 
@@ -321,7 +375,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             JSONArray groups = new JSONArray(legacyOptions);
             for (int i = 0; i < groups.length(); i++) {
                 JSONObject group = groups.optJSONObject(i);
-                JSONArray items = group == null ? null : group.optJSONArray("items");
+                JSONArray items = group == null || "bundle_topping".equals(group.optString("type")) ? null : group.optJSONArray("items");
                 if (items == null || items.length() == 0) continue;
                 if (!"variant".equals(group.optString("type")) || items.length() > 1) return true;
                 JSONObject item = items.optJSONObject(0);
@@ -338,6 +392,10 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     @Override protected void onActivityResult(int r, int c, Intent data) {
         super.onActivityResult(r, c, data);
+        if (r == MerchantToppingEditor.PICK_PHOTO) {
+            toppingEditor.receivePhoto(c == RESULT_OK && data != null ? data.getData() : null);
+            return;
+        }
         if (r == PICK_IMAGE && c == RESULT_OK && data != null) {
             imageUri = data.getData(); preparedMenuImage = null; showPickedImage(imageUri); prepareMenuImageAi();
         }
@@ -386,6 +444,29 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         formError.setVisibility(message.isEmpty() ? View.GONE : View.VISIBLE);
     }
 
+    long baseToppingPrice() { return parseLong(priceInput.getText().toString()); }
+
+    private Object mainPhoto() {
+        if (preparedMenuImage != null) return preparedMenuImage.uri;
+        if (imageUri != null) return imageUri;
+        String path = existingImage;
+        int query = path.indexOf('?');
+        if (query>=0) path=path.substring(0,query);
+        return MerchantToppingEditor.imageUrl(path);
+    }
+
+    private long toppingCustomerPrice(long amount) {
+        double discount = discountActiveInput.isChecked()
+                ? Math.max(0d,Math.min(90d,parseDouble(discountInput.getText().toString()))) : 0d;
+        long discounted = Math.max(1,Math.round(amount*(1d-discount/100d)));
+        return discounted+gross(discounted);
+    }
+
+    void returnFromToppings() {
+        toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan");
+        showFormPage();
+    }
+
     private void save(Button save) {
         showFormError("");
         String name = nameInput.getText().toString().trim();
@@ -412,7 +493,17 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         }
         int stock = (int)Math.max(0, parsedStock);
         boolean changeStock = !editMode || trackStock != initialTrack || stock != initialStock;
-        PreparedImage image = preparedMenuImage;
+        java.util.Map<String,PreparedImage> uploads = new java.util.LinkedHashMap<>();
+        if (preparedMenuImage != null) uploads.put("image",preparedMenuImage);
+        final JSONArray toppings;
+        try {
+            JSONArray checked=toppingEditor.request(original,uploads);
+            toppings=(!editMode || toppingEditor.isDirty()) ? checked : null;
+        } catch (Exception error) {
+            setButtonLoading(save,false,normalButton,"");
+            showFormError(error.getMessage());
+            return;
+        }
         boolean queued = MerchantNetworkExecutor.executeWrite("menu-save:" + (editMode ? editMenuId : "new") + ":" + name, () -> {
             try {
                 JSONObject f = new JSONObject();
@@ -420,13 +511,14 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 f.put("discount_percent", discountPercent); f.put("discount_active", discountActive ? 1 : 0);
                 f.put("description", description);
                 if (!editMode) f.put("menu_format", "single_price");
+                if (toppings != null) f.put("bundle_toppings",toppings.toString());
                 if (changeStock) {
                     f.put("track_stock", trackStock ? 1 : 0);
                     f.put("stock", stock);
                 }
                 if (editMode) { f.put("menu_id", editMenuId); f.put("id", editMenuId); f.put("action", "update"); }
                 String endpoint = editMode ? BASE + "merchant_update_menu.php" : BASE + "add_food_menu.php";
-                JSONObject res = new JSONObject(postFormPrepared(endpoint, f, image, "image"));
+                JSONObject res = new JSONObject(MerchantHttpClient.postMultipart(this,endpoint,f,uploads));
                 runOnUiThread(() -> {
                     setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", "");
                     if (res.optBoolean("success", false)) { toast(res.optString("message", editMode ? "Menu berhasil diperbarui" : "Menu berhasil disimpan")); finish(); }

@@ -1,6 +1,7 @@
 package com.transiva.app;
 
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -8,30 +9,32 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import org.maplibre.android.MapLibre;
-import org.maplibre.android.camera.CameraUpdateFactory;
-import org.maplibre.android.geometry.LatLng;
-import org.maplibre.android.maps.MapView;
-import org.maplibre.android.maps.MapLibreMap;
-import org.maplibre.android.maps.Style;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapView;
+import com.google.android.gms.maps.model.LatLng;
 
 public final class MerchantBranchMapActivity extends MerchantBaseActivity {
-    private static final String STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+    private static final float MIN_PICK_ZOOM = 15f;
     private MapView mapView;
-    private MapLibreMap map;
-    private boolean styleReady;
-    private static final double MIN_PICK_ZOOM = 14;
+    private GoogleMap map;
+    private boolean mapLoaded;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         LinearLayout root = new LinearLayout(this);
         setContentView(page(root));
         root.addView(title("Titik Pickup Cabang"));
-        TextView instructions = sub("Geser peta hingga pin berada di tempat driver mengambil pesanan.");
+        TextView instructions = sub("Memuat Google Maps…");
         root.addView(instructions);
+        if (!hasMapsKey()) {
+            instructions.setText("Google Maps Merchant belum dikonfigurasi. Hubungi admin Transiva.");
+            addBack(root);
+            return;
+        }
+
         FrameLayout frame = new FrameLayout(this);
         root.addView(frame, new LinearLayout.LayoutParams(-1, dp(390)));
-        MapLibre.getInstance(getApplicationContext());
         mapView = new MapView(this) {
             @Override public boolean dispatchTouchEvent(MotionEvent event) {
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(
@@ -47,50 +50,76 @@ public final class MerchantBranchMapActivity extends MerchantBaseActivity {
         Button confirm = btn("Gunakan titik ini");
         confirm.setEnabled(false);
         confirm.setOnClickListener(v -> {
-            if (!styleReady || map == null || map.getCameraPosition().zoom < MIN_PICK_ZOOM) return;
+            if (!mapLoaded || map == null || map.getCameraPosition().zoom < MIN_PICK_ZOOM) return;
             LatLng chosen = map.getCameraPosition().target;
-            if (chosen == null || chosen.getLatitude() == 0 || chosen.getLongitude() == 0) return;
-            Intent result = new Intent();
-            result.putExtra("lat", chosen.getLatitude());
-            result.putExtra("lng", chosen.getLongitude());
-            setResult(RESULT_OK, result);
+            if (chosen.latitude == 0 || chosen.longitude == 0) {
+                instructions.setText("Geser pin sedikit untuk memilih titik pickup.");
+                return;
+            }
+            setResult(RESULT_OK, new Intent().putExtra("lat", chosen.latitude).putExtra("lng", chosen.longitude));
             finish();
         });
         root.addView(confirm);
-        Button back = outlineBtn("Kembali");
-        back.setOnClickListener(v -> finish());
-        root.addView(back);
-        mapView.onCreate(state);
+        addBack(root);
+
+        mapView.onCreate(state == null ? null : state.getBundle("map_state"));
         mapView.getMapAsync(ready -> {
+            if (isDestroyed()) return;
             map = ready;
-            if (state == null) {
-                double lat = getIntent().getDoubleExtra("lat", Double.NaN);
-                double lng = getIntent().getDoubleExtra("lng", Double.NaN);
-                boolean local = Double.isFinite(lat) && Double.isFinite(lng) && Math.abs(lat) <= 85
-                        && Math.abs(lng) <= 180 && (lat != 0 || lng != 0);
-                LatLng start = local ? new LatLng(lat, lng) : new LatLng(-2.5, 118.0);
-                ready.moveCamera(CameraUpdateFactory.newLatLngZoom(start, local ? 16 : 4));
-            }
-            Runnable updatePoint = () -> {
+            ready.getUiSettings().setZoomControlsEnabled(true);
+            ready.getUiSettings().setMapToolbarEnabled(false);
+            double lat = state == null ? getIntent().getDoubleExtra("lat", Double.NaN) : state.getDouble("lat", Double.NaN);
+            double lng = state == null ? getIntent().getDoubleExtra("lng", Double.NaN) : state.getDouble("lng", Double.NaN);
+            boolean local = Double.isFinite(lat) && Double.isFinite(lng) && Math.abs(lat) <= 85
+                    && Math.abs(lng) <= 180 && lat != 0 && lng != 0;
+            ready.moveCamera(CameraUpdateFactory.newLatLngZoom(local ? new LatLng(lat, lng) : new LatLng(-2.5, 118), local ? (state == null ? 16 : state.getFloat("zoom", 16)) : 4));
+            Runnable update = () -> {
                 boolean detailed = ready.getCameraPosition().zoom >= MIN_PICK_ZOOM;
-                confirm.setEnabled(styleReady && detailed);
-                instructions.setText(!styleReady ? "Memuat peta cabang…"
-                        : detailed ? "Geser peta hingga pin berada di titik pickup." : "Perbesar peta untuk memilih titik pickup yang akurat.");
+                confirm.setEnabled(mapLoaded && detailed);
+                instructions.setText(!mapLoaded ? "Memuat Google Maps…" :
+                        detailed ? "Geser peta hingga pin berada di titik pickup." : "Perbesar peta untuk memilih titik pickup.");
             };
-            ready.addOnCameraIdleListener(updatePoint::run);
-            updatePoint.run();
-            ready.setStyle(new Style.Builder().fromUri(STYLE_URL), style -> {
-                styleReady = true;
-                updatePoint.run();
-            });
+            ready.setOnMapLoadedCallback(()->{ mapLoaded=true; update.run(); });
+            ready.setOnCameraIdleListener(update::run);
+            instructions.postDelayed(()->{
+                if (!mapLoaded && !isFinishing() && !isDestroyed()) {
+                    instructions.setText("Peta belum tampil. Periksa koneksi atau konfigurasi Google Maps Merchant.");
+                }
+            },10_000);
+            update.run();
         });
     }
 
-    @Override protected void onStart() { super.onStart(); mapView.onStart(); }
-    @Override protected void onResume() { super.onResume(); mapView.onResume(); }
-    @Override protected void onPause() { mapView.onPause(); super.onPause(); }
-    @Override protected void onStop() { mapView.onStop(); super.onStop(); }
-    @Override protected void onDestroy() { mapView.onDestroy(); super.onDestroy(); }
+    private boolean hasMapsKey() {
+        try {
+            Bundle meta = getPackageManager().getApplicationInfo(getPackageName(), PackageManager.GET_META_DATA).metaData;
+            return meta != null && !meta.getString("com.google.android.geo.API_KEY", "").trim().isEmpty();
+        } catch (PackageManager.NameNotFoundException e) { return false; }
+    }
+
+    private void addBack(LinearLayout root) {
+        Button back = outlineBtn("Kembali");
+        back.setOnClickListener(v -> finish());
+        root.addView(back);
+    }
+
+    @Override protected void onStart() { super.onStart(); if (mapView != null) mapView.onStart(); }
+    @Override protected void onResume() { super.onResume(); if (mapView != null) mapView.onResume(); }
+    @Override protected void onPause() { if (mapView != null) mapView.onPause(); super.onPause(); }
+    @Override protected void onStop() { if (mapView != null) mapView.onStop(); super.onStop(); }
+    @Override protected void onDestroy() { if (mapView != null) mapView.onDestroy(); super.onDestroy(); }
     @Override public void onLowMemory() { super.onLowMemory(); if (mapView != null) mapView.onLowMemory(); }
-    @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); mapView.onSaveInstanceState(out); }
+    @Override protected void onSaveInstanceState(Bundle out) {
+        super.onSaveInstanceState(out);
+        if (mapView != null) {
+            Bundle state = new Bundle();
+            mapView.onSaveInstanceState(state);
+            out.putBundle("map_state", state);
+        }
+        if (map != null) {
+            out.putDouble("lat", map.getCameraPosition().target.latitude);
+            out.putDouble("lng", map.getCameraPosition().target.longitude);
+            out.putFloat("zoom", map.getCameraPosition().zoom);
+        }
+    }
 }

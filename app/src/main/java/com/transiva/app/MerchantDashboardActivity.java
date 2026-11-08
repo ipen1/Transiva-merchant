@@ -68,6 +68,9 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         Button branches = outlineBtn("Kelola toko & cabang");
         branches.setOnClickListener(v -> open(MerchantBranchesActivity.class));
         root.addView(branches);
+        Button allOrders = outlineBtn("Pesanan Semua Cabang");
+        allOrders.setOnClickListener(v -> open(MerchantOutletOrdersActivity.class));
+        root.addView(allOrders);
 
         LinearLayout statusCard = new LinearLayout(this); statusCard.setOrientation(LinearLayout.VERTICAL);
         statusCard.setPadding(dp(12),dp(10),dp(12),dp(10));
