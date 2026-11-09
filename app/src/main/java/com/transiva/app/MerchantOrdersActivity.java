@@ -104,7 +104,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         root = new LinearLayout(this);
         setContentView(page(root));
         LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(title("Pesanan"),new LinearLayout.LayoutParams(0,-2,1));
+        header.addView(title("Aktivitas Semua Cabang"),new LinearLayout.LayoutParams(0,-2,1));
         Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui pesanan");refresh.setPadding(0,0,0,0);refresh.setElevation(0);
         refresh.setOnClickListener(v->load(false));header.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(header);
 
@@ -230,7 +230,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "orders:"+requestGeneration, () -> {
             try {
                 long sent=android.os.SystemClock.elapsedRealtime();
-                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
+                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?outlets=all&scope=" + scope + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
                 final long received=android.os.SystemClock.elapsedRealtime();
                 if(!r.optBoolean("success",false))throw new Exception(r.optString("message","Gagal memuat pesanan"));
                 JSONArray orders = r.optJSONArray("orders");
@@ -285,7 +285,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private String currentAccountCacheName(){
         SessionManager session = new SessionManager(this);
-        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + (branchId().isEmpty() ? session.getRestaurantId() : branchId());
+        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + "all_outlets";
     }
 
     private String orderCacheName(){return screenAccountKey.isEmpty()?currentAccountCacheName():screenAccountKey;}
@@ -409,6 +409,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(12), dp(10), dp(12), dp(10));
 
+        String outletName = o.optString("restaurant_name");
+        if (!outletName.isEmpty()) box.addView(tv("Cabang · " + outletName, 12, BLUE, true));
         String displayId = s(o, "order_id", "id");
         String actionId = s(o, "id", "order_numeric_id", "order_db_id", "order_id");
         String status = effectiveStatus(o);
@@ -653,7 +655,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         invalidateRead();
         updating = true;
         render(); // immediately disables every status button to prevent duplicate taps
-        MerchantOrderRepository.updateStatus(this, id, displayId, status, rejectReason, cookMinutes, (success, message, networkError, receipt) -> {
+        int outletId = 0;
+        for (int i = 0; i < cached.length(); i++) {
+            JSONObject order = cached.optJSONObject(i);
+            if (order != null && id.equals(s(order,"id","order_numeric_id","order_db_id","order_id"))) { outletId = order.optInt("restaurant_id"); break; }
+        }
+        MerchantOrderRepository.updateStatus(this, id, displayId, outletId, status, rejectReason, cookMinutes, (success, message, networkError, receipt) -> {
             if(!sameAccount()||isFinishing()||isDestroyed())return;
             updating = false;
             if (success) {

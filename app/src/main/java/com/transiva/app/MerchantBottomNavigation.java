@@ -31,7 +31,7 @@ public final class MerchantBottomNavigation {
         nav.setElevation(dp(activity, 2));
 
         add(nav, item(activity, "Beranda", "ic_nav_home", ActiveItem.HOME, activeItem, MerchantDashboardActivity.class));
-        add(nav, item(activity, "Pesanan", "ic_nav_activity", ActiveItem.ORDERS, activeItem, MerchantOrdersActivity.class));
+        add(nav, item(activity, "Aktivitas", "ic_nav_activity", ActiveItem.ORDERS, activeItem, MerchantOrdersActivity.class));
         add(nav, item(activity, "Cerita", "ic_nav_stories", ActiveItem.STORIES, activeItem, MerchantKabarMitraActivity.class));
         add(nav, item(activity, "Ulasan", "ic_nav_chat", ActiveItem.REVIEWS, activeItem, MerchantReviewsActivity.class));
         add(nav, item(activity, "Pengaturan", "ic_nav_profile", ActiveItem.SETTINGS, activeItem, MerchantSettingsActivity.class));

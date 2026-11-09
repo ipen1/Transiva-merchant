@@ -69,7 +69,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         branches.setOnClickListener(v -> open(MerchantBranchesActivity.class));
         root.addView(branches);
         Button allOrders = outlineBtn("Pesanan Semua Cabang");
-        allOrders.setOnClickListener(v -> open(MerchantOutletOrdersActivity.class));
+        allOrders.setOnClickListener(v -> open(MerchantOrdersActivity.class));
         root.addView(allOrders);
 
         LinearLayout statusCard = new LinearLayout(this); statusCard.setOrientation(LinearLayout.VERTICAL);

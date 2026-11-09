@@ -32,6 +32,7 @@ public final class MerchantDriverCommunication {
             i.putExtra("order_id", displayId);
             i.putExtra("order_db_id", actionId);
             i.putExtra("driver_name", driverName);
+            if (order.optInt("restaurant_id") > 0) i.putExtra(MerchantBaseActivity.EXTRA_BRANCH, order.optString("restaurant_id"));
             a.startActivity(i);
         });
         call.setEnabled(!normalize(driverPhone).isEmpty());
