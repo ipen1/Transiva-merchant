@@ -45,6 +45,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private boolean degradedOffline = false;
     private static final String ORDER_CACHE_PREF="merchant_order_cache_v2";
     private Spinner periodSpinner;
+    private Spinner outletSpinner;
+    private int outletFilter;
+    private long activePageId, nextActiveId;
+    private boolean activePagePending, nextActivePending;
+    private final java.util.ArrayList<Integer> outletIds = new java.util.ArrayList<>();
+    private final java.util.ArrayList<String> outletNames = new java.util.ArrayList<>();
     private boolean historyHasMore;
     private long historyBeforeId;
 
@@ -76,7 +82,14 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if (isBranchChange(intent)) return;
         setIntent(intent);
         String id = intent == null ? "" : intent.getStringExtra("order_id");
-        if (id != null && !id.trim().isEmpty()) focusOrderId = id.trim();
+        if (id != null && !id.trim().isEmpty()) {
+            focusOrderId = id.trim();
+            activePageId = 0;
+            activePagePending = false;
+            outletFilter = 0;
+            if (outletSpinner != null && !outletIds.isEmpty()) outletSpinner.setSelection(0);
+            invalidateRead();
+        }
         if (list != null) load(false);
     }
 
@@ -171,6 +184,27 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         });
         root.addView(periodSpinner);
 
+        outletSpinner = new Spinner(this);
+        root.addView(outletSpinner);
+        outletSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
+                if (pos >= outletIds.size() || outletIds.get(pos) == outletFilter) return;
+                if (updating) {
+                    outletSpinner.setSelection(Math.max(0, outletIds.indexOf(outletFilter)));
+                    return;
+                }
+                outletFilter = outletIds.get(pos);
+                activePageId = 0;
+                activePagePending = false;
+                focusOrderId = "";
+                invalidateRead();
+                cached = new JSONArray();
+                firstLoad = true;
+                load(true);
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) {}
+        });
+
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
         root.addView(list);
@@ -199,6 +233,25 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
     }
 
+    private void setOutletOptions(JSONArray options) {
+        if (options == null) return;
+        java.util.ArrayList<Integer> ids = new java.util.ArrayList<>();
+        java.util.ArrayList<String> names = new java.util.ArrayList<>();
+        ids.add(0);
+        names.add("Semua cabang");
+        for (int i = 0; i < options.length(); i++) {
+            JSONObject outlet = options.optJSONObject(i);
+            if (outlet == null || outlet.optInt("id") <= 0) continue;
+            ids.add(outlet.optInt("id"));
+            names.add(outlet.optString("name", "Cabang"));
+        }
+        if (ids.equals(outletIds) && names.equals(outletNames)) return;
+        outletIds.clear(); outletIds.addAll(ids);
+        outletNames.clear(); outletNames.addAll(names);
+        outletSpinner.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, names));
+        outletSpinner.setSelection(Math.max(0, ids.indexOf(outletFilter)));
+    }
+
     private void load(boolean showLoading) { load(showLoading,false); }
 
     private void load(boolean showLoading, boolean append) {
@@ -215,6 +268,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         final boolean requestedHistory=historyMode;
         final String scope=requestedHistory?"history":"active";
         final long before=append?historyBeforeId:0;
+        final String outletParam = outletFilter > 0 ? "&outlet_id=" + outletFilter : "";
+        final String activeCursor = !requestedHistory && activePageId > 0
+                ? "&active_after_id=" + activePageId + "&active_after_pending=" + (activePagePending ? "1" : "0") : "";
         loading = true;
         if (showLoading && firstLoad) {
             list.removeAllViews();
@@ -230,7 +286,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "orders:"+requestGeneration, () -> {
             try {
                 long sent=android.os.SystemClock.elapsedRealtime();
-                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?outlets=all&scope=" + scope + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
+                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?outlets=all&scope=" + scope + outletParam + activeCursor + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
                 final long received=android.os.SystemClock.elapsedRealtime();
                 if(!r.optBoolean("success",false))throw new Exception(r.optString("message","Gagal memuat pesanan"));
                 JSONArray orders = r.optJSONArray("orders");
@@ -242,6 +298,9 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     loading = false;activeRead=null;
                     if(requestedHistory!=historyMode){load(true);return;}
                     firstLoad = false;
+                    setOutletOptions(r.optJSONArray("outlet_options"));
+                    nextActiveId = requestedHistory ? 0 : r.optLong("next_active_id", 0);
+                    nextActivePending = r.optBoolean("next_active_pending");
                     if(append){
                         JSONArray merged=new JSONArray();java.util.HashSet<String> ids=new java.util.HashSet<>();
                         for(int i=0;i<cached.length();i++){JSONObject o=cached.optJSONObject(i);if(o!=null&&ids.add(s(o,"id","order_id")))merged.put(o);}
@@ -265,7 +324,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                     firstLoad = false;
                     setConnectionState(false, "● Offline • mode baca saja • data terakhir");
                     degradedOffline=true;
-                    if(!append || cached.length()==0) cached=loadOrderCache(historyMode?"history":"active");
+                    if ((!append || cached.length()==0) && (historyMode || activePageId==0)) cached=loadOrderCache(historyMode?"history":"active");
                     historyHasMore=false;historyBeforeId=0;
                     if(cached.length()>0) render();
                     if (cached.length() == 0) {
@@ -288,10 +347,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         return ORDER_CACHE_PREF + "_" + session.getId() + "_" + "all_outlets";
     }
 
-    private String orderCacheName(){return screenAccountKey.isEmpty()?currentAccountCacheName():screenAccountKey;}
+    private String orderCacheName(){
+        return (screenAccountKey.isEmpty()?currentAccountCacheName():screenAccountKey) + "_outlet_" + outletFilter;
+    }
     private boolean sameAccount(){return !screenAccountKey.isEmpty()&&screenAccountKey.equals(currentAccountCacheName());}
     private void saveOrderCache(String scope,JSONArray orders,long serverTimeMs){
-        if(!sameAccount())return;
+        if(!sameAccount() || ("active".equals(scope) && activePageId > 0))return;
         try{getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().putString(scope,orders.toString()).putLong(scope+"_saved",System.currentTimeMillis()).putLong(scope+"_server",serverTimeMs).apply();}catch(Exception ignored){}
     }
     private JSONArray loadOrderCache(String scope){
@@ -320,6 +381,14 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
     private final java.util.HashSet<String> expiredReadyActions=new java.util.HashSet<>();
 
+    private void moveActivePage(long id, boolean pending) {
+        activePageId = id;
+        activePagePending = pending;
+        focusOrderId = "";
+        firstLoad = true;
+        load(true);
+    }
+
     private void render() {
         list.removeAllViews();
         int shown = 0;
@@ -345,6 +414,18 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             shown++;
         }
 
+        if (!historyMode && activePageId > 0) {
+            Button first = outlineBtn("Kembali ke pesanan prioritas");
+            first.setEnabled(!loading && !updating);
+            first.setOnClickListener(v -> moveActivePage(0, false));
+            list.addView(first, 0);
+        }
+        if (!historyMode && nextActiveId > 0 && !degradedOffline) {
+            Button more = outlineBtn("Pesanan aktif berikutnya");
+            more.setEnabled(!loading && !updating);
+            more.setOnClickListener(v -> moveActivePage(nextActiveId, nextActivePending));
+            list.addView(more);
+        }
         if(historyMode && historyHasMore && !degradedOffline){
             Button more=outlineBtn(loading?"Memuat...":"Muat riwayat berikutnya");more.setEnabled(!loading&&!updating);
             more.setOnClickListener(v->load(false,true));list.addView(more);
@@ -452,6 +533,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         MerchantOrderFinanceView.attach(this,box,o);
         // Transaction buttons stay above secondary information and never depend on disclosure state.
         if(!historyMode){
+            addCancellationActions(box,o,actionId,displayId);
             addActions(box,o,actionId,displayId,kitchenActionStatus(o,status));
             if(!driver.isEmpty())addDriverChat(box,o,actionId,displayId,driver);
         }
@@ -518,6 +600,47 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         String kitchen=order.optString("merchant_status","");
         if("preparing".equals(kitchen)||"merchant_preparing".equals(kitchen)||"ready".equals(kitchen)||"merchant_ready".equals(kitchen))return kitchen;
         return global;
+    }
+
+    private void addCancellationActions(LinearLayout box, JSONObject order, String id, String displayId) {
+        String global = order.optString("global_status", order.optString("status"));
+        if (!order.isNull("picked_up_at") && !order.optString("picked_up_at").isEmpty()) return;
+        switch (global) {
+            case "merchant_accepted": case "preparing": case "ready": case "driver_accepted":
+            case "taken": case "accepted": case "arrived_pickup": break;
+            default: return;
+        }
+        JSONObject request = order.optJSONObject("food_cancel_request");
+        boolean pending = request != null && "pending".equals(request.optString("state"));
+        if (pending) box.addView(tv("Pengajuan pembatalan · " + request.optString("reason"), 13, TEXT, true));
+        Button cancel = outlineBtn(pending ? "Setujui pembatalan" : "Batalkan pesanan");
+        cancel.setEnabled(!degradedOffline && !updating);
+        cancel.setOnClickListener(v -> confirmFoodCancellation(id, displayId, pending));
+        box.addView(cancel);
+        if (pending) {
+            Button decline = outlineBtn("Tolak pengajuan");
+            decline.setEnabled(!degradedOffline && !updating);
+            decline.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("Tolak pengajuan pembatalan?")
+                    .setMessage("Pesanan akan tetap berjalan.")
+                    .setNegativeButton("Kembali", null)
+                    .setPositiveButton("Tolak", (dialog, which) -> update(id, displayId, "cancel_declined", "", 0))
+                    .show());
+            box.addView(decline);
+        }
+    }
+
+    private void confirmFoodCancellation(String id, String displayId, boolean pending) {
+        android.widget.CheckBox restore = new android.widget.CheckBox(this);
+        restore.setText("Kembalikan juga stok lama atau menu siap jika masih layak dijual");
+        new AlertDialog.Builder(this)
+                .setTitle(pending ? "Setujui pembatalan?" : "Batalkan pesanan?")
+                .setMessage("Pesanan akan dibatalkan dan pembayaran pelanggan dikembalikan jika sudah ditahan.")
+                .setView(restore)
+                .setNegativeButton("Kembali", null)
+                .setPositiveButton("Konfirmasi", (dialog, which) ->
+                        update(id, displayId, pending ? "cancel_approved" : "merchant_cancel", "", 0, restore.isChecked()))
+                .show();
     }
 
     private void addActions(LinearLayout box, JSONObject order, String actionId, String displayId, String status) {
@@ -646,8 +769,12 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
 
     private void update(String id, String displayId, String status, String rejectReason, int cookMinutes) {
+        update(id, displayId, status, rejectReason, cookMinutes, false);
+    }
+
+    private void update(String id, String displayId, String status, String rejectReason, int cookMinutes, boolean restoreStock) {
         if(!sameAccount()){finish();return;}
-        if (updating) return;
+        if (updating || degradedOffline) return;
         if (id == null || id.trim().isEmpty()) {
             alert("Data tidak lengkap", "ID pesanan tidak ditemukan.");
             return;
@@ -660,11 +787,19 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             JSONObject order = cached.optJSONObject(i);
             if (order != null && id.equals(s(order,"id","order_numeric_id","order_db_id","order_id"))) { outletId = order.optInt("restaurant_id"); break; }
         }
-        MerchantOrderRepository.updateStatus(this, id, displayId, outletId, status, rejectReason, cookMinutes, (success, message, networkError, receipt) -> {
+        MerchantOrderRepository.updateStatus(this, id, displayId, outletId, status, rejectReason, cookMinutes, restoreStock, (success, message, networkError, receipt) -> {
             if(!sameAccount()||isFinishing()||isDestroyed())return;
             updating = false;
             if (success) {
                 toast(message);
+                if (status.startsWith("cancel_") || "merchant_cancel".equals(status)) {
+                    // Keep the affected action disabled until a fresh server snapshot is received.
+                    cached = new JSONArray();
+                    getSharedPreferences(orderCacheName(),MODE_PRIVATE).edit().clear().apply();
+                    firstLoad = true;
+                    load(true);
+                    return;
+                }
                 focusOrderId = "merchant_rejected".equals(status)?"":displayId == null ? "" : displayId;
                 try{cached=MerchantOrderUiState.acknowledge(cached,id,displayId,status,rejectReason,cookMinutes,receipt,historyMode,MerchantServerClock.now());}catch(Exception ignored){}
                 degradedOffline=false;
@@ -675,7 +810,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             } else {
                 if(networkError)degradedOffline=true;
                 render();
-                if(networkError)load(false);else drainRefresh();
+                if(networkError || status.startsWith("cancel_") || "merchant_cancel".equals(status))load(false);else drainRefresh();
                 alert(networkError ? "Memeriksa status" : "Gagal", message);
             }
         });

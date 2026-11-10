@@ -67,7 +67,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         if (!value(data, "target_app_scope", "merchant").equals("merchant")) return;
         String targetSession = value(data, "target_session_hash", "");
         boolean sessionBound = "merchant_driver_chat".equalsIgnoreCase(type)
-                || "merchant_driver_arrived_pickup".equalsIgnoreCase(type);
+                || "merchant_driver_arrived_pickup".equalsIgnoreCase(type)
+                || "merchant_food_cancel_request".equalsIgnoreCase(type)
+                || "merchant_food_driver_timeout".equalsIgnoreCase(type);
         if (sessionBound && (targetUser.isEmpty() || targetSession.isEmpty()
                 || !"merchant".equals(value(data, "target_app_scope", "")))) return;
         try {
@@ -128,7 +130,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         }
 
         String restaurant = value(data, "restaurant_id", "");
-        if (restaurant.matches("[1-9][0-9]{0,9}")) {
+        boolean foodCancellation = "merchant_food_cancel_request".equalsIgnoreCase(type)
+                || "merchant_food_driver_timeout".equalsIgnoreCase(type);
+        if (!foodCancellation && restaurant.matches("[1-9][0-9]{0,9}")) {
             target.putExtra(MerchantBaseActivity.EXTRA_BRANCH, restaurant);
         }
 
