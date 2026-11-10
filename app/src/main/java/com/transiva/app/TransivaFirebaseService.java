@@ -66,7 +66,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         if (!targetUser.isEmpty() && !targetUser.equals(session.getUserId())) return;
         if (!value(data, "target_app_scope", "merchant").equals("merchant")) return;
         String targetSession = value(data, "target_session_hash", "");
-        boolean sessionBound = "merchant_driver_chat".equalsIgnoreCase(type)
+        boolean callUpdate = "webrtc_call".equalsIgnoreCase(type);
+        boolean sessionBound = callUpdate || "merchant_driver_chat".equalsIgnoreCase(type)
                 || "merchant_driver_arrived_pickup".equalsIgnoreCase(type)
                 || "merchant_food_cancel_request".equalsIgnoreCase(type)
                 || "merchant_food_driver_timeout".equalsIgnoreCase(type);
@@ -77,6 +78,18 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             long expiry = Long.parseLong(value(data, "merchant_expires_epoch", "0"));
             if (expiry > 0 && System.currentTimeMillis() / 1000L >= expiry) return;
         } catch (Exception invalid) { return; }
+
+        if (callUpdate) {
+            String callId = value(data, "call_id", "");
+            String state = value(data, "call_status", "");
+            if (receivedForToken.equals(session.getToken()) && !callId.isEmpty()
+                    && ("ended".equals(state) || "rejected".equals(state) || "missed".equals(state))) {
+                sendBroadcast(new Intent(WebRtcCallActivity.ACTION_CALL_STATE).setPackage(getPackageName())
+                        .putExtra(WebRtcCallActivity.EXTRA_CALL_ID, callId)
+                        .putExtra(WebRtcCallActivity.EXTRA_CALL_STATUS, state));
+            }
+            return;
+        }
 
         getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit()
                 .putLong("received_at", System.currentTimeMillis()).putString("display", "Push diterima").apply();

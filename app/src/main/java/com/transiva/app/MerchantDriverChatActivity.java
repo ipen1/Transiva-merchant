@@ -33,6 +33,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private EditText input;
     private Button send;
     private TextView status;
+    private Button callDriver;
     private String orderId = "", orderDbId = "", driverName = "Driver";
     private int lastId = 0;
     private int quietPolls = 0;
@@ -112,6 +113,11 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         info.addView(tv(driverName, 17, NAVY, true));
         status = tv("Chat Driver • Order #" + (orderId.isEmpty()?orderDbId:orderId), 11, MUTED, false); info.addView(status);
         head.addView(info, new LinearLayout.LayoutParams(0,-2,1));
+        callDriver = outlineBtn("☎");
+        callDriver.setContentDescription("Panggil Driver");
+        callDriver.setEnabled(false);
+        callDriver.setOnClickListener(v -> MerchantDriverCommunication.chooseCall(this, orderId, orderDbId, driverName));
+        head.addView(callDriver, new LinearLayout.LayoutParams(dp(56), dp(44)));
         page.addView(head);
 
         Button quick=outlineBtn("Pesan cepat ⋯");
@@ -170,6 +176,8 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     }
 
     private void apply(JSONObject r, boolean initial) {
+        String assignedDriver = safe(r.optString("driver_name")).trim();
+        callDriver.setEnabled(r.optBoolean("success",false) && !r.optBoolean("ended",false) && !assignedDriver.isEmpty());
         if (!r.optBoolean("success",false)) { status.setText(r.optString("message","Chat belum tersedia")); return; }
         status.setText(r.optBoolean("ended",false)?"Riwayat chat • order selesai":"Online • chat merchant ↔ driver");
         JSONArray a=r.optJSONArray("messages");
