@@ -5,6 +5,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS"/>
+    <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
@@ -42,6 +49,12 @@
         <activity android:name=".MerchantDiagnosticsActivity" android:exported="false"/>
         <activity android:name=".MerchantDeviceSessionsActivity" android:exported="false"/>
         <activity android:name=".MerchantLocationActivity" android:exported="false"/>
+        <activity android:name=".WebRtcCallActivity" android:exported="false"
+            android:launchMode="singleTop" android:supportsPictureInPicture="true"
+            android:resizeableActivity="true" android:enableOnBackInvokedCallback="true"
+            android:configChanges="density|fontScale|keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode" />
+        <service android:name=".WebRtcCallForegroundService" android:exported="false"
+            android:foregroundServiceType="microphone|camera" android:stopWithTask="false" />
         <service android:name=".TransivaFirebaseService" android:exported="false">
             <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT"/></intent-filter>
         </service>
