@@ -44,6 +44,7 @@ android {
 }
 
 dependencies {
+    implementation 'io.github.webrtc-sdk:android:144.7559.09'
     testImplementation 'junit:junit:4.13.2'
     implementation 'androidx.activity:activity:1.9.3'
 
