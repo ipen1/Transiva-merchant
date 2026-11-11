@@ -100,11 +100,13 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
         getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit()
                 .putLong("received_at", System.currentTimeMillis()).putString("display", "Push diterima").apply();
-        String signal = (type + " " + value(data, "event", "") + " " + status + " " + title + " " + body)
-                .toLowerCase(Locale.US);
-        boolean incomingOrder = isIncomingOrder(signal);
-        boolean driverArrived = isDriverArrived(signal);
-        boolean merchantDriverChat = isMerchantDriverChat(signal);
+        String event = value(data, "event", "");
+        boolean merchantDriverChat = isMerchantDriverChat(type + " " + event);
+        if ("merchant_driver_chat".equalsIgnoreCase(type)) body = value(data, "chat_preview", body);
+        String signal = (type + " " + event + " " + status + " " + title
+                + (merchantDriverChat ? "" : " " + body)).toLowerCase(Locale.US);
+        boolean incomingOrder = !merchantDriverChat && isIncomingOrder(signal);
+        boolean driverArrived = !merchantDriverChat && isDriverArrived(signal);
         boolean urgent = incomingOrder || driverArrived || merchantDriverChat;
 
         if (incomingOrder && (title.equals("Transiva Merchant") || title.isEmpty())) {
@@ -175,7 +177,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)
                 .setPriority(urgent ? NotificationCompat.PRIORITY_MAX : NotificationCompat.PRIORITY_HIGH)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setVisibility(merchantDriverChat ? NotificationCompat.VISIBILITY_PRIVATE
+                        : NotificationCompat.VISIBILITY_PUBLIC)
                 .setCategory(merchantDriverChat ? NotificationCompat.CATEGORY_MESSAGE : NotificationCompat.CATEGORY_STATUS)
                 .setSound(sound)
                 .setVibrate(urgent ? new long[]{0, 450, 180, 450, 180, 700} : new long[]{0, 250});
