@@ -80,10 +80,17 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         } catch (Exception invalid) { return; }
 
         if (callUpdate) {
+            if (!receivedForToken.equals(session.getToken())) return;
+            if ("incoming_call".equals(value(data, "event", ""))
+                    && "driver".equals(value(data, "caller_role", ""))) {
+                MerchantIncomingCall.show(this, data, targetSession);
+                return;
+            }
             String callId = value(data, "call_id", "");
             String state = value(data, "call_status", "");
             if (receivedForToken.equals(session.getToken()) && !callId.isEmpty()
                     && ("ended".equals(state) || "rejected".equals(state) || "missed".equals(state))) {
+                MerchantIncomingCall.cancel(this, callId);
                 sendBroadcast(new Intent(WebRtcCallActivity.ACTION_CALL_STATE).setPackage(getPackageName())
                         .putExtra(WebRtcCallActivity.EXTRA_CALL_ID, callId)
                         .putExtra(WebRtcCallActivity.EXTRA_CALL_STATUS, state));

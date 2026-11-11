@@ -57,22 +57,33 @@ final class MerchantOrderFinanceView {
 
         boolean dark=MerchantAppSettings.isDarkMode(a);
         LinearLayout card=new LinearLayout(a);card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(a,10),dp(a,10),dp(a,10),dp(a,6));
+        card.setPadding(dp(a,10),0,dp(a,10),0);
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(a,8),0,dp(a,6));card.setLayoutParams(lp);
         card.setBackground(a.round(Color.parseColor(dark?"#17334E":"#EDF5FF"),dp(a,12)));
-        card.addView(row(a,"Pendapatan toko",money(merchantNet),true));
-        TextView explanation=text(a,"Bersih untuk toko, tanpa biaya layanan dan ongkir.",11,a.MUTED,false);card.addView(explanation);
+        LinearLayout summary=new LinearLayout(a);
+        summary.setGravity(Gravity.CENTER_VERTICAL);
+        summary.setMinimumHeight(dp(a,48));
+        summary.addView(row(a,"Pendapatan toko",money(merchantNet),true),
+                new LinearLayout.LayoutParams(0,-2,1));
+        TextView toggle=text(a,"▾",13,a.BLUE,true);
+        toggle.setPadding(dp(a,6),0,0,0);
+        summary.addView(toggle);
+        card.addView(summary);
         LinearLayout details=new LinearLayout(a);details.setOrientation(LinearLayout.VERTICAL);details.setVisibility(android.view.View.GONE);
+        details.addView(text(a,"Bersih untuk toko, tanpa biaya layanan dan ongkir.",11,a.MUTED,false));
         details.addView(row(a,"Harga menu di aplikasi",money(foodTotal),false));
         if(grossup>0)details.addView(row(a,"Biaya layanan harga menu","− "+money(grossup),false));
         if(merchantDiscount>0)details.addView(row(a,"Diskon toko (sudah dihitung)",money(merchantDiscount),false));
         if(deliveryFee>0)details.addView(row(a,"Ongkir untuk kurir",money(deliveryFee),false));
         if(voucher>0)details.addView(row(a,"Voucher Transiva","− "+money(voucher),false));
         if(customerTotal>0)details.addView(row(a,"Total pembayaran pelanggan",money(customerTotal),false));
-        TextView toggle=text(a,"Lihat rincian pembayaran ▾",12,dark?Color.parseColor("#79BCFF"):a.BLUE,true);
-        toggle.setMinHeight(dp(a,48));toggle.setGravity(Gravity.CENTER_VERTICAL);
-        toggle.setOnClickListener(v->{boolean show=details.getVisibility()!=android.view.View.VISIBLE;details.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);toggle.setText(show?"Tutup rincian pembayaran ▴":"Lihat rincian pembayaran ▾");});
-        card.addView(toggle);card.addView(details);
+        summary.setContentDescription("Rincian pembayaran. Pendapatan toko "+money(merchantNet));
+        summary.setOnClickListener(v->{
+            boolean show=details.getVisibility()!=android.view.View.VISIBLE;
+            details.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);
+            toggle.setText(show?"▴":"▾");
+        });
+        card.addView(details);
         parent.addView(card);
     }
 

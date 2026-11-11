@@ -30,8 +30,12 @@ public class TransivaCallUiActivity extends Activity {
     private Button accept,end,mute,speaker,camera,swap;
     private WebRtcSessionEngine attached;
     private boolean serviceRequested,startedSession,video,registered,rendererReady,resumed,pipEntering;
+    private boolean incoming;
     private boolean startPending,permissionsInFlight,unlockRequested,permissionSettingsRequired,settingsOpen;
     private String failureMessage="";
+    private final Runnable incomingTimeout = () -> {
+        if(incoming && !serviceRequested && !startedSession) showFailure("Panggilan sudah berakhir.");
+    };
     private final Runnable advanceStart=()->drainStart();
     private android.window.OnBackInvokedCallback backCallback;
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -42,13 +46,24 @@ public class TransivaCallUiActivity extends Activity {
         render();
     }};
     private final Runnable refresh=new Runnable(){public void run(){render();if(!isFinishing())main.postDelayed(this,1000);}};
-    @Override protected void onCreate(Bundle saved){super.onCreate(saved);ensureOperationId(getIntent(),saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);video="video".equals(getIntent().getStringExtra("call_type"));
-        WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){video=e.video;startedSession=true;}
+    @Override protected void onCreate(Bundle saved){super.onCreate(saved);ensureOperationId(getIntent(),saved);getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);incoming=getIntent().getBooleanExtra("incoming",false);video="video".equals(getIntent().getStringExtra("call_type"));
+        WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null&&e.active()){video=e.video;incoming=false;startedSession=true;}
         build();IntentFilter f=new IntentFilter(WebRtcSessionEngine.CHANGED);f.addAction(ACTION_CALL_STATE);ContextCompat.registerReceiver(this,receiver,f,ContextCompat.RECEIVER_NOT_EXPORTED);registered=true;
-        if(e!=null&&e.active())render();else if(getIntent().getStringExtra("order_id")!=null)requestStart();else{status.setText("Tidak ada panggilan aktif");accept.setVisibility(View.GONE);}
+        if(e!=null&&e.active())render();else showPendingCall();
         if(Build.VERSION.SDK_INT>=33){backCallback=()->onBackPressed();getOnBackInvokedDispatcher().registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,backCallback);}
     }
-    @Override protected void onNewIntent(Intent i){super.onNewIntent(i);ensureOperationId(i,null);if(WebRtcCallForegroundService.current()!=null){render();return;}failureMessage="";startPending=false;setIntent(i);video="video".equals(i.getStringExtra("call_type"));serviceRequested=false;startedSession=false;releaseRenderers();build();requestStart();}
+    @Override protected void onNewIntent(Intent i){super.onNewIntent(i);ensureOperationId(i,null);if(WebRtcCallForegroundService.current()!=null){render();return;}failureMessage="";startPending=false;setIntent(i);incoming=i.getBooleanExtra("incoming",false);video="video".equals(i.getStringExtra("call_type"));serviceRequested=false;startedSession=false;releaseRenderers();build();showPendingCall();}
+    private void showPendingCall(){
+        main.removeCallbacks(incomingTimeout);
+        if(incoming){
+            if(!MerchantIncomingCall.valid(this,getIntent())){showFailure("Panggilan sudah berakhir atau sesi berubah.");return;}
+            main.postDelayed(incomingTimeout,MerchantIncomingCall.remaining(getIntent()));
+        }else if(getIntent().getStringExtra("order_id")!=null&&!getIntent().hasExtra("call_id")){
+            requestStart();
+        }else{
+            showFailure("Tidak ada panggilan aktif.");
+        }
+    }
     private static void ensureOperationId(Intent intent,Bundle saved){
         String id=intent.getStringExtra("operation_id");
         if(id==null||id.isEmpty())id=saved==null?null:saved.getString("call_operation_id");
@@ -79,7 +94,7 @@ public class TransivaCallUiActivity extends Activity {
         brand.setTextColor(0xff71d8c2);brand.setPadding(0,0,0,dp(10));header.addView(brand);
         name=label(CallPeerIdentity.first(getIntent().getStringExtra("peer_name"),getIntent().getStringExtra("caller_name"),"Transiva"),28);
         name.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));name.setMaxLines(2);header.addView(name);
-        status=label("Menyiapkan panggilan",13);status.setTextColor(CallVisuals.MUTED);
+        status=label(incoming?"Panggilan masuk":"Menyiapkan panggilan",13);status.setTextColor(CallVisuals.MUTED);
         status.setPadding(0,dp(4),0,dp(4));header.addView(status);root.addView(header);
         stage=new FrameLayout(this);stage.setClipChildren(true);stage.setClipToPadding(true);stage.setClipToOutline(true);stage.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));
         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.setMargins(0,dp(12),0,dp(16));root.addView(stage,sp);
@@ -97,8 +112,8 @@ public class TransivaCallUiActivity extends Activity {
         addControl(row,mute);addControl(row,speaker);if(video){addControl(row,camera);addControl(row,swap);}
         controls.addView(row);root.addView(controls);
         actions=new LinearLayout(this);actions.setPadding(0,dp(14),0,0);
-        accept=button("Coba lagi","phone",1);end=button("Akhiri","end",2);
-        accept.setVisibility(View.GONE);
+        accept=button(incoming?"Terima":"Coba lagi","phone",1);end=button(incoming?"Tolak":"Akhiri","end",2);
+        accept.setVisibility(incoming?View.VISIBLE:View.GONE);
         LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(68),1);ap.setMargins(dp(4),0,dp(4),0);
         actions.addView(accept,ap);LinearLayout.LayoutParams ep=new LinearLayout.LayoutParams(ap);actions.addView(end,ep);root.addView(actions);
         setContentView(root);applyCallBars();
@@ -157,6 +172,9 @@ public class TransivaCallUiActivity extends Activity {
     private void drainStart(){
         if(!startPending||serviceRequested||permissionsInFlight||!failureMessage.isEmpty()
                 ||!resumed||!hasWindowFocus()||isFinishing()||isDestroyed())return;
+        if(incoming&&!MerchantIncomingCall.valid(this,getIntent())){
+            showFailure("Panggilan sudah berakhir atau sesi berubah.");return;
+        }
         KeyguardManager keyguard=(KeyguardManager)getSystemService(KEYGUARD_SERVICE);
         if(!permission()&&keyguard!=null&&keyguard.isKeyguardLocked()){
             permissionRetry("Buka kunci layar untuk mengizinkan dan memulai panggilan.");
@@ -193,13 +211,16 @@ public class TransivaCallUiActivity extends Activity {
         status.setText("Menyiapkan koneksi…");accept.setEnabled(false);
         Intent i=new Intent(this,WebRtcCallForegroundService.class).setAction(WebRtcCallForegroundService.CONNECT);
         i.putExtras(getIntent());i.putExtra("call_type",video?"video":"audio");
-        try{ContextCompat.startForegroundService(this,i);}
+        try{
+            ContextCompat.startForegroundService(this,i);
+            if(incoming)MerchantIncomingCall.cancel(this,getIntent().getStringExtra("call_id"));
+        }
         catch(RuntimeException e){serviceRequested=false;permissionRetry("Panggilan belum dapat dimulai. Pastikan aplikasi terbuka dan izin sudah diberikan.");}
     }
     private void permissionRetry(String message){
         if(status==null||!failureMessage.isEmpty())return;
         status.setText(message);accept.setVisibility(View.VISIBLE);accept.setEnabled(true);
-        accept.setText(permissionSettingsRequired?"Buka Setelan":"Coba lagi / izinkan");
+        accept.setText(permissionSettingsRequired?"Buka Setelan":incoming?"Terima":"Coba lagi / izinkan");
     }
     @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)scheduleStart();}
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] result){
@@ -259,6 +280,20 @@ public class TransivaCallUiActivity extends Activity {
         } else {
             if (serviceRequested) startService(new Intent(this, WebRtcCallForegroundService.class)
                     .setAction(WebRtcCallForegroundService.END));
+            else if (incoming && MerchantIncomingCall.valid(this, getIntent())) {
+                String callId = getIntent().getStringExtra("call_id");
+                MerchantIncomingCall.cancel(this, callId);
+                Context context = getApplicationContext();
+                CallSignalSession owner = CallSignalSession.capture(context);
+                new Thread(() -> {
+                    try {
+                        WebRtcSignalApi.post(context,new org.json.JSONObject().put("role","merchant")
+                                .put("action","reject").put("call_id",callId),owner);
+                    } catch (Exception unavailable) {
+                        android.util.Log.w("MerchantIncomingCall","Penolakan panggilan belum terkirim",unavailable);
+                    }
+                },"MerchantCallReject").start();
+            }
             finish();
         }
     }

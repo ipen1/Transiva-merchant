@@ -488,10 +488,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private LinearLayout orderView(JSONObject o, boolean focused) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(12), dp(10), dp(12), dp(10));
+        box.setPadding(dp(11), dp(8), dp(11), dp(8));
 
         String outletName = o.optString("restaurant_name");
-        if (!outletName.isEmpty()) box.addView(tv("Cabang · " + outletName, 12, BLUE, true));
+        if (!outletName.isEmpty()) box.addView(tv(outletName, 12, BLUE, true));
         String displayId = s(o, "order_id", "id");
         String actionId = s(o, "id", "order_numeric_id", "order_db_id", "order_id");
         String status = effectiveStatus(o);
@@ -501,10 +501,16 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         int edge=focused?BLUE:Color.parseColor(dark?"#2D435C":"#DCE6F1");
         box.setBackground(stroke(Color.WHITE,edge,dp(16)));box.setElevation(dp(1));
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(10));box.setLayoutParams(lp);
-        TextView heading=tv(pending?"Pesanan baru":statusLabel(status),17,NAVY,true);box.addView(heading);
+        LinearLayout header=row();
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView heading=tv(pending?"Pesanan baru":statusLabel(status),16,NAVY,true);
+        header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         // Keep the full identifier in the disclosure and every API action.
         String shortId=displayId.lastIndexOf('-')>=0?displayId.substring(displayId.lastIndexOf('-')+1):(displayId.length()>8?displayId.substring(displayId.length()-8):displayId);
-        TextView ref=tv("#"+(shortId.isEmpty()?"—":shortId),11,MUTED,false);box.addView(ref);
+        TextView ref=tv("#"+(shortId.isEmpty()?"—":shortId),11,MUTED,true);
+        ref.setPadding(dp(6),dp(3),dp(6),dp(3));
+        ref.setBackground(round(Color.parseColor(dark?"#1B334A":"#EDF5FF"),dp(8)));
+        header.addView(ref);box.addView(header);
         if(pending){
             TextView prompt=tv("Periksa pesanan, lalu pilih Terima atau Tolak.",12,MUTED,false);
             prompt.setPadding(0,dp(5),0,dp(3));box.addView(prompt);
@@ -518,7 +524,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         String address=s(o,"delivery_address","destination_address","address"),driver=s(o,"driver","driver_name");
         String note=s(o,"customer_note","note","notes","catatan");
         if(!customer.isEmpty()){
-            TextView who=tv("Untuk "+customer,13,TEXT,true);who.setPadding(0,dp(8),0,dp(4));box.addView(who);
+            TextView who=tv("Untuk "+customer,13,TEXT,true);who.setPadding(0,dp(4),0,dp(2));box.addView(who);
         }
         String kitchen=kitchenActionStatus(o,status);
         if("preparing".equals(kitchen)||"merchant_preparing".equals(kitchen)||"ready".equals(kitchen)||"merchant_ready".equals(kitchen)){
@@ -545,7 +551,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         String cook=s(o,"cook_minutes","estimated_cook_minutes");
         try{if(Integer.parseInt(cook)>0)info.addView(tv("Waktu persiapan: "+cook+" menit",12,MUTED,false));}catch(Exception ignored){}
         info.setVisibility(View.GONE);
-        Button infoToggle=outlineBtn("Info pelanggan & pengantaran ▾");
+        TextView infoToggle=tv("Info pelanggan & pengantaran  ▾",12,BLUE,true);
+        infoToggle.setMinHeight(dp(48));infoToggle.setGravity(Gravity.CENTER_VERTICAL);
         infoToggle.setOnClickListener(v->{boolean show=info.getVisibility()!=View.VISIBLE;info.setVisibility(show?View.VISIBLE:View.GONE);infoToggle.setText(show?"Tutup informasi ▴":"Info pelanggan & pengantaran ▾");});
         box.addView(infoToggle);box.addView(info);
         MerchantOrderProgressView.attach(this,box,o);
@@ -566,7 +573,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void addItems(LinearLayout box, JSONObject order) {
         JSONArray items = order.optJSONArray("items");
-        TextView itemHeading=tv("Yang dipesan",12,MUTED,true);itemHeading.setPadding(0,dp(6),0,dp(4));box.addView(itemHeading);
+        TextView itemHeading=tv("Yang dipesan",12,MUTED,true);itemHeading.setPadding(0,dp(4),0,dp(2));box.addView(itemHeading);
         if (items == null || items.length() == 0) {
             box.addView(tv("Rincian menu belum tersedia. Coba perbarui pesanan.", 13, Color.parseColor("#B54708"), false));
             return;
@@ -586,7 +593,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             long merchantUnit = Math.max(0, merchantBase + optionTotal);
             String variant = s(it, "variant", "variant_name", "option", "options");
             String note = s(it, "note", "notes", "item_note", "catatan");
-            TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),15,TEXT,true);itemName.setPadding(0,dp(4),0,dp(3));box.addView(itemName);
+            TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),15,TEXT,true);itemName.setPadding(0,dp(2),0,dp(2));box.addView(itemName);
             if (discountPct > 0 && originalBase > merchantBase) {
                 box.addView(tv("   Diskon merchant " + (discountPct == Math.rint(discountPct) ? String.valueOf((int) discountPct) : String.valueOf(discountPct)) + "% • Harga bersih dasar " + rupiah(merchantBase), 12, Color.parseColor("#137333"), true));
             }
@@ -614,6 +621,13 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         boolean pending = request != null && "pending".equals(request.optString("state"));
         if (pending) box.addView(tv("Pengajuan pembatalan · " + request.optString("reason"), 13, TEXT, true));
         Button cancel = outlineBtn(pending ? "Setujui pembatalan" : "Batalkan pesanan");
+        if(!pending){
+            cancel.setBackgroundColor(Color.TRANSPARENT);
+            cancel.setElevation(0);
+            cancel.setTextSize(12);
+            cancel.setTextColor(Color.parseColor(MerchantAppSettings.isDarkMode(this)?"#FDA4AF":"#B42318"));
+            cancel.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);
+        }
         cancel.setEnabled(!degradedOffline && !updating);
         cancel.setOnClickListener(v -> confirmFoodCancellation(id, displayId, pending));
         box.addView(cancel);

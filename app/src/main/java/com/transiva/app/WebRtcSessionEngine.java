@@ -26,7 +26,7 @@ final class WebRtcSessionEngine {
     private static final class CandidateSend {final IceCandidate value;int attempts;long due;CandidateSend(IceCandidate c){value=c;}}
     final String role,orderId,orderDbId,source;
     volatile String peer,peerPhoto="";
-    final boolean video;
+    final boolean video,incoming;
     final String operationId;
     volatile String callId="",status="Menyiapkan panggilan",error="";
     volatile boolean ended,failed,accepted,connected,muted,speaker=true,cameraEnabled=true;
@@ -61,7 +61,9 @@ final class WebRtcSessionEngine {
         orderId=clean(i.getStringExtra("order_id"));source=first(i.getStringExtra("source"),"orders");peer=first(i.getStringExtra("peer_name"),i.getStringExtra("caller_name"),"Transiva");
         peerPhoto=CallPeerIdentity.first(i.getStringExtra("peer_photo"),i.getStringExtra("caller_photo"));
         operationId=first(i.getStringExtra("operation_id"),java.util.UUID.randomUUID().toString());
-        video="video".equals(i.getStringExtra("call_type"));callId=clean(i.getStringExtra("call_id"));
+        video="video".equals(i.getStringExtra("call_type"));
+        incoming=i.getBooleanExtra("incoming",false);
+        callId=clean(i.getStringExtra("call_id"));
     }
     private static boolean retryableStatus(int status) {
         return status == 408 || status == 500 || status == 502 || status == 503 || status == 504;
@@ -85,15 +87,21 @@ final class WebRtcSessionEngine {
     }
     void start(){
         changed();async(()->{try{
-            JSONObject payload=payload("start").put("order_id",orderId).put("order_db_id",orderDbId)
-                    .put("source",source).put("call_type",video?"video":"audio").put("operation_id",operationId);
-            JSONObject result=startWithRetry(payload);
-            callId=result.optString("call_id");
-            if(callId.isEmpty())throw new IllegalStateException("Server tidak memberikan ID panggilan");
-            if(Arrays.asList("ended","rejected","missed","cancelled").contains(result.optString("status")))
-                throw new IllegalStateException("Panggilan sebelumnya sudah berakhir. Mulai panggilan baru.");
-            updateIdentity(result);
-            status="Memanggil "+peer;
+            if(incoming){
+                postSignal(payload("accept"));
+                accepted=true;
+                status="Menghubungkan";
+            }else{
+                JSONObject payload=payload("start").put("order_id",orderId).put("order_db_id",orderDbId)
+                        .put("source",source).put("call_type",video?"video":"audio").put("operation_id",operationId);
+                JSONObject result=startWithRetry(payload);
+                callId=result.optString("call_id");
+                if(callId.isEmpty())throw new IllegalStateException("Server tidak memberikan ID panggilan");
+                if(Arrays.asList("ended","rejected","missed","cancelled").contains(result.optString("status")))
+                    throw new IllegalStateException("Panggilan sebelumnya sudah berakhir. Mulai panggilan baru.");
+                updateIdentity(result);
+                status="Memanggil "+peer;
+            }
             main.post(()->{if(!ended){changed();main.post(poll);main.post(heartbeat);}});
         }catch(Exception e){main.post(()->fail(e.getMessage()));}});
     }
@@ -149,17 +157,17 @@ final class WebRtcSessionEngine {
         updateIdentity(r);
         String state=r.optString("status");
         if(Arrays.asList("ended","rejected","missed","cancelled").contains(state)){end(false,state.equals("rejected")?"Panggilan ditolak":"Panggilan berakhir");return;}
-        if(!accepted&&connectedAt==0&&"ringing".equals(state))
+        if(!incoming&&!accepted&&connectedAt==0&&"ringing".equals(state))
             status=(r.optBoolean("receiver_ringing",false)?"Berdering ":"Memanggil ")+peer;
         if("accepted".equals(state)){accepted=true;if(pc==null&&iceServers==null)loadIce();}
         if(pc!=null){
-            String sdp=r.optString("answer_sdp");
+            String sdp=r.optString(incoming?"offer_sdp":"answer_sdp");
             if(!answerPending&&!sdp.isEmpty()&&!sdp.equals(appliedRemoteSdp)
-                    &&pc.signalingState()==PeerConnection.SignalingState.HAVE_LOCAL_OFFER){
+                    &&(incoming||pc.signalingState()==PeerConnection.SignalingState.HAVE_LOCAL_OFFER)){
                 // A restart can reuse the same address/port with new ICE credentials.
-                if(!appliedRemoteSdp.isEmpty())receivedIce.clear();
+                if(!appliedRemoteSdp.isEmpty()){receivedIce.clear();if(incoming)outgoingIce.clear();}
                 answerPending=true;remoteSet=false;
-                pc.setRemoteDescription(new Sdp(){public void onSetSuccess(){main.post(()->{if(ended)return;answerPending=false;remoteSet=true;appliedRemoteSdp=sdp;peerRestart=CallRecoveryPolicy.supports(sdp);negotiatingRestart=false;flushIce();});}public void onSetFailure(String e){main.post(()->fail(e));}},new SessionDescription(SessionDescription.Type.ANSWER,sdp));
+                pc.setRemoteDescription(new Sdp(){public void onSetSuccess(){main.post(()->{if(ended)return;answerPending=false;remoteSet=true;appliedRemoteSdp=sdp;peerRestart=CallRecoveryPolicy.supports(sdp);negotiatingRestart=false;flushIce();if(incoming)answer();});}public void onSetFailure(String e){main.post(()->fail(e));}},new SessionDescription(incoming?SessionDescription.Type.OFFER:SessionDescription.Type.ANSWER,sdp));
             }
         }
         JSONArray candidates=r.optJSONArray("candidates");
@@ -195,7 +203,7 @@ final class WebRtcSessionEngine {
         audioSource=factory.createAudioSource(new MediaConstraints());audioTrack=factory.createAudioTrack("TRANSIVA_AUDIO",audioSource);audioTrack.setEnabled(!muted);pc.addTrack(audioTrack,Collections.singletonList("transiva_audio"));
         AudioManager audio=(AudioManager)context.getSystemService(Context.AUDIO_SERVICE);audio.setMode(AudioManager.MODE_IN_COMMUNICATION);audio.setSpeakerphoneOn(speaker);
         if(video){initializationStage="camera";startCamera();}
-        initializationStage="negotiation";status="Menghubungkan";changed();offer();
+        initializationStage="negotiation";status="Menghubungkan";changed();if(!incoming)offer();
     }catch(LinkageError e){initializationFailed(e);}catch(Exception e){initializationFailed(e);}}
     private void initializationFailed(Throwable error){
         android.util.Log.e("TransivaWebRTC","Media init failed at "+initializationStage,error);
@@ -232,6 +240,12 @@ final class WebRtcSessionEngine {
     void toggleSpeaker(){speaker=!speaker;((AudioManager)context.getSystemService(Context.AUDIO_SERVICE)).setSpeakerphoneOn(speaker);changed();}
     private MediaConstraints constraints(){MediaConstraints c=new MediaConstraints();c.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio","true"));c.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo",video?"true":"false"));return c;}
     private void offer(){if(offerMade)return;offerMade=true;pc.createOffer(new Sdp(){public void onCreateSuccess(SessionDescription d){main.post(()->localDescription(d,"offer"));}public void onCreateFailure(String e){main.post(()->fail(e));}},constraints());}
+    private void answer(){
+        pc.createAnswer(new Sdp(){
+            public void onCreateSuccess(SessionDescription description){main.post(()->localDescription(description,"answer"));}
+            public void onCreateFailure(String error){main.post(()->fail(error));}
+        },constraints());
+    }
     private void localDescription(SessionDescription d,String action){if(ended||pc==null)return;pc.setLocalDescription(new Sdp(){public void onSetSuccess(){signal(action,CallRecoveryPolicy.advertise(d.description));}public void onSetFailure(String e){main.post(()->fail(e));}},d);}
     private void signal(String action,String sdp){signal(action,sdp,1);}
     private void signal(String action,String sdp,int attempt){
@@ -298,7 +312,7 @@ final class WebRtcSessionEngine {
         if(reconcileMediaConnection()||connected)return;
         if(recovery.expired(SystemClock.elapsedRealtime())){fail("Koneksi media belum pulih. Coba hubungi kembali.");return;}
         if(pc!=null&&pc.signalingState()==PeerConnection.SignalingState.STABLE&&!negotiatingRestart
-                &&recovery.takeRestart(SystemClock.elapsedRealtime(),true,peerRestart)){
+                &&recovery.takeRestart(SystemClock.elapsedRealtime(),!incoming,peerRestart)){
             negotiatingRestart=true;remoteSet=false;status="Memulihkan koneksi panggilan…";changed();
             outgoingIce.clear();
             try{pc.restartIce();

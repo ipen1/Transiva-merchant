@@ -26,6 +26,12 @@ public final class WebRtcCallForegroundService extends Service {
         if(i==null){stopSelf();return START_NOT_STICKY;}
         if(END.equals(i.getAction())){if(engine!=null&&(i.getStringExtra("call_id")==null||engine.callId.equals(i.getStringExtra("call_id"))))engine.end(true,"Panggilan berakhir");else if(engine==null)stopSelf();return START_NOT_STICKY;}
         if(engine!=null){if(engine.active())notification();else sendBroadcast(new Intent(WebRtcSessionEngine.CHANGED).setPackage(getPackageName()).putExtra("error","Panggilan sebelumnya sedang diakhiri. Coba kembali sebentar lagi."));return START_NOT_STICKY;}
+        if(i.getBooleanExtra("incoming",false)&&!MerchantIncomingCall.valid(this,i)){
+            sendBroadcast(new Intent(WebRtcSessionEngine.CHANGED).setPackage(getPackageName())
+                    .putExtra("error","Panggilan sudah berakhir atau sesi berubah."));
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         engine=new WebRtcSessionEngine(this,i,()->{stopForeground(true);stopSelf();});
         try{notification();engine.start();}catch(RuntimeException e){engine.destroy();engine=null;stopForeground(true);stopSelf();sendBroadcast(new Intent(WebRtcSessionEngine.CHANGED).setPackage(getPackageName()).putExtra("error","Panggilan tidak dapat dimulai. Periksa izin mikrofon/kamera dan buka aplikasi kembali."));}
         return START_NOT_STICKY;

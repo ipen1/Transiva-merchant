@@ -13,15 +13,17 @@ public final class MerchantDriverCommunication {
 
     public static void attach(MerchantOrdersActivity a, LinearLayout box, JSONObject order,
                               String actionId, String displayId, String driverName) {
-        TextView caption = a.tv("Komunikasi Driver", 12, a.MUTED, true);
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, -2); cp.setMargins(0, a.dp(10), 0, a.dp(6));
+        TextView caption = a.tv("Driver · " + driverName, 12, a.MUTED, true);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, -2); cp.setMargins(0, a.dp(6), 0, a.dp(4));
         box.addView(caption, cp);
 
         LinearLayout row = a.row();
-        Button chat = a.outlineBtn("💬 Pesan");
-        Button call = a.outlineBtn("☎ Panggil");
+        Button chat = a.btn("Pesan");
+        Button call = a.outlineBtn("Panggil");
         row.addView(chat, new LinearLayout.LayoutParams(0, a.dp(48), 1));
-        row.addView(call, new LinearLayout.LayoutParams(0, a.dp(48), 1));
+        LinearLayout.LayoutParams callParams = new LinearLayout.LayoutParams(0, a.dp(48), 1);
+        callParams.setMarginStart(a.dp(6));
+        row.addView(call, callParams);
         box.addView(row);
 
         chat.setOnClickListener(v -> {

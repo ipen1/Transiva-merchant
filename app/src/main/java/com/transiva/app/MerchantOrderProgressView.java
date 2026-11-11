@@ -25,12 +25,11 @@ final class MerchantOrderProgressView {
 
         LinearLayout card = new LinearLayout(a);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(a, 13), dp(a, 12), dp(a, 13), dp(a, 12));
+        card.setPadding(dp(a, 9), 0, dp(a, 9), 0);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(0, dp(a, 8), 0, dp(a, 8));
+        lp.setMargins(0, 0, 0, dp(a, 2));
         card.setLayoutParams(lp);
         card.setBackground(a.round(Color.parseColor("#F5F9FF"), dp(a, 14)));
-        card.addView(text(a, "Status Pesanan", 14, Color.parseColor("#102A43"), true));
 
         if (isKitchenActive(global, merchant)) {
             MerchantCountdownView countdown=new MerchantCountdownView(a,MerchantServerClock.readyAt(order),Math.max(1,order.optInt("cook_minutes",0))*60000L,"Sisa persiapan","Waktu habis • periksa makanan");
@@ -39,8 +38,8 @@ final class MerchantOrderProgressView {
         }
 
         LinearLayout details=new LinearLayout(a);details.setOrientation(LinearLayout.VERTICAL);details.setVisibility(android.view.View.GONE);
-        TextView expand=text(a,"Lihat tahapan pesanan ▾",12,a.BLUE,true);expand.setMinHeight(dp(a,48));expand.setGravity(Gravity.CENTER_VERTICAL);
-        expand.setOnClickListener(v->{boolean show=details.getVisibility()!=android.view.View.VISIBLE;details.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);expand.setText(show?"Sembunyikan tahapan ▴":"Lihat tahapan pesanan ▾");});
+        TextView expand=text(a,"Tahapan pesanan  ▾",12,a.BLUE,true);expand.setMinHeight(dp(a,48));expand.setGravity(Gravity.CENTER_VERTICAL);
+        expand.setOnClickListener(v->{boolean show=details.getVisibility()!=android.view.View.VISIBLE;details.setVisibility(show?android.view.View.VISIBLE:android.view.View.GONE);expand.setText(show?"Sembunyikan tahapan ▴":"Tahapan pesanan  ▾");});
         card.addView(expand);
         details.addView(step(a, "✓", "Pesanan diterima merchant", !"pending".equals(global)));
         details.addView(step(a, "🍳", "Makanan sedang diproses", isKitchenStarted(global, merchant)));
