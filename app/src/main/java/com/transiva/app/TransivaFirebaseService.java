@@ -192,6 +192,7 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
             }
             if (!receivedForToken.equals(session.getToken()) || !session.isLoggedIn()) return;
             nm.notify(requestCode, b.build());
+            ChatNotificationAck.posted(this,data,channelId);
             getSharedPreferences("merchant_push_health", MODE_PRIVATE).edit()
                     .putString("display", "Notifikasi ditampilkan").putLong("displayed_at", System.currentTimeMillis()).apply();
         } catch (RuntimeException error) {

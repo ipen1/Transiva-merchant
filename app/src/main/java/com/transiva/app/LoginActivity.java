@@ -146,7 +146,7 @@ public class LoginActivity extends MerchantAuthActivity {
         register.setGravity(Gravity.CENTER); register.setMinHeight(dp(56)); authRoot.addView(register);
         TextView legal = authText("Kebijakan Privasi  •  Syarat & Ketentuan", 12, false);
         legal.setTextColor(mutedColor); legal.setGravity(Gravity.CENTER); legal.setMinHeight(dp(48)); authRoot.addView(legal);
-        legal.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Informasi Transiva")
+        legal.setOnClickListener(v -> PremiumDialogs.builder(this).setTitle("Informasi Transiva")
                 .setItems(new String[]{"Kebijakan Privasi", "Syarat & Ketentuan"}, (d, w) -> openBrowser(w == 0 ? PRIVACY_URL : TERMS_URL)).show());
         loginButton.setOnClickListener(v -> advanceLogin());
         usernameInput.setOnEditorActionListener((v, id, event) -> { if(id == EditorInfo.IME_ACTION_NEXT) {advanceLogin(); return true;} return false; });
@@ -514,7 +514,7 @@ public class LoginActivity extends MerchantAuthActivity {
             String title,
             String message
     ) {
-        new AlertDialog.Builder(this)
+        PremiumDialogs.builder(this)
                 .setTitle(title)
                 .setMessage(message)
                 .setPositiveButton("OK", null)

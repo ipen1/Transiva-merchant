@@ -96,9 +96,9 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
    long minutes=Math.max(1,(item.optLong("expires_at")-now+59)/60);String remaining=minutes>=60?(minutes/60)+" jam":minutes+" menit";
    labels.addView(tv("Tersisa "+remaining,12,MUTED,false));line.addView(labels,new LinearLayout.LayoutParams(0,-2,1));
    Button options=outlineBtn("⋯");options.setPadding(0,0,0,0);options.setElevation(0);options.setBackgroundColor(android.graphics.Color.TRANSPARENT);options.setContentDescription("Pilihan cerita");line.addView(options,new LinearLayout.LayoutParams(dp(48),dp(48)));
-   options.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Cerita toko").setItems(new String[]{"Lihat cerita","Hapus cerita"},(d,w)->{
+   options.setOnClickListener(v->PremiumDialogs.builder(this).setTitle("Cerita toko").setItems(new String[]{"Lihat cerita","Hapus cerita"},(d,w)->{
     if(w==0)ui.viewer(visible,item.optInt("restaurant_id"),clock+(SystemClock.elapsedRealtime()-anchor)/1000);
-    else new android.app.AlertDialog.Builder(this).setTitle("Hapus cerita ini?").setMessage("Cerita ini akan berhenti tampil ke pelanggan.").setNegativeButton("Batal",null).setPositiveButton("Hapus",(x,y)->delete(item.optLong("id"),options)).show();
+    else PremiumDialogs.builder(this).setTitle("Hapus cerita ini?").setMessage("Cerita ini akan berhenti tampil ke pelanggan.").setNegativeButton("Batal",null).setPositiveButton("Hapus",(x,y)->delete(item.optLong("id"),options)).show();
    }).setNegativeButton("Tutup",null).show());
    image.setOnClickListener(v->ui.viewer(visible,item.optInt("restaurant_id"),clock+(SystemClock.elapsedRealtime()-anchor)/1000));box.addView(line);stories.addView(box);
   }

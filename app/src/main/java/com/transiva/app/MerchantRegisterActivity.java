@@ -97,7 +97,7 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
         categoryPicker.setBackground(authShape(surfaceColor, 16));
         categoryPicker.setOnClickListener(v -> {
             if (busy) return;
-            new AlertDialog.Builder(this)
+            PremiumDialogs.builder(this)
                     .setTitle("Pilih kategori usaha")
                     .setSingleChoiceItems(BUSINESS_CATEGORIES, selectedCategory, (dialog, which) -> {
                         selectedCategory = which;
@@ -245,7 +245,7 @@ public class MerchantRegisterActivity extends MerchantAuthActivity {
                     if(isFinishing()||isDestroyed())return;setBusy(false);
                     if(response.optBoolean("success")) {
                         busy=true;submitButton.setEnabled(false);back.setEnabled(false);
-                        new AlertDialog.Builder(this).setTitle("Pendaftaran berhasil")
+                        PremiumDialogs.builder(this).setTitle("Pendaftaran berhasil")
                             .setMessage(response.optString("message","Akun Anda akan ditinjau oleh admin Transiva."))
                             .setCancelable(false).setPositiveButton("Ke Login",(d,w)->finish()).show();
                     } else showStatus(response.optString("message","Pendaftaran gagal. Periksa kembali data Anda."),false);

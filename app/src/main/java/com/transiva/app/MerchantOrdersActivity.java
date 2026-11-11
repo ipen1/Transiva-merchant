@@ -634,7 +634,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if (pending) {
             Button decline = outlineBtn("Tolak pengajuan");
             decline.setEnabled(!degradedOffline && !updating);
-            decline.setOnClickListener(v -> new AlertDialog.Builder(this)
+            decline.setOnClickListener(v -> PremiumDialogs.builder(this)
                     .setTitle("Tolak pengajuan pembatalan?")
                     .setMessage("Pesanan akan tetap berjalan.")
                     .setNegativeButton("Kembali", null)
@@ -647,7 +647,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void confirmFoodCancellation(String id, String displayId, boolean pending) {
         android.widget.CheckBox restore = new android.widget.CheckBox(this);
         restore.setText("Kembalikan juga stok lama atau menu siap jika masih layak dijual");
-        new AlertDialog.Builder(this)
+        PremiumDialogs.builder(this)
                 .setTitle(pending ? "Setujui pembatalan?" : "Batalkan pesanan?")
                 .setMessage("Pesanan akan dibatalkan dan pembayaran pelanggan dikembalikan jika sudah ditahan.")
                 .setView(restore)
@@ -686,7 +686,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if (updating) return;
         final String[] labels = {"10 menit", "15 menit", "20 menit", "30 menit", "45 menit"};
         final int[] mins = {10, 15, 20, 30, 45};
-        new AlertDialog.Builder(this)
+        PremiumDialogs.builder(this)
                 .setTitle("Berapa lama menyiapkan pesanan?")
                 .setItems(labels, (d, w) -> update(id, displayId, "merchant_accepted", "", mins[w]))
                 .setNegativeButton("Batal", null)
@@ -696,13 +696,15 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void showRejectReasons(String id, String displayId) {
         if (updating) return;
         final String[] reasons = {"Menu habis", "Restoran terlalu ramai", "Restoran akan segera tutup", "Pesanan tidak dapat dibuat", "Lainnya"};
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = PremiumDialogs.builder(this)
                 .setTitle("Alasan Tolak Pesanan")
                 .setSingleChoiceItems(reasons, -1, null)
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Tolak Pesanan", null)
                 .create();
-        dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        dialog.setOnShowListener(d -> {
+            PremiumDialogs.applyPremiumStyle(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             if (updating) return;
             int pos = dialog.getListView().getCheckedItemPosition();
             if (pos < 0) {
@@ -712,14 +714,15 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             dialog.dismiss();
             if (pos == reasons.length - 1) showCustomRejectReason(id, displayId);
             else update(id, displayId, "merchant_rejected", reasons[pos], 0);
-        }));
+        });
+        });
         dialog.show();
     }
 
     private void showCustomRejectReason(String id, String displayId) {
         if (updating) return;
         EditText in = input("Tuliskan alasan penolakan", android.text.InputType.TYPE_CLASS_TEXT);
-        new AlertDialog.Builder(this)
+        PremiumDialogs.builder(this)
                 .setTitle("Alasan Lainnya")
                 .setView(in)
                 .setNegativeButton("Batal", null)

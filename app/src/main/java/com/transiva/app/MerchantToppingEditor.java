@@ -233,7 +233,7 @@ final class MerchantToppingEditor {
             delete.setTextColor(Color.parseColor("#B42318"));
             delete.setOnClickListener(v->{
                 if (photoLoading) return;
-                new AlertDialog.Builder(host).setTitle("Hapus topping?")
+                PremiumDialogs.builder(host).setTitle("Hapus topping?")
                         .setMessage(draft.name+" akan dihapus saat menu disimpan.")
                         .setNegativeButton("Batal",null).setPositiveButton("Hapus",(dialog,which)->{
                             toppings.remove(index);

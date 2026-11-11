@@ -315,7 +315,7 @@ public final class RootSecurityGuard {
         AlertDialog existing = dialogRef.get();
         if (existing != null && existing.isShowing()) return;
         try {
-            AlertDialog dialog = new AlertDialog.Builder(activity)
+            AlertDialog dialog = PremiumDialogs.builder(activity)
                     .setTitle("Perangkat tidak aman")
                     .setMessage(reason + "\n\nDemi keamanan akun dan transaksi, Transiva tidak dapat dijalankan pada perangkat yang di-root atau dimodifikasi.")
                     .setCancelable(false)

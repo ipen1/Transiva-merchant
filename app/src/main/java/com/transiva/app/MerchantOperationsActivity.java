@@ -58,7 +58,7 @@ public class MerchantOperationsActivity extends MerchantBaseActivity {
         field.setOnClickListener(v->{String[] value=field.getText().toString().split(":");int hour=8,minute=0;try{hour=Integer.parseInt(value[0]);minute=Integer.parseInt(value[1]);}catch(Exception ignored){}
             new TimePickerDialog(this,(picker,h,m)->{field.setText(String.format(Locale.US,"%02d:%02d",h,m));scheduleDirty=true;updateSummary();},hour,minute,true).show();});return field;
     }
-    private void choosePause(){new AlertDialog.Builder(this).setTitle("Jeda pesanan baru").setItems(new String[]{"15 menit","30 menit","60 menit","Sampai diaktifkan kembali"},(d,w)->send("pause",new int[]{15,30,60,0}[w],null)).setNegativeButton("Batal",null).show();}
+    private void choosePause(){PremiumDialogs.builder(this).setTitle("Jeda pesanan baru").setItems(new String[]{"15 menit","30 menit","60 menit","Sampai diaktifkan kembali"},(d,w)->send("pause",new int[]{15,30,60,0}[w],null)).setNegativeButton("Batal",null).show();}
     private void setControls(){boolean ready=loaded&&!busy&&!loading;pauseButton.setEnabled(ready);prepSave.setEnabled(ready);scheduleSave.setEnabled(ready);prepSpinner.setEnabled(ready);
         for(int i=0;i<enabled.size();i++){enabled.get(i).setEnabled(ready);opens.get(i).setEnabled(ready&&enabled.get(i).isChecked());closes.get(i).setEnabled(ready&&enabled.get(i).isChecked());}}
     private void updateSummary(){int count=0;for(CheckBox cb:enabled)if(cb.isChecked())count++;scheduleSummary.setText(count+" hari buka • "+(7-count)+" hari tutup"+(scheduleDirty?" • belum disimpan":""));}

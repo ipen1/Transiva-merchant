@@ -31,6 +31,13 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     private LinearLayout messages;
     private ScrollView scroll;
     private EditText input;
+    private final OrderChatStyle chatStyle=new OrderChatStyle(this);
+    private final android.util.SparseArray<TextView> receiptViews=new android.util.SparseArray<>();
+    private long focusedSince, latestShownAt;
+    private int readThrough;
+    private final Runnable reportVisibleRead=()->{
+        if(canRead()&&this.lastId>readThrough)load(false);
+    };
     private Button send;
     private TextView status;
     private Button callDriver, quick;
@@ -86,13 +93,14 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
     @Override protected void onResume() {
         super.onResume();
         stopped = false;
+        if(hasWindowFocus()){focusedSince=android.os.SystemClock.elapsedRealtime();main.postDelayed(reportVisibleRead,1250);}
         if (!realtimeRegistered) { MerchantRealtime.register(this, realtimeReceiver); realtimeRegistered = true; }
         main.removeCallbacks(refresh);
         main.postDelayed(refresh, WaveLoadGuard.jitter(ACTIVE_REFRESH_MS));
     }
     @Override protected void onPause() {
         super.onPause();
-        stopped = true;
+        stopped = true;focusedSince=0;main.removeCallbacks(reportVisibleRead);
         main.removeCallbacks(refresh);
         if (realtimeRegistered) { try { unregisterReceiver(realtimeReceiver); } catch (Exception ignored) {} realtimeRegistered = false; }
     }
@@ -102,6 +110,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(12), dp(8), dp(12), dp(8));
         page.setBackgroundColor(BG);
+        chatStyle.backdrop(page);
         setContentView(page);
         applyChatInsets(page);
 
@@ -111,6 +120,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         head.setBackground(round(Color.WHITE, dp(18)));
         TextView back = tv("‹", 25, BLUE, true); back.setGravity(Gravity.CENTER); back.setContentDescription("Kembali"); back.setOnClickListener(v -> finish());
         head.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        chatStyle.addAvatar(head,driverName,getIntent().getStringExtra("participant_photo"));
         LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(0,0,dp(6),0);
         driverTitle=tv(driverName, 16, NAVY, true);
         driverTitle.setMaxLines(1);
@@ -133,7 +143,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         quick.setElevation(0);
         quick.setTextSize(12);
         quick.setEnabled(false);
-        quick.setOnClickListener(v->new android.app.AlertDialog.Builder(this).setTitle("Pesan cepat")
+        quick.setOnClickListener(v->PremiumDialogs.builder(this).setTitle("Pesan cepat")
             .setItems(new String[]{"Pesanan sedang disiapkan","Pesanan sudah siap","Tunggu sebentar ya","Silakan ambil pesanan"},(d,w)->{
                 String[] texts={"Pesanan sedang disiapkan","Pesanan sudah siap","Tunggu sebentar ya","Silakan ambil pesanan"};sendText(texts[w]);
             }).setNegativeButton("Tutup",null).show());page.addView(quick,new LinearLayout.LayoutParams(dp(118),dp(48)));
@@ -141,6 +151,13 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
         messages = new LinearLayout(this); messages.setOrientation(LinearLayout.VERTICAL); messages.setPadding(dp(2),0,dp(2),dp(6));
         scroll.addView(messages, new ScrollView.LayoutParams(-1,-2));
+        scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->{
+            if(canRead()&&lastId>readThrough){
+                main.removeCallbacks(reportVisibleRead);
+                main.postDelayed(reportVisibleRead,1250);
+            }
+        });
+        chatStyle.overflow(head,null,query->new JSONObject(get(chatEndpoint()+query)),messages);
         page.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout composer = new LinearLayout(this); composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding(dp(5),dp(4),dp(5),dp(4)); composer.setBackground(round(Color.WHITE,dp(18)));
@@ -174,15 +191,42 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         Button b = outlineBtn(text); b.setTextSize(compactScreen() ? 10 : 11); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(compactScreen() ? 48 : 44),1); lp.setMargins(dp(3),0,dp(3),0); parent.addView(b,lp); b.setOnClickListener(v->sendText(text));
     }
 
+    @Override public void onWindowFocusChanged(boolean focused){
+        super.onWindowFocusChanged(focused);
+        focusedSince=focused?android.os.SystemClock.elapsedRealtime():0;
+        main.removeCallbacks(reportVisibleRead);
+        if(focused&&lastId>readThrough)main.postDelayed(reportVisibleRead,1250);
+    }
+
+    private boolean nearBottom(){
+        return scroll!=null&&messages!=null&&messages.getHeight()-scroll.getScrollY()-scroll.getHeight()<dp(80);
+    }
+    private boolean canRead(){
+        android.os.PowerManager power=(android.os.PowerManager)getSystemService(POWER_SERVICE);
+        return !stopped&&hasWindowFocus()&&nearBottom()&&power!=null&&power.isInteractive();
+    }
+
+    private String chatEndpoint(){
+        return BASE+"getMerchantDriverChat.php?chat_ui=1&order_id="+enc(orderId)+"&order_db_id="+enc(orderDbId);
+    }
+
+    private String readParams(int through,long visible){
+        return through<=0?"":"&mark_read=1&read_through_id="+through+"&visible_ms="+visible;
+    }
+
     private void load(boolean initial) {
         if (loading) return; loading=true;
+        int cursor=lastId;
+        String receiptIds=OrderChatStyle.receiptIds(receiptViews);
+        long visible=focusedSince==0?0:android.os.SystemClock.elapsedRealtime()-Math.max(focusedSince,latestShownAt);
+        int mark=canRead()&&visible>=1200&&cursor>readThrough?cursor:0;
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "driver-chat:" + orderDbId, () -> {
             try {
-                String url = BASE + "getMerchantDriverChat.php?order_id=" + enc(orderId) + "&order_db_id=" + enc(orderDbId) + "&last_id=" + lastId + "&_=" + System.currentTimeMillis();
+                String url=chatEndpoint()+"&last_id="+cursor+"&receipt_ids="+receiptIds+readParams(mark,visible);
                 JSONObject r = new JSONObject(get(url));
-                runOnUiThread(() -> apply(r, initial));
+                runOnUiThread(() -> {if(r.optBoolean("success"))readThrough=Math.max(readThrough,mark);apply(r,initial);});
             } catch(Exception e) { if(initial) runOnUiThread(() -> status.setText("Koneksi chat belum tersedia • akan mencoba lagi")); }
-            finally { loading=false; }
+            finally { main.post(()->loading=false); }
         });
         if (readTask == null) loading=false;
     }
@@ -195,21 +239,50 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         if(!assignedDriver.isEmpty()){driverName=assignedDriver;driverTitle.setText(driverName);}
         if (!r.optBoolean("success",false)) { status.setText(r.optString("message","Chat belum tersedia")); return; }
         status.setText(r.optBoolean("ended",false)?"Riwayat pesanan":"Pesanan #"+first(orderId,orderDbId));
+        boolean wasAtBottom=nearBottom();
+        int priorId=lastId;
         JSONArray a=r.optJSONArray("messages");
         int received = a == null ? 0 : a.length();
         if (received > 0) quietPolls = 0; else quietPolls = Math.min(10, quietPolls + 1);
         if(a!=null) for(int i=0;i<a.length();i++){ JSONObject m=a.optJSONObject(i); if(m==null||m.optInt("id",0)<=lastId)continue; addMessage(m); lastId=Math.max(lastId,m.optInt("id",0)); }
+        JSONArray receipts=r.optJSONArray("receipt_updates");
+        if(receipts!=null)for(int i=0;i<receipts.length();i++){
+            JSONObject update=receipts.optJSONObject(i);
+            TextView receipt=update==null?null:receiptViews.get(update.optInt("id"));
+            if(receipt!=null)chatStyle.receipt(receipt,update,true);
+        }
+        chatStyle.profile(r,driverName,getIntent().getStringExtra("participant_photo"));
+        boolean addedCall=chatStyle.mergeCalls(messages,r);
+        if(lastId>priorId)latestShownAt=android.os.SystemClock.elapsedRealtime();
+        if(!stopped&&hasWindowFocus()&&lastId>readThrough){
+            main.removeCallbacks(reportVisibleRead);
+            main.postDelayed(reportVisibleRead,1250);
+        }
         if(initial && messages.getChildCount()==0){ TextView empty=tv("Belum ada pesan. Gunakan Quick Chat atau ketik pesan ke driver.",12,MUTED,false); empty.setGravity(Gravity.CENTER); empty.setPadding(dp(20),dp(40),dp(20),dp(20)); messages.addView(empty); }
         if(r.optBoolean("ended",false)){ input.setEnabled(false); send.setEnabled(false); }
-        scroll.post(() -> scroll.fullScroll(View.FOCUS_DOWN));
+        if(initial||(wasAtBottom&&(lastId>priorId||addedCall)))scroll.post(()->scroll.fullScroll(View.FOCUS_DOWN));
     }
 
-    private void addMessage(JSONObject m) {
-        if(messages.getChildCount()==1 && messages.getChildAt(0) instanceof TextView && ((TextView)messages.getChildAt(0)).getText().toString().startsWith("Belum ada pesan")) messages.removeAllViews();
-        boolean mine="customer".equalsIgnoreCase(m.optString("sender_type",""));
-        LinearLayout line=new LinearLayout(this); line.setGravity(mine?Gravity.END:Gravity.START);
-        TextView bubble=tv(m.optString("message",""),14,mine?Color.WHITE:TEXT,false); bubble.setPadding(dp(10),dp(7),dp(10),dp(7)); bubble.setBackground(round(mine?BLUE:Color.WHITE,dp(16))); bubble.setMaxWidth(Math.max(dp(120), (int)(getResources().getDisplayMetrics().widthPixels * 0.76f)));
-        line.addView(bubble); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(3),0,dp(3));messages.addView(line,lp);
+    private void addMessage(JSONObject message){
+        if(messages.getChildCount()==1&&messages.getChildAt(0) instanceof TextView
+                &&((TextView)messages.getChildAt(0)).getText().toString().startsWith("Belum ada pesan"))
+            messages.removeAllViews();
+        boolean mine="customer".equalsIgnoreCase(message.optString("sender_type",""));
+        LinearLayout wrapper=new LinearLayout(this);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.setGravity(mine?Gravity.END:Gravity.START);
+        TextView bubble=tv(message.optString("message",""),14,mine?Color.WHITE:TEXT,false);
+        if(mine)bubble.setTextColor(Color.WHITE);
+        bubble.setMaxWidth(Math.min(dp(420),Math.round(getResources().getDisplayMetrics().widthPixels*.74f)));
+        wrapper.addView(bubble);
+        TextView timestamp=tv("",10,MUTED,false);
+        chatStyle.receipt(timestamp,message,mine);
+        chatStyle.appendMeta(wrapper,timestamp);
+        if(mine)receiptViews.put(message.optInt("id",0),timestamp);
+        chatStyle.decorate(wrapper,message,mine);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
+        lp.setMargins(0,dp(2),0,dp(2));
+        messages.addView(wrapper,lp);
     }
 
     private void sendText(String raw) {

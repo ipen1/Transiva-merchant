@@ -310,7 +310,7 @@ public class MerchantBaseActivity extends Activity {
     }
 
     protected void toast(String msg){ Toast.makeText(this, msg, Toast.LENGTH_SHORT).show(); }
-    protected void alert(String title, String msg){ new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); }
+    protected void alert(String title, String msg){ PremiumDialogs.builder(this).setTitle(title).setMessage(msg).setPositiveButton("OK", null).show(); }
     protected void open(Class<?> c){ startActivity(new Intent(this, c)); }
     protected void backMerchant(){ finish(); }
 
@@ -340,7 +340,7 @@ public class MerchantBaseActivity extends Activity {
             logoutPending=false;
             if(isFinishing()||isDestroyed()||!token.equals(sessionManager.getToken()))return;
             if(success)completeLogout();
-            else new android.app.AlertDialog.Builder(this).setTitle("Belum dapat keluar")
+            else PremiumDialogs.builder(this).setTitle("Belum dapat keluar")
                 .setMessage("Sesi server belum berhasil dicabut. Periksa koneksi lalu coba kembali.")
                 .setNegativeButton("Tutup",null).setPositiveButton("Coba lagi",(d,w)->logout()).show();
         });

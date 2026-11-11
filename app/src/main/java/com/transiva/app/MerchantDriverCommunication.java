@@ -40,7 +40,7 @@ public final class MerchantDriverCommunication {
     static void chooseCall(Activity activity, String orderId, String orderDbId, String driverName) {
         String id = CallPeerIdentity.first(orderId, orderDbId);
         if (id.isEmpty()) return;
-        new android.app.AlertDialog.Builder(activity)
+        PremiumDialogs.builder(activity)
                 .setTitle("Panggil Driver")
                 .setItems(new String[]{"Panggilan suara", "Panggilan video"}, (dialog, choice) -> {
                     Intent call = new Intent(activity, WebRtcCallActivity.class)

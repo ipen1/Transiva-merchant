@@ -89,9 +89,7 @@ public final class MerchantAppSettings {
 
     public static void showThemePicker(Activity activity) {
         String mode = getThemeMode(activity);
-        new android.app.AlertDialog.Builder(activity, isDarkMode(activity)
-                ? android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK
-                : android.app.AlertDialog.THEME_DEVICE_DEFAULT_LIGHT)
+        PremiumDialogs.builder(activity)
                 .setTitle("Tema aplikasi")
                 .setSingleChoiceItems(new String[]{"Ikuti perangkat", "Terang", "Gelap"},
                         DARK.equals(mode) ? 2 : LIGHT.equals(mode) ? 1 : 0, (dialog, which) -> {

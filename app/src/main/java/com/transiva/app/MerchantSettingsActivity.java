@@ -39,12 +39,12 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         root.addView(main);
         addSection(root,"Keamanan",12);
         LinearLayout security=settingCard();
-        security.addView(actionRow("Akses akun","Username, kata sandi, dan PIN",()->new AlertDialog.Builder(this)
+        security.addView(actionRow("Akses akun","Username, kata sandi, dan PIN",()->PremiumDialogs.builder(this)
             .setTitle("Akses akun").setItems(new String[]{"Ubah username","Ubah kata sandi","Ubah PIN"},(d,w)->{
                 if(w==0)showChangeUsername();else if(w==1)showChangePassword();else showChangePin();
             }).setNegativeButton("Batal",null).show()));
         security.addView(divider());security.addView(actionRow("Perangkat & sesi","Kelola perangkat yang masuk",()->open(MerchantDeviceSessionsActivity.class)));
-        security.addView(divider());security.addView(actionRow("Privasi & data","Kebijakan dan penghapusan akun",()->new AlertDialog.Builder(this)
+        security.addView(divider());security.addView(actionRow("Privasi & data","Kebijakan dan penghapusan akun",()->PremiumDialogs.builder(this)
             .setTitle("Privasi & data").setItems(new String[]{"Kebijakan & pengelolaan data","Hapus akun permanen"},(d,w)->{
                 if(w==0)open(MerchantPrivacyActivity.class);else showDeleteAccount();
             }).setNegativeButton("Batal",null).show()));root.addView(security);
@@ -52,7 +52,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         LinearLayout tools=settingCard();
         tools.addView(actionRow("Notifikasi","Riwayat pemberitahuan",()->open(MerchantNotificationCenterActivity.class)));
         tools.addView(divider());tools.addView(actionRow("Diagnostik","Periksa koneksi dan notifikasi",()->open(MerchantDiagnosticsActivity.class)));
-        tools.addView(divider());tools.addView(actionRow("Pembaruan aplikasi","Versi "+AppUpdateClient.installedVersionName(this),()->new AlertDialog.Builder(this)
+        tools.addView(divider());tools.addView(actionRow("Pembaruan aplikasi","Versi "+AppUpdateClient.installedVersionName(this),()->PremiumDialogs.builder(this)
             .setTitle("Pembaruan").setItems(new String[]{"Cek pembaruan tampilan","Informasi versi"},(d,w)->{
                 if(w==0)MerchantResourceUpdater.checkAsync(this,true,(updated,message)->{
                     if(isFinishing()||isDestroyed())return;
@@ -143,20 +143,23 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         EditText currentPassword = secureInput("Password saat ini",
                 InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = PremiumDialogs.builder(this)
                 .setTitle("Ubah Username")
                 .setMessage("Username 3–32 karakter: huruf kecil, angka, titik, _ atau -.")
                 .setView(dialogForm(username, currentPassword))
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Simpan", null)
                 .create();
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        dialog.setOnShowListener(x -> {
+            PremiumDialogs.applyPremiumStyle(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String newUsername = username.getText().toString().trim().toLowerCase();
             String current = currentPassword.getText().toString();
             if (!MerchantSecurityRules.isUsernameValid(newUsername)) { username.setError("Username tidak valid"); return; }
             if (current.isEmpty()) { currentPassword.setError("Wajib diisi"); return; }
             submitCredentials(dialog, newUsername, "", "", current, "");
-        }));
+        });
+        });
         dialog.show();
     }
 
@@ -170,14 +173,16 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         EditText securityPin = secureInput("PIN keamanan 6 angka",
                 InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = PremiumDialogs.builder(this)
                 .setTitle("Ubah Password")
                 .setMessage("Masukkan password saat ini dan PIN keamanan. Password baru minimal 8 karakter dan harus mengandung huruf serta angka.")
                 .setView(dialogForm(current, next, confirm, securityPin))
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Simpan", null)
                 .create();
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        dialog.setOnShowListener(x -> {
+            PremiumDialogs.applyPremiumStyle(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String oldPass = current.getText().toString();
             String newPass = next.getText().toString();
             String conf = confirm.getText().toString();
@@ -190,20 +195,23 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
             String pin = securityPin.getText().toString().trim();
             if (!MerchantSecurityRules.isPinValid(pin)) { securityPin.setError("PIN harus tepat 6 angka"); return; }
             submitCredentials(dialog, "", newPass, conf, oldPass, pin);
-        }));
+        });
+        });
         dialog.show();
     }
 
     private void showDeleteAccount() {
         EditText pass = secureInput("Password akun", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = PremiumDialogs.builder(this)
                 .setTitle("Hapus akun permanen?")
                 .setMessage("Akses akun dan data operasional toko akan dihapus. Catatan transaksi yang diperlukan untuk rekonsiliasi dan sengketa tetap disimpan sesuai kebijakan privasi. Selesaikan pesanan aktif dan saldo lebih dahulu. Tindakan ini tidak dapat dibatalkan.")
                 .setView(dialogForm(pass))
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Hapus Permanen", null)
                 .create();
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        dialog.setOnShowListener(x -> {
+            PremiumDialogs.applyPremiumStyle(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String password = pass.getText().toString();
             if (password.isEmpty()) { pass.setError("Masukkan password"); return; }
             Button b = dialog.getButton(AlertDialog.BUTTON_POSITIVE); b.setEnabled(false); b.setText("Menghapus...");
@@ -213,12 +221,13 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
                     JSONObject r = new JSONObject(postJson(DELETE_ACCOUNT_URL, body));
                     runOnUiThread(() -> {
                         b.setEnabled(true); b.setText("Hapus Permanen");
-                        if (r.optBoolean("success")) { dialog.dismiss(); new AlertDialog.Builder(this).setTitle("Akun dihapus").setMessage(r.optString("message")).setCancelable(false).setPositiveButton("Selesai", (d,w) -> logout()).show(); }
+                        if (r.optBoolean("success")) { dialog.dismiss(); PremiumDialogs.builder(this).setTitle("Akun dihapus").setMessage(r.optString("message")).setCancelable(false).setPositiveButton("Selesai", (d,w) -> logout()).show(); }
                         else alert("Gagal menghapus akun", r.optString("message", "Penghapusan akun gagal."));
                     });
                 } catch (Exception e) { runOnUiThread(() -> { b.setEnabled(true); b.setText("Hapus Permanen"); alert("Koneksi gagal", "Tidak dapat terhubung ke server."); }); }
             });
-        }));
+        });
+        });
         dialog.show();
     }
 
@@ -227,14 +236,16 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         EditText newPin = secureInput("PIN baru (6 angka)", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
         EditText confirmPin = secureInput("Ulangi PIN baru", InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_VARIATION_PASSWORD);
 
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = PremiumDialogs.builder(this)
                 .setTitle("Ubah PIN")
                 .setMessage("Masukkan PIN lama untuk verifikasi. Setelah 5 kali salah, perubahan PIN dikunci sementara.")
                 .setView(dialogForm(oldPin, newPin, confirmPin))
                 .setNegativeButton("Batal", null)
                 .setPositiveButton("Simpan", null)
                 .create();
-        dialog.setOnShowListener(x -> dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+        dialog.setOnShowListener(x -> {
+            PremiumDialogs.applyPremiumStyle(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
             String oldValue = oldPin.getText().toString().trim();
             String newValue = newPin.getText().toString().trim();
             String confValue = confirmPin.getText().toString().trim();
@@ -243,7 +254,8 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
             if (oldValue.equals(newValue)) { newPin.setError("PIN baru harus berbeda"); return; }
             if (!newValue.equals(confValue)) { confirmPin.setError("Konfirmasi tidak sama"); return; }
             submitPin(dialog, oldValue, newValue, confValue);
-        }));
+        });
+        });
         dialog.show();
     }
 
@@ -289,7 +301,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
                     save.setEnabled(true); save.setText("Simpan");
                     if (result.optBoolean("success")) {
                         dialog.dismiss();
-                        new AlertDialog.Builder(this)
+                        PremiumDialogs.builder(this)
                                 .setTitle("Berhasil")
                                 .setMessage(result.optString("message", "Data login berhasil diubah. Silakan login kembali."))
                                 .setCancelable(false)
@@ -306,7 +318,7 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
     }
 
     private void confirmLogout() {
-        new AlertDialog.Builder(this)
+        PremiumDialogs.builder(this)
                 .setTitle("Keluar dari akun?")
                 .setMessage("Anda perlu login kembali untuk menggunakan Transiva Merchant.")
                 .setNegativeButton("Batal", null)

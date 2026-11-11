@@ -76,5 +76,5 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
         else super.onBackPressed();
     }
 
-    private void remove(int id){ new AlertDialog.Builder(this).setTitle("Hapus kategori?").setMessage("Menu yang sudah memakai nama kategori tetap aman.").setNegativeButton("Batal",null).setPositiveButton("Hapus",(d,w)->MerchantNetworkExecutor.executeWrite("category-delete:"+id,()->{try{JSONObject p=new JSONObject();p.put("action","delete");p.put("id",id);JSONObject r=new JSONObject(postJson(BASE+"merchant_categories.php",p));runOnUiThread(()->{toast(r.optString("message","Dihapus"));load();});}catch(Exception e){runOnUiThread(()->alert("Error","Gagal menghapus kategori."));}})).show(); }
+    private void remove(int id){ PremiumDialogs.builder(this).setTitle("Hapus kategori?").setMessage("Menu yang sudah memakai nama kategori tetap aman.").setNegativeButton("Batal",null).setPositiveButton("Hapus",(d,w)->MerchantNetworkExecutor.executeWrite("category-delete:"+id,()->{try{JSONObject p=new JSONObject();p.put("action","delete");p.put("id",id);JSONObject r=new JSONObject(postJson(BASE+"merchant_categories.php",p));runOnUiThread(()->{toast(r.optString("message","Dihapus"));load();});}catch(Exception e){runOnUiThread(()->alert("Error","Gagal menghapus kategori."));}})).show(); }
 }

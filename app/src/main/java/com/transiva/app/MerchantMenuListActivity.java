@@ -205,7 +205,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
             popup.getMenu().add(0,2,1,"Hapus menu");
             popup.setOnMenuItemClickListener(item->{
                 if (item.getItemId()==1) updateStatus(id,active==1?0:1);
-                else new AlertDialog.Builder(this).setTitle("Hapus menu")
+                else PremiumDialogs.builder(this).setTitle("Hapus menu")
                         .setMessage("Hapus "+name+" dari toko ini?")
                         .setNegativeButton("Batal",null).setPositiveButton("Hapus",(d,w)->deleteMenu(id)).show();
                 return true;
