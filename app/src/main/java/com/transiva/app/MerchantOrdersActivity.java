@@ -522,7 +522,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
         String customer=s(o,"customer_name","customer","name"),phone=s(o,"customer_phone","phone");
         String address=s(o,"delivery_address","destination_address","address"),driver=s(o,"driver","driver_name");
-        String note=s(o,"customer_note","note","notes","catatan");
+        Object savedNote = o.opt("customer_note");
+        String note = savedNote instanceof String ? (String) savedNote : s(o,"note","notes","catatan");
         if(!customer.isEmpty()){
             TextView who=tv("Untuk "+customer,13,TEXT,true);who.setPadding(0,dp(4),0,dp(2));box.addView(who);
         }
@@ -533,8 +534,13 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         }
         addItems(box,o);
         if(!note.isEmpty()){
-            TextView nv=tv("Catatan: "+note,13,TEXT,true);nv.setPadding(dp(10),dp(8),dp(10),dp(8));
-            nv.setBackground(round(Color.parseColor(dark?"#23364A":"#EDF5FF"),dp(10)));box.addView(nv);
+            LinearLayout noteBox = new LinearLayout(this);
+            noteBox.setOrientation(LinearLayout.VERTICAL);
+            noteBox.setPadding(dp(10), dp(8), dp(10), dp(8));
+            noteBox.setBackground(round(Color.parseColor(dark ? "#23364A" : "#EDF5FF"), dp(10)));
+            noteBox.addView(tv("Catatan pelanggan", 12, BLUE, true));
+            noteBox.addView(tv(note, 13, TEXT, false));
+            box.addView(noteBox);
         }
         MerchantOrderFinanceView.attach(this,box,o);
         // Transaction buttons stay above secondary information and never depend on disclosure state.
