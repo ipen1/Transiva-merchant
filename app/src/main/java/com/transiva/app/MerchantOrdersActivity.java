@@ -598,13 +598,20 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             double discountPct = Math.max(0d, it.optDouble("discount_percent", 0d));
             long merchantUnit = Math.max(0, merchantBase + optionTotal);
             String variant = s(it, "variant", "variant_name", "option", "options");
-            String note = s(it, "note", "notes", "item_note", "catatan");
+            Object storedNote = it.opt("note");
+            String note = storedNote instanceof String ? (String) storedNote : s(it, "notes", "item_note", "catatan");
             TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),15,TEXT,true);itemName.setPadding(0,dp(2),0,dp(2));box.addView(itemName);
             if (discountPct > 0 && originalBase > merchantBase) {
                 box.addView(tv("   Diskon merchant " + (discountPct == Math.rint(discountPct) ? String.valueOf((int) discountPct) : String.valueOf(discountPct)) + "% • Harga bersih dasar " + rupiah(merchantBase), 12, Color.parseColor("#137333"), true));
             }
             if (!variant.isEmpty()) box.addView(tv("   Pilihan: " + variant, 12, MUTED, false));
-            if (!note.isEmpty()) box.addView(tv("   Catatan: " + note, 12, Color.parseColor("#7A4D00"), false));
+            if (!note.isEmpty()) {
+                TextView instruction = tv("Catatan menu: " + note, 12, TEXT, false);
+                instruction.setPadding(dp(10), dp(6), dp(10), dp(6));
+                instruction.setBackground(round(Color.parseColor(MerchantAppSettings.isDarkMode(this)
+                        ? "#23364A" : "#EDF5FF"), dp(8)));
+                box.addView(instruction);
+            }
         }
     }
 
