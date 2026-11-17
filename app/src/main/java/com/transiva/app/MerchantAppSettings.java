@@ -284,6 +284,7 @@ public final class MerchantAppSettings {
     private static void transformControls(View view) {
         if (view instanceof Switch && Build.VERSION.SDK_INT >= 23) {
             Switch toggle = (Switch) view;
+            if ("merchant-availability".equals(toggle.getTag())) return;
             int[][] states = new int[][]{
                     new int[]{android.R.attr.state_checked},
                     new int[]{}

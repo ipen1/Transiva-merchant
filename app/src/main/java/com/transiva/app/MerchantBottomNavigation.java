@@ -2,6 +2,7 @@ package com.transiva.app;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -14,9 +15,9 @@ import android.widget.TextView;
 
 /** Bottom navigation tunggal untuk seluruh sisi Merchant. */
 public final class MerchantBottomNavigation {
-    private static final String ACTIVE_BG = "#EAF4FF";
-    private static final String ACTIVE_COLOR = "#0B7CFF";
-    private static final String INACTIVE_COLOR = "#64748B";
+    private static final String ACTIVE_BG = "#DDEAFF";
+    private static final String ACTIVE_COLOR = "#075BDD";
+    private static final String INACTIVE_COLOR = "#4F5D70";
 
     public enum ActiveItem { HOME, ORDERS, STORIES, REVIEWS, SETTINGS }
 
@@ -30,11 +31,11 @@ public final class MerchantBottomNavigation {
         nav.setBackgroundColor(MerchantAppSettings.isDarkMode(activity) ? Color.parseColor("#0C1C2E") : Color.WHITE);
         nav.setElevation(dp(activity, 2));
 
-        add(nav, item(activity, "Beranda", "ic_nav_home", ActiveItem.HOME, activeItem, MerchantDashboardActivity.class));
-        add(nav, item(activity, "Aktivitas", "ic_nav_activity", ActiveItem.ORDERS, activeItem, MerchantOrdersActivity.class));
-        add(nav, item(activity, "Cerita", "ic_nav_stories", ActiveItem.STORIES, activeItem, MerchantKabarMitraActivity.class));
-        add(nav, item(activity, "Ulasan", "ic_nav_chat", ActiveItem.REVIEWS, activeItem, MerchantReviewsActivity.class));
-        add(nav, item(activity, "Pengaturan", "ic_nav_profile", ActiveItem.SETTINGS, activeItem, MerchantSettingsActivity.class));
+        add(nav, item(activity, "Beranda", R.drawable.ic_merchant_home, ActiveItem.HOME, activeItem, MerchantDashboardActivity.class));
+        add(nav, item(activity, "Aktivitas", R.drawable.ic_merchant_activity, ActiveItem.ORDERS, activeItem, MerchantOrdersActivity.class));
+        add(nav, item(activity, "Cerita", R.drawable.ic_merchant_stories, ActiveItem.STORIES, activeItem, MerchantKabarMitraActivity.class));
+        add(nav, item(activity, "Ulasan", R.drawable.ic_merchant_reviews, ActiveItem.REVIEWS, activeItem, MerchantReviewsActivity.class));
+        add(nav, item(activity, "Pengaturan", R.drawable.ic_merchant_profile, ActiveItem.SETTINGS, activeItem, MerchantSettingsActivity.class));
 
         nav.setAlpha(0f);
         nav.setTranslationY(dp(activity, 10));
@@ -55,7 +56,7 @@ public final class MerchantBottomNavigation {
         nav.addView(item, new LinearLayout.LayoutParams(0, -1, 1f));
     }
 
-    private static View item(Activity activity, String label, String iconName,
+    private static View item(Activity activity, String label, int drawableId,
                              ActiveItem item, ActiveItem activeItem, Class<?> target) {
         boolean active = item == activeItem;
         LinearLayout root = new LinearLayout(activity);
@@ -77,21 +78,25 @@ public final class MerchantBottomNavigation {
         }
 
         ImageView icon = new ImageView(activity);
-        int drawableId = activity.getResources().getIdentifier(iconName, "drawable", activity.getPackageName());
-        if (drawableId != 0) icon.setImageResource(drawableId);
-        else icon.setImageResource(android.R.drawable.ic_menu_manage);
+        icon.setImageResource(drawableId);
+        boolean dark = MerchantAppSettings.isDarkMode(activity);
+        int tint = Color.parseColor(active ? (dark ? "#85BFFF" : ACTIVE_COLOR)
+                : (dark ? "#B7C9DB" : INACTIVE_COLOR));
+        icon.setImageTintList(ColorStateList.valueOf(tint));
         icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        icon.setAlpha(active ? 1f : .62f);
+        icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        root.setSelected(active);
         int iconDp = activity.getResources().getConfiguration().screenWidthDp < 380 ? 20 : 22;
         root.addView(icon, new LinearLayout.LayoutParams(dp(activity, iconDp), dp(activity, iconDp)));
 
         TextView title = new TextView(activity);
         title.setText(label);
-        title.setTextSize(10f);
+        title.setTextSize(11f);
         title.setMaxLines(2);
         title.setGravity(Gravity.CENTER);
         title.setIncludeFontPadding(false);
-        title.setTextColor(Color.parseColor(active ? (MerchantAppSettings.isDarkMode(activity) ? "#68B5FF" : ACTIVE_COLOR) : (MerchantAppSettings.isDarkMode(activity) ? "#B7C9DB" : INACTIVE_COLOR)));
+        title.setTextColor(tint);
+        title.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         title.setTypeface(Typeface.DEFAULT, active ? Typeface.BOLD : Typeface.NORMAL);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(-1, -2);
         titleLp.setMargins(0, dp(activity, 2), 0, 0);

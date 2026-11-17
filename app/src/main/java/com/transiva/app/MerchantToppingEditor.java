@@ -57,6 +57,7 @@ final class MerchantToppingEditor {
                     if (item==null) continue;
                     Topping topping=new Topping();
                     topping.name=item.optString("name");
+                    topping.originalName=topping.name;
                     topping.description=item.optString("description");
                     topping.price=item.optLong("bundle_price");
                     topping.image=item.optString("image","");
@@ -352,7 +353,8 @@ final class MerchantToppingEditor {
             if (topping.name.isEmpty() || !names.add(topping.name.toLowerCase(Locale.ROOT)) || topping.price<base)
                 throw new IllegalArgumentException("Periksa topping. Harga satu porsi dengan topping minimal "+host.rupiah(base)+".");
             out.put(new JSONObject().put("name",topping.name).put("description",topping.description)
-                    .put("bundle_price",topping.price).put("image",topping.image));
+                    .put("bundle_price",topping.price).put("image",topping.image)
+                    .put("original_name",topping.originalName));
             if (topping.prepared!=null) files.put("topping_"+i,topping.prepared);
         }
         return out;
@@ -387,12 +389,13 @@ final class MerchantToppingEditor {
     }
 
     private static final class Topping {
-        String name="",description="",image="";
+        String name="",description="",image="",originalName="";
         long price;
         MerchantBaseActivity.PreparedImage prepared;
         Bundle toBundle() {
             Bundle out=new Bundle();
             out.putString("name",name);out.putString("description",description);
+            out.putString("original_name",originalName);
             out.putString("image",image);out.putLong("price",price);
             if (prepared!=null) out.putBundle("photo",packPhoto(prepared));
             return out;
@@ -400,13 +403,14 @@ final class MerchantToppingEditor {
         static Topping fromBundle(Bundle source) {
             Topping item=new Topping();
             item.name=source.getString("name","");item.description=source.getString("description","");
+            item.originalName=source.getString("original_name",item.name);
             item.image=source.getString("image","");item.price=source.getLong("price");
             item.prepared=unpackPhoto(source.getBundle("photo"));
             return item;
         }
         Topping() {}
         Topping(Topping other) {
-            name=other.name; description=other.description; image=other.image;
+            name=other.name; description=other.description; image=other.image; originalName=other.originalName;
             price=other.price; prepared=other.prepared;
         }
     }

@@ -7,9 +7,10 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
-import android.content.res.ColorStateList;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.RippleDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
 import android.view.View;
 import android.view.Gravity;
 import android.widget.*;
@@ -17,7 +18,9 @@ import org.json.JSONObject;
 
 public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout ordersTile;
-    private TextView statusText, descText, networkText, clusterText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileIcon, orderTileTitle, orderTileSub;
+    private MerchantPremiumUi ui;
+    private View storeDot;
+    private TextView statusText, descText, networkText, clusterText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileTitle, orderTileSub;
     private Button storeStatusBtn;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean dashboardLoaded;
@@ -54,95 +57,183 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     }
 
     private void build() {
-        LinearLayout root = new LinearLayout(this);
+        ui = new MerchantPremiumUi(this);
+        LinearLayout root = column();
         setContentView(page(root));
 
         LinearLayout header = row();
         header.setGravity(Gravity.CENTER_VERTICAL);
         LinearLayout identity = column();
-        TextView brand = tv("TRANSIVA MERCHANT", 10, accent(), true);
-        brand.setLetterSpacing(.10f);
+        TextView brand = tv("TRANSIVA MERCHANT", 11, ui.accent(), true);
+        brand.setLetterSpacing(.055f);
         identity.addView(brand);
-        TextView name = tv("Halo, " + (username().isEmpty() ? "Merchant" : username()), 23, NAVY, true);
+        String merchant = username().isEmpty() ? "Merchant" : username();
+        TextView name = tv("Halo, " + merchant, 26, NAVY, true);
         name.setLetterSpacing(-.025f);
         name.setMaxLines(2);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         identity.addView(name);
         header.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
-        Button more = dashboardAction("Lainnya ⋯", () -> open(MerchantMoreActivity.class));
-        LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(-2, -2);
-        moreParams.leftMargin = dp(8);
-        header.addView(more, moreParams);
+        ImageButton more = ui.iconButton(R.drawable.ic_merchant_more, ui.accent(), "Lainnya");
+        more.setBackground(ui.touch(stroke(Color.WHITE, ui.accent(), dp(12))));
+        more.setOnClickListener(v -> open(MerchantMoreActivity.class));
+        header.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
         root.addView(header);
 
-        LinearLayout summary = column();
-        summary.setPadding(dp(12), dp(9), dp(12), dp(10));
-        summary.setBackground(stroke(Color.WHITE, 0xFFDCE8F5, dp(18)));
-        LinearLayout.LayoutParams summaryParams = new LinearLayout.LayoutParams(-1, -2);
-        summaryParams.topMargin = dp(6);
-        root.addView(summary, summaryParams);
+        addBlock(root, storeCard(), 10);
+        addBlock(root, statistics(), 10);
+        addBlock(root, branchActions(), 10);
 
-        LinearLayout storeRow = row();
-        storeRow.setGravity(Gravity.CENTER_VERTICAL);
-        storeRow.setPadding(0, 0, 0, 0);
-        if (stackControls()) storeRow.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout storeInfo = column();
-        statusText = tv("Memuat toko…", 16, NAVY, true);
-        networkText = tv("Menghubungkan…", 11, MUTED, false);
-        storeInfo.addView(statusText);
-        storeInfo.addView(networkText);
-        storeRow.addView(storeInfo, new LinearLayout.LayoutParams(stackControls() ? -1 : 0, -2, stackControls() ? 0 : 1));
-        storeStatusBtn = dashboardAction("Memuat…", this::toggleStore);
-        storeStatusBtn.setEnabled(false);
-        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(stackControls() ? -1 : -2, -2);
-        statusParams.leftMargin = dp(stackControls() ? 0 : 6);
-        storeRow.addView(storeStatusBtn, statusParams);
-        summary.addView(storeRow);
+        TextView section = tv("Kelola usaha", 20, NAVY, true);
+        section.setLetterSpacing(-.02f);
+        addBlock(root, section, 14);
 
-        clusterText = tv("Memuat area…", 11, MUTED, false);
-        summary.addView(clusterText);
-        descText = tv("", 12, MUTED, false);
-        descText.setVisibility(View.GONE);
-        summary.addView(descText);
-
-        LinearLayout stats1 = pairRow();
-        LinearLayout stats2 = screenWidthDp() >= 620 && !stackControls() ? stats1 : pairRow();
-        summary.addView(stats1);
-        if (stats2 != stats1) summary.addView(stats2);
-        todayText = stat(stats1, "Pesanan hari ini", "–");
-        revenueText = stat(stats1, "Omzet hari ini", "–");
-        ratingText = stat(stats2, "Rating", "–");
-        reviewText = stat(stats2, "Ulasan", "–");
-
-        LinearLayout branches = actionPair();
-        addPairItem(branches, dashboardAction("Kelola toko & cabang", () -> open(MerchantBranchesActivity.class)));
-        addPairItem(branches, dashboardAction("Pesanan semua cabang", () -> open(MerchantOrdersActivity.class)));
-        root.addView(branches);
-
-        TextView section = tv("Kelola usaha", 15, NAVY, true);
-        section.setPadding(0, dp(10), 0, dp(5));
-        root.addView(section);
-
-        LinearLayout first = actionPair();
+        LinearLayout first = actions();
         ordersTile = orderTile();
-        addPairItem(first, ordersTile);
-        addPairItem(first, tile("☰", "Semua Menu", true, () -> open(MerchantMenuListActivity.class)));
-        root.addView(first);
+        addPair(first, ordersTile);
+        addPair(first, tile(R.drawable.ic_merchant_menu, "Semua Menu", "Atur ketersediaan", true,
+                () -> open(MerchantMenuListActivity.class)));
+        addBlock(root, first, 8);
 
-        LinearLayout second = actionPair();
-        addPairItem(second, tile("+", "Tambah Menu", false, () -> open(MerchantAddMenuActivity.class)));
-        addPairItem(second, tile("◷", "Operasional", false, () -> open(MerchantOperationsActivity.class)));
-        root.addView(second);
+        LinearLayout second = actions();
+        addPair(second, tile(R.drawable.ic_merchant_plus, "Tambah Menu", "", false,
+                () -> open(MerchantAddMenuActivity.class)));
+        addPair(second, tile(R.drawable.ic_merchant_activity, "Operasional", "", false,
+                () -> open(MerchantOperationsActivity.class)));
+        addBlock(root, second, 8);
 
-        LinearLayout third = actionPair();
-        addPairItem(third, tile("Rp", "Keuangan", false, () -> open(MerchantFinanceActivity.class)));
-        addPairItem(third, tile("▥", "Analitik", false, () -> open(MerchantAnalyticsActivity.class)));
-        root.addView(third);
+        LinearLayout third = actions();
+        addPair(third, tile(R.drawable.ic_merchant_wallet, "Keuangan", "", false,
+                () -> open(MerchantFinanceActivity.class)));
+        addPair(third, tile(R.drawable.ic_merchant_analytics, "Analitik", "", false,
+                () -> open(MerchantAnalyticsActivity.class)));
+        addBlock(root, third, 8);
 
-        LinearLayout fourth = actionPair();
-        addPairItem(fourth, tile("♧", "Pengikut Toko", false, this::openFollowers));
-        addPairItem(fourth, tile("↻", "Perbarui ringkasan", false, this::loadAll));
-        root.addView(fourth);
+        LinearLayout followers = tile(R.drawable.ic_merchant_followers, "Pengikut Toko", "", false, this::openFollowers);
+        followers.addView(ui.icon(R.drawable.ic_merchant_chevron, MUTED),
+                new LinearLayout.LayoutParams(dp(18), dp(18)));
+        addBlock(root, followers, 8);
+    }
+
+    private LinearLayout storeCard() {
+        LinearLayout hero = column();
+        GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF052C68, 0xFF084596, 0xFF0759C6});
+        gradient.setCornerRadius(dp(16));
+        hero.setBackground(gradient);
+        hero.setPadding(dp(14), dp(10), dp(12), dp(11));
+
+        LinearLayout top = actions();
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout info = column();
+        LinearLayout heading = row();
+        heading.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        heading.setPadding(0, 0, 0, 0);
+        storeDot = new View(this);
+        storeDot.setBackground(round(0xFFC5D7EC, dp(8)));
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(10), dp(10));
+        dotParams.rightMargin = dp(8);
+        heading.addView(storeDot, dotParams);
+        statusText = tv("Memuat toko…", 19, Color.WHITE, true);
+        heading.addView(statusText, new LinearLayout.LayoutParams(0, -2, 1));
+        info.addView(heading);
+        networkText = tv("Menghubungkan…", 12, 0xFFE4EFFF, false);
+        info.addView(networkText);
+        boolean stacked = top.getOrientation() == LinearLayout.VERTICAL;
+        top.addView(info, new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
+        storeStatusBtn = outlineBtn("Memuat…");
+        GradientDrawable outline = round(0x18FFFFFF, dp(10));
+        outline.setStroke(dp(1), 0xFFE4EFFF);
+        storeStatusBtn.setBackground(ui.touch(outline));
+        storeStatusBtn.setElevation(0);
+        storeStatusBtn.setTextColor(Color.WHITE);
+        storeStatusBtn.setTextSize(13);
+        storeStatusBtn.setOnClickListener(v -> toggleStore());
+        storeStatusBtn.setEnabled(false);
+        LinearLayout.LayoutParams storeParams = new LinearLayout.LayoutParams(stacked ? -1 : -2, -2);
+        storeParams.leftMargin = stacked ? 0 : dp(8);
+        storeParams.topMargin = stacked ? dp(5) : 0;
+        top.addView(storeStatusBtn, storeParams);
+        hero.addView(top);
+
+        LinearLayout location = row();
+        location.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        location.setPadding(0, dp(3), 0, 0);
+        addIcon(location, R.drawable.ic_merchant_pin, 0xFFE4EFFF, 15);
+        clusterText = tv("Memuat area…", 12, 0xFFE4EFFF, false);
+        location.addView(clusterText, new LinearLayout.LayoutParams(0, -2, 1));
+        hero.addView(location);
+        descText = tv("", 12, 0xFFE4EFFF, false);
+        descText.setVisibility(View.GONE);
+        hero.addView(descText);
+        return hero;
+    }
+
+    private View statistics() {
+        FrameLayout panel = new FrameLayout(this);
+        panel.setBackground(ui.surface(14));
+        LinearLayout metrics = column();
+        metrics.setPadding(dp(11), dp(34), dp(11), dp(7));
+        LinearLayout first = metricRow();
+        todayText = stat(first, "Pesanan hari ini");
+        first.addView(divider(), new LinearLayout.LayoutParams(dp(1), -1));
+        revenueText = stat(first, "Omzet hari ini");
+        metrics.addView(first);
+        metrics.addView(divider(), new LinearLayout.LayoutParams(-1, dp(1)));
+        LinearLayout second = metricRow();
+        ratingText = stat(second, "Rating");
+        second.addView(divider(), new LinearLayout.LayoutParams(dp(1), -1));
+        reviewText = stat(second, "Ulasan");
+        metrics.addView(second);
+        panel.addView(metrics, new FrameLayout.LayoutParams(-1, -2));
+
+        ImageButton refresh = ui.iconButton(R.drawable.ic_merchant_refresh, ui.accent(), "Perbarui ringkasan");
+        refresh.setOnClickListener(v -> loadAll());
+        panel.addView(refresh, new FrameLayout.LayoutParams(dp(48), dp(48), Gravity.TOP | Gravity.END));
+        return panel;
+    }
+
+    private LinearLayout metricRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setBaselineAligned(false);
+        row.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+        return row;
+    }
+
+    private TextView stat(LinearLayout row, String label) {
+        LinearLayout metric = column();
+        metric.setPadding(dp(7), dp(5), dp(7), dp(6));
+        metric.addView(tv(label, 12, MUTED, true));
+        TextView value = tv("–", 22, NAVY, true);
+        value.setLetterSpacing(-.02f);
+        metric.addView(value);
+        row.addView(metric, new LinearLayout.LayoutParams(0, -2, 1));
+        return value;
+    }
+
+    private LinearLayout branchActions() {
+        LinearLayout branches = actions();
+        branches.setBackground(ui.surface(14));
+        boolean stacked = branches.getOrientation() == LinearLayout.VERTICAL;
+        addPair(branches, branchLink(R.drawable.ic_merchant_store, "Kelola toko & cabang",
+                () -> open(MerchantBranchesActivity.class)));
+        branches.addView(divider(), new LinearLayout.LayoutParams(stacked ? -1 : dp(1), stacked ? dp(1) : -1));
+        addPair(branches, branchLink(R.drawable.ic_merchant_package, "Pesanan semua cabang",
+                () -> open(MerchantOrdersActivity.class)));
+        return branches;
+    }
+
+    private TextView branchLink(int icon, String label, Runnable action) {
+        TextView link = tv(label, 12, ui.accent(), true);
+        link.setGravity(Gravity.CENTER_VERTICAL);
+        link.setPadding(dp(9), dp(6), dp(9), dp(6));
+        link.setMinimumHeight(dp(48));
+        link.setCompoundDrawablePadding(dp(7));
+        link.setCompoundDrawablesRelative(ui.iconDrawable(icon, ui.accent(), 19), null, null, null);
+        link.setBackground(ui.touch(null));
+        link.setFocusable(true);
+        link.setOnClickListener(v -> action.run());
+        return link;
     }
 
     private LinearLayout column() {
@@ -151,58 +242,35 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         return layout;
     }
 
-    private LinearLayout pairRow() {
+    private LinearLayout actions() {
         LinearLayout layout = new LinearLayout(this);
-        layout.setPadding(0, dp(5), 0, 0);
         layout.setBaselineAligned(false);
-        return layout;
-    }
-
-    private LinearLayout actionPair() {
-        LinearLayout layout = pairRow();
         if (screenWidthDp() < 320 || getResources().getConfiguration().fontScale > 1.3f) {
             layout.setOrientation(LinearLayout.VERTICAL);
         }
         return layout;
     }
 
-    private void addPairItem(LinearLayout parent, View view) {
+    private void addBlock(LinearLayout parent, View view, int space) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(space);
+        parent.addView(view, params);
+    }
+
+    private void addPair(LinearLayout parent, View view) {
         boolean stacked = parent.getOrientation() == LinearLayout.VERTICAL;
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(stacked ? -1 : 0, stacked ? -2 : -1, stacked ? 0 : 1);
-        if (parent.getChildCount() > 0) {
-            if (stacked) params.topMargin = dp(5);
-            else params.leftMargin = dp(6);
+        if (parent.getChildCount() == 1) {
+            if (stacked) params.topMargin = dp(8);
+            else params.leftMargin = dp(8);
         }
         parent.addView(view, params);
     }
 
-    private boolean dark() {
-        return MerchantAppSettings.isDarkMode(this);
-    }
-
-    private int accent() {
-        return dark() ? 0xFF83C4FF : 0xFF155BB4;
-    }
-
-    private Drawable tileBackground(boolean highlighted) {
-        int surface = highlighted ? (dark() ? 0xFF183650 : 0xFFEAF3FF) : Color.WHITE;
-        int border = highlighted ? (dark() ? 0xFF355878 : 0xFFBFDAFC) : 0xFFDCE8F5;
-        return new RippleDrawable(ColorStateList.valueOf(dark() ? 0x3383C4FF : 0x24155BB4),
-                stroke(surface, border, dp(13)), null);
-    }
-
-    private Button dashboardAction(String label, Runnable action) {
-        Button button = outlineBtn(label);
-        button.setTextColor(accent());
-        button.setTextSize(12);
-        button.setMinimumHeight(dp(48));
-        button.setMinHeight(dp(48));
-        button.setMaxLines(Integer.MAX_VALUE);
-        button.setElevation(0);
-        button.setPadding(dp(9), dp(5), dp(9), dp(5));
-        button.setBackground(tileBackground(false));
-        button.setOnClickListener(v -> action.run());
-        return button;
+    private View divider() {
+        View line = new View(this);
+        line.setBackgroundColor(ui.divider());
+        return line;
     }
 
     private void openFollowers() {
@@ -211,43 +279,29 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         startActivity(intent);
     }
 
-    private TextView stat(LinearLayout parent, String label, String value) {
-        LinearLayout box = column();
-        box.setGravity(Gravity.CENTER_VERTICAL);
-        box.setPadding(dp(8), dp(3), dp(8), dp(4));
-        box.setBackground(round(dark() ? MerchantAppSettings.DARK_CARD_SOFT : 0xFFF1F6FD, dp(10)));
-        box.addView(tv(label, 11, MUTED, false));
-        TextView metric = tv(value, 15, NAVY, true);
-        box.addView(metric);
-        addPairItem(parent, box);
-        return metric;
-    }
-
-    private LinearLayout tile(String icon, String label, boolean highlighted, Runnable action) {
-        LinearLayout tile = baseTile(highlighted);
-        addIcon(tile, icon);
-        TextView text = tv(label, 13, highlighted ? accent() : TEXT, true);
-        tile.addView(text, new LinearLayout.LayoutParams(0, -2, 1));
+    private LinearLayout tile(int icon, String label, String detail, boolean primary, Runnable action) {
+        LinearLayout tile = baseTile(primary);
+        addIcon(tile, icon, primary ? Color.WHITE : ui.accent(), 24);
+        LinearLayout labels = column();
+        labels.addView(tv(label, 15, primary ? Color.WHITE : TEXT, true));
+        if (!detail.isEmpty()) labels.addView(tv(detail, 12, 0xFFE7F1FF, false));
+        tile.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
         tile.setOnClickListener(v -> action.run());
         return tile;
     }
 
-    private TextView addIcon(LinearLayout tile, String icon) {
-        TextView view = tv(icon, 15, accent(), true);
-        view.setGravity(Gravity.CENTER);
-        view.setBackground(round(dark() ? 0xFF233F59 : 0xFFEAF3FF, dp(9)));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(30), dp(30));
-        params.rightMargin = dp(7);
-        tile.addView(view, params);
-        return view;
+    private void addIcon(LinearLayout row, int icon, int color, int size) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(size), dp(size));
+        params.rightMargin = dp(size < 20 ? 6 : 9);
+        row.addView(ui.icon(icon, color), params);
     }
 
     private LinearLayout orderTile() {
         LinearLayout tile = baseTile(false);
-        orderTileIcon = addIcon(tile, "◉");
+        addIcon(tile, R.drawable.ic_merchant_bag, ui.accent(), 24);
         LinearLayout labels = column();
-        orderTileTitle = tv("Pesanan", 13, TEXT, true);
-        orderTileSub = tv("Menunggu data", 11, MUTED, false);
+        orderTileTitle = tv("Pesanan", 15, TEXT, true);
+        orderTileSub = tv("Menunggu data", 12, MUTED, false);
         labels.addView(orderTileTitle);
         labels.addView(orderTileSub);
         tile.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
@@ -261,23 +315,24 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         return tile;
     }
 
-    private LinearLayout baseTile(boolean highlighted) {
+    private LinearLayout baseTile(boolean primary) {
         LinearLayout tile = new LinearLayout(this);
         tile.setGravity(Gravity.CENTER_VERTICAL);
-        tile.setMinimumHeight(dp(54));
-        tile.setPadding(dp(8), dp(5), dp(8), dp(5));
-        tile.setBackground(tileBackground(highlighted));
+        tile.setMinimumHeight(dp(primary ? 58 : 49));
+        tile.setPadding(dp(11), dp(7), dp(10), dp(7));
+        tile.setBackground(ui.touch(primary ? round(MerchantPremiumUi.BLUE, dp(14)) : ui.surface(14)));
         tile.setFocusable(true);
         return tile;
     }
 
     private void setOrderTileActive(int count) {
         boolean active = count > 0;
-        ordersTile.setBackground(tileBackground(active));
+        ordersTile.setBackground(ui.touch(active
+                ? stroke(ui.dark() ? 0xFF17344F : 0xFFE9F3FF, ui.accent(), dp(14))
+                : ui.surface(14)));
         orderBadgeText.setVisibility(active ? View.VISIBLE : View.GONE);
         orderBadgeText.setText(count > 99 ? "99+" : String.valueOf(count));
-        orderTileIcon.setText(active ? "●" : "◉");
-        orderTileTitle.setTextColor(active ? accent() : TEXT);
+        orderTileTitle.setTextColor(active ? ui.accent() : TEXT);
         orderTileSub.setText(active ? "Perlu respons" : "Belum ada yang baru");
         orderBadgeText.setContentDescription(active ? count + " pesanan baru" : null);
     }
@@ -299,7 +354,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         boolean online = MerchantConnectivity.isOnline(this);
         if (!online || !dashboardLoaded) {
             networkText.setText(online ? "Menghubungkan…" : "Tidak ada koneksi");
-            networkText.setTextColor(MUTED);
         }
         MerchantNetworkExecutor.executeRead(this, "dashboard", () -> {
             try {
@@ -309,7 +363,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                     if (isFinishing() || isDestroyed()) return;
                     dashboardLoaded = true;
                     networkText.setText("Terhubung");
-                    networkText.setTextColor(MUTED);
                     showDash(dashboard);
                 });
             } catch (Exception error) {
@@ -317,7 +370,6 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                     if (isFinishing() || isDestroyed()) return;
                     boolean connected = MerchantConnectivity.isOnline(this);
                     networkText.setText(connected ? "Ringkasan belum diperbarui" : "Tidak ada koneksi");
-                    networkText.setTextColor(MUTED);
                 });
             }
         });
@@ -327,18 +379,28 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         try {
             boolean verified = d.optInt("is_verified", 0) == 1;
             boolean open = verified && d.optInt("is_open", 0) == 1;
-            statusText.setText(!verified ? "Menunggu verifikasi" : (open ? "● Toko buka" : "● Toko tutup"));
-            statusText.setTextColor(MerchantAppSettings.isDarkMode(this) ? Color.parseColor(open?"#70E0AE":"#EEF5FF") : (open?Color.parseColor("#16803A"):NAVY));
+            statusText.setText(!verified ? "Menunggu verifikasi" : open ? "Toko buka" : "Toko tutup");
+            storeDot.setBackground(round(open ? 0xFF3DEA9E : 0xFFFFC477, dp(8)));
             descText.setText(!verified ? "Toko dapat dibuka setelah diverifikasi admin." : "");
             descText.setVisibility(!verified ? android.view.View.VISIBLE : android.view.View.GONE);
             todayText.setText(String.valueOf(d.optInt("today_orders", 0)));
-            ratingText.setText(String.format(java.util.Locale.US, "%.1f ⭐", d.optDouble("rating", 0)));
+            SpannableString rating = new SpannableString(String.format(new java.util.Locale("id", "ID"),
+                    "%.1f ★", d.optDouble("rating", 0)));
+            rating.setSpan(new ForegroundColorSpan(ui.dark() ? 0xFFFFD369 : 0xFFAE7100),
+                    rating.length() - 1, rating.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            ratingText.setText(rating);
             reviewText.setText(String.valueOf(d.optInt("review_count", 0)));
             if(revenueText != null) revenueText.setText(rupiah(d.optLong("today_revenue", 0)));
             JSONObject cluster = d.optJSONObject("cluster");
             if(clusterText != null){
                 TransivaCluster.Item area = TransivaCluster.fromServer(cluster);
-                clusterText.setText(TransivaCluster.label(area));
+                if (area == null || area.id <= 0) clusterText.setText("Wilayah merchant belum terdeteksi");
+                else {
+                    String region = area.region == null || area.region.name.isEmpty()
+                            ? "Regional belum terdeteksi" : "Regional " + area.region.name;
+                    String clusterName = area.name.isEmpty() ? "belum terdeteksi" : area.name;
+                    clusterText.setText(region + " · Cluster " + clusterName);
+                }
             }
             int activeOrders = d.optInt("active_orders", 0);
             setOrderTileActive(d.optInt("pending_orders", 0));
