@@ -250,18 +250,40 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         visibleControls.clear();
         list.removeAllViews();
         String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);
-        int filter=selectedFilter, shown=0;
-        for (int i=0;i<cached.length();i++) {
-            JSONObject menu=cached.optJSONObject(i);
-            if (menu==null) continue;
+        int filter = selectedFilter, shown = 0;
+        java.util.LinkedHashMap<Integer, List<JSONObject>> groups = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < cached.length(); i++) {
+            JSONObject menu = cached.optJSONObject(i);
+            if (menu == null) continue;
             boolean available = available(menu);
-            if (filter==1 && !available || filter==2 && available) continue;
+            if ((filter == 1 && !available) || (filter == 2 && available)) continue;
             StringBuilder searchable = new StringBuilder(s(menu, "name", "menu_name", "food_name"))
-                    .append(' ').append(s(menu, "category", "type"));
+                    .append(' ').append(s(menu, "category", "type")).append(' ').append(s(menu, "subcategory_name"));
             for (Topping topping : toppings(menu)) searchable.append(' ').append(topping.name);
             if (!searchable.toString().toLowerCase(Locale.ROOT).contains(query)) continue;
-            list.addView(menuCard(menu));
+            int group = s(menu, "subcategory_name").isEmpty() ? 0 : menu.optInt("subcategory_id");
+            groups.computeIfAbsent(group, unused -> new ArrayList<>()).add(menu);
             shown++;
+        }
+        List<Integer> order = new ArrayList<>(groups.keySet());
+        order.sort((left, right) -> {
+            if (left.equals(right)) return 0;
+            if (left == 0) return 1;
+            if (right == 0) return -1;
+            JSONObject a = groups.get(left).get(0);
+            JSONObject b = groups.get(right).get(0);
+            int sort = Integer.compare(a.optInt("subcategory_sort"), b.optInt("subcategory_sort"));
+            return sort != 0 ? sort : s(a, "subcategory_name").compareToIgnoreCase(s(b, "subcategory_name"));
+        });
+        for (Integer group : order) {
+            List<JSONObject> items = groups.get(group);
+            if (group != 0 || order.size() > 1) {
+                String label = group == 0 ? "Tanpa subkategori" : s(items.get(0), "subcategory_name");
+                TextView heading = tv(label, 15, NAVY, true);
+                heading.setPadding(dp(2), dp(6), 0, dp(5));
+                list.addView(heading);
+            }
+            for (JSONObject item : items) list.addView(menuCard(item));
         }
         resultCount.setText(shown+" menu");
         if (shown == 0) list.addView(card(cached.length() == 0
