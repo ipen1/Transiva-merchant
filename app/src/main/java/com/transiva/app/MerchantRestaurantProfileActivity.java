@@ -1,222 +1,357 @@
 package com.transiva.app;
 
-import com.bumptech.glide.Glide;
-import android.os.Bundle;
-import android.net.Uri;
 import android.content.Intent;
-import android.text.InputType;
 import android.graphics.Color;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.provider.MediaStore;
+import android.net.Uri;
+import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
-import android.widget.*;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+import com.bumptech.glide.Glide;
 import org.json.JSONObject;
 
 public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
     private static final int PICK_BANNER = 802;
-    private LinearLayout root;
+    private MerchantPremiumUi ui;
     private EditText nameInput;
-    private TextView statusText, bannerIcon, bannerTitle, bannerSub;
+    private TextView bannerTitle, areaText, bannerStatus, feedback;
     private ImageView bannerImage;
-    private Button pickBannerButton, saveProfileButton;
-    private Uri bannerUri = null;
-    private PreparedImage preparedBanner = null;
-    private volatile boolean bannerPreparing = false;
-    private String restaurantId = "";
+    private Button pickBannerButton, saveProfileButton, retryButton;
+    private Uri draftBanner;
+    private PreparedImage preparedBanner;
+    private String savedName = "", savedBanner = "";
+    private boolean loaded, preparing, saving;
 
-    @Override protected void onCreate(Bundle b){ super.onCreate(b); build(); load(); }
-
-    private void build(){
-        root = new LinearLayout(this); setContentView(page(root));
-        root.addView(title("Profil Merchant"));
-        root.addView(sub("Kelola nama merchant dan banner yang tampil di aplikasi"));
-
-        root.addView(activeBannerCard());
-
-        statusText = card("Memuat profil merchant...");
-        root.addView(statusText);
-
-        root.addView(label("Nama Merchant / Restoran"));
-        nameInput = input("Masukkan nama merchant", InputType.TYPE_CLASS_TEXT);
-        root.addView(nameInput);
-        nameInput.addTextChangedListener(new android.text.TextWatcher(){
-            public void beforeTextChanged(CharSequence s,int st,int c,int a){}
-            public void onTextChanged(CharSequence s,int st,int b,int c){
-                String name = nameInput.getText().toString().trim();
-                bannerTitle.setText(name.isEmpty() ? "Merchant Transiva" : name);
-            }
-            public void afterTextChanged(android.text.Editable e){}
-        });
-
-        root.addView(sub("Foto dioptimalkan otomatis sebelum disimpan."));
-        pickBannerButton = outlineBtn("🖼️ Pilih Banner Merchant");
-        pickBannerButton.setOnClickListener(v -> choose());
-        root.addView(pickBannerButton);
-        saveProfileButton = btn("💾 Simpan Profil Merchant");
-        saveProfileButton.setOnClickListener(v -> save(saveProfileButton));
-        root.addView(saveProfileButton);
-        Button back = outlineBtn("← Kembali"); back.setOnClickListener(v -> finish()); root.addView(back);
+    @Override protected void onCreate(Bundle state) {
+        super.onCreate(state);
+        ui = new MerchantPremiumUi(this);
+        build(state);
+        load();
     }
 
-    private FrameLayout activeBannerCard(){
-        FrameLayout frame = new FrameLayout(this);
-        frame.setBackground(round(Color.parseColor("#0A1A2E"), dp(24)));
-        frame.setPadding(0, 0, 0, 0);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, dp(Math.round(128 * Math.max(1f,getResources().getConfiguration().fontScale))));
-        lp.setMargins(0, dp(4), 0, dp(14));
-        frame.setLayoutParams(lp);
+    private void build(Bundle state) {
+        LinearLayout root = column();
+        root.setFocusableInTouchMode(true);
+        LinearLayout footer = column();
+        footer.setBackgroundColor(BG);
+        saveProfileButton = btn("Simpan perubahan");
+        saveProfileButton.setBackground(ui.touch(round(MerchantPremiumUi.BLUE, dp(14))));
+        saveProfileButton.setElevation(0);
+        saveProfileButton.setOnClickListener(v -> save());
+        int side = Math.max(12, (screenWidthDp() - 840) / 2);
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(-1, -2);
+        saveParams.setMargins(dp(side), dp(6), dp(side), dp(8));
+        footer.addView(saveProfileButton, saveParams);
+        View navigation = MerchantBottomNavigation.build(this, MerchantBottomNavigation.ActiveItem.SETTINGS);
+        navigation.setMinimumHeight(dp(bottomNavHeightDp()));
+        footer.addView(navigation, new LinearLayout.LayoutParams(-1, -2));
+        ViewCompat.setOnApplyWindowInsetsListener(footer, (view, insets) -> {
+            navigation.setVisibility(insets.isVisible(WindowInsetsCompat.Type.ime()) ? View.GONE : View.VISIBLE);
+            return insets;
+        });
+        setContentView(page(root, footer));
 
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        ImageButton back = ui.iconButton(R.drawable.ic_merchant_chevron, ui.accent(), "Kembali");
+        back.setRotation(180f);
+        back.setOnClickListener(v -> finish());
+        header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView title = title("Profil Merchant");
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        root.addView(header);
+
+        LinearLayout profile = panel();
+        FrameLayout preview = new FrameLayout(this) {
+            @Override protected void onMeasure(int widthSpec, int heightSpec) {
+                int width = View.MeasureSpec.getSize(widthSpec);
+                super.onMeasure(widthSpec, View.MeasureSpec.makeMeasureSpec(
+                        Math.min(dp(235), Math.round(width / 2.1f)), View.MeasureSpec.EXACTLY));
+            }
+        };
+        preview.setBackground(round(ui.dark() ? 0xFF20344B : 0xFFE8F1FF, dp(12)));
+        preview.setClipToOutline(true);
+        ImageView placeholder = ui.icon(R.drawable.ic_merchant_store, ui.accent());
+        preview.addView(placeholder, new FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER));
         bannerImage = new ImageView(this);
-        bannerImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        frame.addView(bannerImage, new FrameLayout.LayoutParams(-1, -1));
+        bannerImage.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        bannerImage.setContentDescription("Pratinjau banner merchant");
+        preview.addView(bannerImage, new FrameLayout.LayoutParams(-1, -1));
+        profile.addView(preview, new LinearLayout.LayoutParams(-1, -2));
 
-        LinearLayout overlay = new LinearLayout(this);
-        overlay.setOrientation(LinearLayout.VERTICAL);
-        overlay.setGravity(Gravity.BOTTOM | Gravity.LEFT);
-        overlay.setPadding(dp(18), dp(16), dp(18), dp(16));
-        overlay.setBackgroundColor(Color.parseColor("#66000000"));
+        bannerTitle = tv("Profil toko", 20, NAVY, true);
+        bannerTitle.setPadding(0, dp(9), 0, dp(2));
+        profile.addView(bannerTitle);
+        areaText = tv("", 13, MUTED, false);
+        areaText.setCompoundDrawablesRelative(ui.iconDrawable(R.drawable.ic_merchant_pin, MUTED, 17), null, null, null);
+        areaText.setCompoundDrawablePadding(dp(5));
+        areaText.setVisibility(View.GONE);
+        profile.addView(areaText);
+        View divider = new View(this);
+        divider.setBackgroundColor(ui.divider());
+        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, dp(1));
+        dividerParams.setMargins(0, dp(11), 0, dp(6));
+        profile.addView(divider, dividerParams);
 
-        bannerIcon = tv("🏪", 22, Color.WHITE, true);
-        bannerTitle = tv("Merchant Transiva", 19, Color.WHITE, true);
-        bannerSub = tv("Banner aktif sedang dimuat...", 13, Color.WHITE, false);
-        bannerTitle.setMaxLines(2);bannerTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        overlay.addView(bannerIcon);
-        overlay.addView(bannerTitle);
-        overlay.addView(bannerSub);
-        frame.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-        return frame;
-    }
+        LinearLayout actions = actionRow();
+        boolean stacked = stackControls();
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        bannerStatus = tv("Memuat profil…", 13, MUTED, true);
+        bannerStatus.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        actions.addView(bannerStatus, new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
+        pickBannerButton = outlineBtn("Ganti banner");
+        pickBannerButton.setTextSize(13);
+        pickBannerButton.setTextColor(ui.accent());
+        pickBannerButton.setElevation(0);
+        pickBannerButton.setBackground(ui.touch(stroke(Color.WHITE, ui.accent(), dp(12))));
+        pickBannerButton.setOnClickListener(v -> choose());
+        actions.addView(pickBannerButton, new LinearLayout.LayoutParams(stacked ? -1 : -2, -2));
+        profile.addView(actions);
+        profile.addView(tv("Foto dioptimalkan otomatis sebelum disimpan.", 12, MUTED, false));
+        addPanel(root, profile);
 
-    private void load(){
-        final String u = username();
-        MerchantNetworkExecutor.executeRead(this, "restaurant-profile", () -> {
-            try{
-                JSONObject prof = new JSONObject(get(BASE + "get_restaurant_profile.php?v=" + System.currentTimeMillis()));
-                JSONObject restaurant = prof.optJSONObject("restaurant");
-                restaurantId = restaurant == null ? "" : restaurant.optString("id", "");
-                runOnUiThread(() -> show(prof));
-            }catch(Exception e){ runOnUiThread(() -> statusText.setText("Gagal memuat profil merchant."));}
-        });
-    }
-
-    private void show(JSONObject res){
-        if(!res.optBoolean("success", true)){ statusText.setText(res.optString("message","Profil belum tersedia")); return; }
-        JSONObject r = res.optJSONObject("restaurant"); if(r == null) r = res;
-        String name = s(r,"name","restaurant_name","merchant_name","store_name");
-        String banner = s(r,"banner","banner_url","image","photo","foto","cover","cover_image","restaurant_banner");
-        nameInput.setText(name);
-        bannerTitle.setText(name.isEmpty() ? "Merchant Transiva" : name);
-        TransivaCluster.Item area = TransivaCluster.fromServer(res.optJSONObject("cluster"));
-        String areaLabel = TransivaCluster.label(area);
-        if(banner.isEmpty()){
-            bannerSub.setText("Belum ada banner aktif. Pilih banner lalu simpan.");
-            statusText.setText("🏪 " + (name.isEmpty() ? "Merchant" : name) + "\n" + areaLabel + "\nBanner aktif belum tersedia.");
-        }else{
-            bannerSub.setText("Banner aktif saat ini");
-            statusText.setText("🏪 " + (name.isEmpty() ? "Merchant" : name) + "\n" + areaLabel + "\nBanner aktif sudah tampil di atas.");
-            loadBannerImage(banner);
-        }
-    }
-
-    private void choose(){
-        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-        i.setType("image/*");
-        startActivityForResult(Intent.createChooser(i, "Pilih banner merchant"), PICK_BANNER);
-    }
-
-    @Override protected void onActivityResult(int r, int c, Intent data){
-        super.onActivityResult(r,c,data);
-        if(r == PICK_BANNER && c == RESULT_OK && data != null){
-            bannerUri = data.getData();
-            preparedBanner = null;
-            showPickedBanner(bannerUri);
-            prepareBannerAi();
-        }
-    }
-
-
-    private void prepareBannerAi(){
-        if(bannerUri == null) return;
-        bannerPreparing = true;
-        setButtonLoading(pickBannerButton, true, "🖼️ Pilih Banner Merchant", "Menyiapkan foto…");
-        bannerSub.setText("Menyiapkan foto…");
-        statusText.setText("Menyiapkan banner agar ringan saat dibuka customer...");
-        final Uri source = bannerUri;
-        MerchantTaskExecutor.execute(() -> {
-            try{
-                PreparedImage result = prepareAiResizeToWebp(source, "merchant_banner", 1280, 220 * 1024L, 170 * 1024L);
-                preparedBanner = result;
-                runOnUiThread(() -> {
-                    bannerPreparing = false;
-                    setButtonLoading(pickBannerButton, false, "🖼️ Pilih Banner Merchant", "");
-                    if(result != null && result.transformed){
-                        bannerSub.setText("AI Resize to WebP: " + humanBytes(result.originalBytes) + " → " + humanBytes(result.finalBytes));
-                        statusText.setText("Banner sudah dioptimalkan ke WebP. Tekan Simpan Profil Merchant.");
-                    }else if(result != null){
-                        bannerSub.setText("Ukuran sudah optimal: " + humanBytes(result.finalBytes) + ". File asli dipertahankan.");
-                        statusText.setText("Banner tidak diperkecil lagi karena ukurannya sudah kecil. Tekan Simpan Profil Merchant.");
-                    }
-                });
-            }catch(Exception e){
-                runOnUiThread(() -> {
-                    bannerPreparing = false; preparedBanner = null;
-                    setButtonLoading(pickBannerButton, false, "🖼️ Pilih Banner Merchant", "");
-                    alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
-                });
+        LinearLayout form = panel();
+        form.addView(tv("Nama Merchant / Restoran", 14, NAVY, true));
+        nameInput = input("Masukkan nama merchant", InputType.TYPE_CLASS_TEXT);
+        nameInput.setSingleLine(true);
+        nameInput.setElevation(0);
+        nameInput.setBackground(ui.surface(11));
+        if (state != null) nameInput.setText(state.getString("draft_name", ""));
+        form.addView(nameInput);
+        nameInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
+                String pendingName = text.toString().trim();
+                bannerTitle.setText(pendingName.isEmpty() ? "Profil toko" : pendingName);
+                updateControls();
             }
+            @Override public void afterTextChanged(Editable text) {}
         });
+        addPanel(root, form);
+        feedback = sub("");
+        feedback.setVisibility(View.GONE);
+        feedback.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        root.addView(feedback);
+        retryButton = outlineBtn("Coba lagi");
+        retryButton.setOnClickListener(v -> load());
+        retryButton.setVisibility(View.GONE);
+        root.addView(retryButton);
+
+        if (state != null && !state.getString("draft_banner", "").isEmpty()) {
+            draftBanner = Uri.parse(state.getString("draft_banner"));
+        }
+        updateControls();
+        root.requestFocus();
     }
 
-    private void showPickedBanner(Uri uri){
-        if(uri == null) return;
-        try{
-            Bitmap bmp = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
-            if(bmp != null) bannerImage.setImageBitmap(bmp);
-        }catch(Exception e){ toast("Preview banner gagal, tapi file masih bisa dicoba upload."); }
+    private LinearLayout column() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        return layout;
     }
 
-    private void loadBannerImage(String rawUrl){
-        final String url = normalizeImageUrl(rawUrl);
-        if(url.isEmpty()) return;
-        Glide.with(this)
-                .load(url)
-                .centerCrop()
-                .thumbnail(0.25f)
-                .into(bannerImage);
+    private LinearLayout panel() {
+        LinearLayout layout = column();
+        layout.setPadding(dp(12), dp(12), dp(12), dp(12));
+        layout.setBackground(ui.surface(16));
+        return layout;
     }
 
-    private String normalizeImageUrl(String raw){
-        if(raw == null) return "";
-        String url = raw.trim();
-        if(url.isEmpty() || "null".equalsIgnoreCase(url)) return "";
-        if(url.startsWith("http://transiva.my.id/")) return url.replace("http://transiva.my.id/", "https://transiva.my.id/");
-        if(url.startsWith("https://")) return url;
-        if(url.startsWith("http://")) return "";
-        if(url.startsWith("/")) return "https://transiva.my.id" + url;
-        return "https://transiva.my.id/" + url;
+    private void addPanel(LinearLayout root, View panel) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.setMargins(0, dp(10), 0, 0);
+        root.addView(panel, params);
     }
 
-    private void save(Button save){
-        String name = nameInput.getText().toString().trim();
-        if(name.isEmpty()){ alert("Nama Kosong", "Nama merchant tidak boleh kosong."); return; }
-        if(restaurantId.isEmpty()){ alert("Merchant Tidak Ditemukan", "Silakan login ulang atau cek getMerchantDashboard.php."); return; }
-        if(bannerPreparing){ alert("AI Resize Masih Berjalan", "Tunggu sebentar sampai gambar selesai disiapkan."); return; }
-        if(bannerUri != null && preparedBanner == null){ alert("Banner Belum Siap", "Pilih ulang banner lalu tunggu proses AI Resize selesai."); return; }
-        setButtonLoading(save, true, "💾 Simpan Profil Merchant", bannerUri == null ? "Menyimpan..." : "Mengupload banner...");
-        MerchantNetworkExecutor.executeWrite("restaurant-profile-save", () -> {
-            try{
-                JSONObject f = new JSONObject(); f.put("name", name);
-                JSONObject res = new JSONObject(postFormPrepared(BASE + "update_restaurant_profile.php", f, preparedBanner, "banner"));
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putString("draft_name", nameInput.getText().toString());
+        if (draftBanner != null) state.putString("draft_banner", draftBanner.toString());
+        super.onSaveInstanceState(state);
+    }
+
+    private boolean alive() {
+        return !isFinishing() && !isDestroyed();
+    }
+
+    private void updateControls() {
+        boolean editable = loaded && !saving;
+        nameInput.setEnabled(editable);
+        pickBannerButton.setEnabled(editable && !preparing);
+        boolean dirty = !savedName.equals(nameInput.getText().toString().trim()) || preparedBanner != null;
+        saveProfileButton.setEnabled(editable && !preparing && dirty);
+        saveProfileButton.setAlpha(saveProfileButton.isEnabled() || saving ? 1f : .60f);
+    }
+
+    private void message(String text) {
+        feedback.setText(text);
+        feedback.setVisibility(text.isEmpty() ? View.GONE : View.VISIBLE);
+    }
+
+    private void load() {
+        retryButton.setVisibility(View.GONE);
+        message("");
+        if (MerchantNetworkExecutor.executeRead(this, "restaurant-profile", () -> {
+            try {
+                JSONObject result = new JSONObject(get(BASE + "get_restaurant_profile.php?v=" + System.currentTimeMillis()));
                 runOnUiThread(() -> {
-                    setButtonLoading(save, false, "💾 Simpan Profil Merchant", "");
-                    toast(res.optString("message", res.optBoolean("success") ? "Profil berhasil disimpan" : "Gagal"));
-                    if(res.optBoolean("success", false)) load();
+                    if (!alive()) return;
+                    if (result.optBoolean("success", false)) showProfile(result);
+                    else loadFailed(result.optString("message", "Profil belum dapat dimuat."));
                 });
-            }catch(Exception e){ runOnUiThread(() -> { setButtonLoading(save, false, "💾 Simpan Profil Merchant", ""); alert("Error","Gagal menyimpan profil."); });}
-        });
+            } catch (Exception error) {
+                runOnUiThread(() -> loadFailed("Profil belum dapat dimuat. Periksa koneksi."));
+            }
+        }) == null) loadFailed("Sistem sedang sibuk. Coba lagi.");
+    }
+
+    private void loadFailed(String error) {
+        if (!alive()) return;
+        bannerStatus.setText("Profil belum dimuat");
+        message(error);
+        retryButton.setVisibility(View.VISIBLE);
+    }
+
+    private void showProfile(JSONObject result) {
+        JSONObject restaurant = result.optJSONObject("restaurant");
+        if (restaurant == null) restaurant = result;
+        savedName = s(restaurant, "name", "restaurant_name", "merchant_name", "store_name");
+        savedBanner = normalizeImageUrl(s(restaurant, "banner", "banner_url", "image", "photo", "foto", "cover", "cover_image", "restaurant_banner"));
+        if (nameInput.length() == 0) nameInput.setText(savedName);
+        bannerTitle.setText(nameInput.length() == 0 ? "Profil toko" : nameInput.getText());
+        TransivaCluster.Item area = TransivaCluster.fromServer(result.optJSONObject("cluster"));
+        if (area != null && area.id > 0) {
+            String region = area.region == null || area.region.name.isEmpty() ? "" : "Regional " + area.region.name;
+            String cluster = area.name.isEmpty() ? "" : "Cluster " + area.name;
+            String label = region + (region.isEmpty() || cluster.isEmpty() ? "" : " · ") + cluster;
+            areaText.setText(label);
+            areaText.setVisibility(label.isEmpty() ? View.GONE : View.VISIBLE);
+        }
+        loaded = true;
+        showSavedBanner();
+        updateControls();
+        if (draftBanner != null) prepareBanner(draftBanner);
+    }
+
+    private void choose() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("image/*");
+        startActivityForResult(intent, PICK_BANNER);
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != PICK_BANNER || result != RESULT_OK || data == null || data.getData() == null) return;
+        Uri source = data.getData();
+        prepareBanner(source);
+    }
+
+    private void prepareBanner(Uri source) {
+        draftBanner = source;
+        preparedBanner = null;
+        preparing = true;
+        message("");
+        bannerStatus.setText("Menyiapkan foto…");
+        bannerStatus.setTextColor(MUTED);
+        Glide.with(this).load(source).fitCenter().into(bannerImage);
+        updateControls();
+        if (!MerchantTaskExecutor.execute(() -> {
+            try {
+                PreparedImage photo = prepareAiResizeToWebp(source, "merchant_banner", 1280, 220 * 1024L, 170 * 1024L);
+                runOnUiThread(() -> {
+                    if (!alive()) return;
+                    if (photo == null) {
+                        prepareFailed();
+                        return;
+                    }
+                    preparedBanner = photo;
+                    preparing = false;
+                    bannerStatus.setText("Banner siap disimpan");
+                    updateControls();
+                });
+            } catch (Exception error) {
+                runOnUiThread(this::prepareFailed);
+            }
+        })) prepareFailed();
+    }
+
+    private void prepareFailed() {
+        if (!alive()) return;
+        preparing = false;
+        preparedBanner = null;
+        draftBanner = null;
+        showSavedBanner();
+        message("Foto belum dapat diproses. Pilih ulang banner.");
+        updateControls();
+    }
+
+    private void showSavedBanner() {
+        boolean active = !savedBanner.isEmpty();
+        bannerStatus.setText(active ? "●  Banner aktif" : "Belum ada banner");
+        bannerStatus.setTextColor(active ? (ui.dark() ? 0xFF76E2B5 : 0xFF13734F) : MUTED);
+        if (active) Glide.with(this).load(savedBanner).fitCenter().thumbnail(0.25f).into(bannerImage);
+        else {
+            Glide.with(this).clear(bannerImage);
+            bannerImage.setImageDrawable(null);
+        }
+    }
+
+    private String normalizeImageUrl(String url) {
+        if (url.startsWith("http://transiva.my.id/")) return "https://" + url.substring(7);
+        if (url.startsWith("https://")) return url;
+        if (url.isEmpty() || url.startsWith("http://")) return "";
+        return "https://transiva.my.id" + (url.startsWith("/") ? "" : "/") + url;
+    }
+
+    private void save() {
+        String name = nameInput.getText().toString().trim();
+        if (name.isEmpty()) {
+            nameInput.setError("Nama merchant wajib diisi.");
+            return;
+        }
+        if (!loaded || saving || preparing) return;
+        PreparedImage upload = preparedBanner;
+        saving = true;
+        message("");
+        saveProfileButton.setText("Menyimpan…");
+        updateControls();
+        if (!MerchantNetworkExecutor.executeWrite("restaurant-profile-save:" + branchId(), () -> {
+            try {
+                JSONObject fields = new JSONObject().put("name", name);
+                JSONObject response = new JSONObject(postFormPrepared(BASE + "update_restaurant_profile.php", fields, upload, "banner"));
+                runOnUiThread(() -> saveCompleted(name, response));
+            } catch (Exception error) {
+                runOnUiThread(() -> saveCompleted(name, null));
+            }
+        })) saveCompleted(name, null);
+    }
+
+    private void saveCompleted(String name, JSONObject response) {
+        if (!alive()) return;
+        saving = false;
+        saveProfileButton.setText("Simpan perubahan");
+        if (response != null && response.optBoolean("success")) {
+            savedName = name;
+            savedBanner = normalizeImageUrl(response.optString("banner", savedBanner));
+            preparedBanner = null;
+            draftBanner = null;
+            nameInput.setText(name);
+            showSavedBanner();
+            toast("Profil disimpan.");
+        } else message(response == null ? "Profil belum tersimpan. Coba lagi."
+                : response.optString("message", "Profil belum tersimpan."));
+        updateControls();
     }
 }
