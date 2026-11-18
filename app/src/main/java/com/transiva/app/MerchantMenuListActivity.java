@@ -1,6 +1,7 @@
 package com.transiva.app;
 
 import com.bumptech.glide.Glide;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
@@ -22,6 +23,12 @@ import org.json.JSONObject;
 import org.json.JSONException;
 
 public class MerchantMenuListActivity extends MerchantBaseActivity {
+    private static final int EDIT_CATEGORY = 707;
+    private static final int ADD_CATEGORY_MENU = 708;
+    private int categoryId;
+    private String categoryName;
+    private TextView categoryHeading;
+    private boolean reloadAfterRead;
     private LinearLayout list;
     private EditText search;
     private TextView statusFilter;
@@ -41,7 +48,11 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         ui = new MerchantPremiumUi(this);
+        categoryId = getIntent().getIntExtra(MerchantCategoriesActivity.CATEGORY_ID, 0);
+        categoryName = TextUtils.isEmpty(getIntent().getStringExtra(MerchantCategoriesActivity.CATEGORY_NAME))
+                ? "Kategori Menu" : getIntent().getStringExtra(MerchantCategoriesActivity.CATEGORY_NAME);
         if (state != null) {
+            categoryName = state.getString("category_name", categoryName);
             selectedFilter = state.getInt("status_filter");
             ArrayList<String> opened = state.getStringArrayList("expanded_menus");
             if (opened != null) expanded.addAll(opened);
@@ -50,27 +61,20 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         root.setFocusableInTouchMode(true);
         setContentView(page(root));
 
-        LinearLayout header = new LinearLayout(this);
-        header.setGravity(Gravity.CENTER_VERTICAL);
         boolean narrow = screenWidthDp() < 340 || getResources().getConfiguration().fontScale > 1.25f;
-        if (narrow) header.setOrientation(LinearLayout.VERTICAL);
-        TextView heading = tv("Semua Menu", 24, NAVY, true);
-        heading.setLetterSpacing(-.025f);
-        header.addView(heading, new LinearLayout.LayoutParams(narrow ? -1 : 0, -2, narrow ? 0 : 1));
-        Button add = compactAction("+ Tambah Menu", true);
-        add.setOnClickListener(v -> open(MerchantAddMenuActivity.class));
-        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(narrow ? -1 : -2, -2);
-        addParams.topMargin = narrow ? dp(6) : 0;
-        addParams.leftMargin = narrow ? 0 : dp(6);
-        header.addView(add, addParams);
-        root.addView(header);
+        if (categoryId > 0) {
+            addCategoryHeader(root);
+        } else {
+            addAllMenusHeader(root, narrow);
+        }
 
-        search = input("Cari menu, kategori, atau topping", InputType.TYPE_CLASS_TEXT);
+        search = input(categoryId > 0 ? "Cari menu atau topping" : "Cari menu, kategori, atau topping",
+                InputType.TYPE_CLASS_TEXT);
         search.setElevation(0);
         search.setBackground(ui.surface(14));
         search.setCompoundDrawablesRelative(ui.iconDrawable(R.drawable.ic_merchant_search, MUTED, 21), null, null, null);
         search.setCompoundDrawablePadding(dp(8));
-        search.setContentDescription("Cari menu, kategori, atau topping");
+        search.setContentDescription(search.getHint());
         search.setText(state == null ? "" : state.getString("search", ""));
         search.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -91,17 +95,21 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
 
         LinearLayout chips = new LinearLayout(this);
         if (getResources().getConfiguration().fontScale > 1.45f) chips.setOrientation(LinearLayout.VERTICAL);
-        TextView categories = chip("Kategori", ui.accent());
-        categories.setCompoundDrawablesRelative(ui.iconDrawable(R.drawable.ic_merchant_tag, ui.accent(), 16), null, null, null);
-        categories.setOnClickListener(v -> open(MerchantCategoriesActivity.class));
-        chips.addView(categories, new LinearLayout.LayoutParams(-2, -2));
+        if (categoryId <= 0) {
+            TextView categories = chip("Kategori", ui.accent());
+            categories.setCompoundDrawablesRelative(ui.iconDrawable(R.drawable.ic_merchant_tag, ui.accent(), 16), null, null, null);
+            categories.setOnClickListener(v -> open(MerchantCategoriesActivity.class));
+            chips.addView(categories, new LinearLayout.LayoutParams(-2, -2));
+        }
 
         statusFilter = chip(STATUS_FILTERS[selectedFilter], NAVY);
         statusFilter.setCompoundDrawablesRelative(null, null, ui.iconDrawable(R.drawable.ic_merchant_expand, MUTED, 16), null);
         statusFilter.setOnClickListener(v -> showStatusFilter());
         LinearLayout.LayoutParams filterParams = new LinearLayout.LayoutParams(-2, -2);
-        if (chips.getOrientation() == LinearLayout.VERTICAL) filterParams.topMargin = dp(5);
-        else filterParams.leftMargin = dp(6);
+        if (categoryId <= 0) {
+            if (chips.getOrientation() == LinearLayout.VERTICAL) filterParams.topMargin = dp(5);
+            else filterParams.leftMargin = dp(6);
+        }
         chips.addView(statusFilter, filterParams);
         filters.addView(chips, new LinearLayout.LayoutParams(narrow ? -1 : -2, -2));
         LinearLayout.LayoutParams filtersParams = new LinearLayout.LayoutParams(-1, -2);
@@ -119,7 +127,85 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         root.requestFocus();
     }
 
+    private void addAllMenusHeader(LinearLayout root, boolean narrow) {
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        if (narrow) header.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = tv("Semua Menu", 24, NAVY, true);
+        heading.setLetterSpacing(-.025f);
+        header.addView(heading, new LinearLayout.LayoutParams(narrow ? -1 : 0, -2, narrow ? 0 : 1));
+        Button add = compactAction("+ Tambah Menu", true);
+        add.setOnClickListener(v -> open(MerchantAddMenuActivity.class));
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(narrow ? -1 : -2, -2);
+        addParams.topMargin = narrow ? dp(6) : 0;
+        addParams.setMarginStart(narrow ? 0 : dp(6));
+        header.addView(add, addParams);
+        root.addView(header);
+    }
+
+    private void addCategoryHeader(LinearLayout root) {
+        LinearLayout toolbar = new LinearLayout(this);
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        Button back = compactAction("‹", false);
+        back.setTextSize(24);
+        back.setPadding(0, 0, 0, 0);
+        back.setContentDescription("Kembali ke kategori");
+        back.setOnClickListener(v -> finish());
+        toolbar.addView(back, new LinearLayout.LayoutParams(dp(48), -2));
+
+        boolean compact = screenWidthDp() < 350 || getResources().getConfiguration().fontScale > 1.3f;
+        if (!compact) {
+            toolbar.addView(new Space(this), new LinearLayout.LayoutParams(0, 0, 1));
+        }
+        Button edit = compactAction("Edit", false);
+        edit.setContentDescription("Edit kategori");
+        edit.setOnClickListener(v -> {
+            Intent intent = new Intent(this, MerchantCategoriesActivity.class)
+                    .putExtra(EXTRA_BRANCH, branchId())
+                    .putExtra(MerchantCategoriesActivity.CATEGORY_ID, categoryId);
+            startActivityForResult(intent, EDIT_CATEGORY);
+        });
+        LinearLayout.LayoutParams editParams = new LinearLayout.LayoutParams(-2, -2);
+        editParams.setMarginStart(dp(6));
+        toolbar.addView(edit, editParams);
+
+        Button add = compactAction("+ Tambah Menu", true);
+        add.setOnClickListener(v -> {
+            Intent intent = new Intent(this, MerchantAddMenuActivity.class)
+                    .putExtra(EXTRA_BRANCH, branchId())
+                    .putExtra("new_subcategory_id", categoryId)
+                    .putExtra("new_subcategory_name", categoryName);
+            startActivityForResult(intent, ADD_CATEGORY_MENU);
+        });
+        LinearLayout.LayoutParams addParams = compact
+                ? new LinearLayout.LayoutParams(0, -2, 1)
+                : new LinearLayout.LayoutParams(-2, -2);
+        addParams.setMarginStart(dp(6));
+        toolbar.addView(add, addParams);
+        root.addView(toolbar, new LinearLayout.LayoutParams(-1, -2));
+
+        categoryHeading = title(categoryName);
+        categoryHeading.setPadding(dp(2), dp(10), dp(2), 0);
+        root.addView(categoryHeading);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK) return;
+        if (requestCode == EDIT_CATEGORY && data != null) {
+            String name = data.getStringExtra(MerchantCategoriesActivity.CATEGORY_NAME);
+            if (!TextUtils.isEmpty(name)) {
+                categoryName = name;
+                categoryHeading.setText(name);
+            }
+        }
+        if ((requestCode == EDIT_CATEGORY || requestCode == ADD_CATEGORY_MENU) && loading) {
+            reloadAfterRead = true;
+        }
+    }
+
     @Override protected void onSaveInstanceState(Bundle state) {
+        state.putString("category_name", categoryName);
         state.putString("search", search.getText().toString());
         state.putInt("status_filter", selectedFilter);
         state.putStringArrayList("expanded_menus", new ArrayList<>(expanded));
@@ -181,6 +267,10 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
                     cached = menus;
                     loadNotice.setVisibility(View.GONE);
                     render();
+                    if (reloadAfterRead) {
+                        reloadAfterRead = false;
+                        load();
+                    }
                 });
             } catch (Exception error) {
                 runOnUiThread(this::showLoadError);
@@ -197,6 +287,11 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
     private void showLoadError() {
         if (!canUpdateUi()) return;
         loading = false;
+        if (reloadAfterRead) {
+            reloadAfterRead = false;
+            load();
+            return;
+        }
         showLoadNotice(loaded ? "Status belum diperbarui · Coba lagi" : "Gagal memuat menu · Coba lagi", true);
         updateVisibleControls();
     }
@@ -250,11 +345,12 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         visibleControls.clear();
         list.removeAllViews();
         String query=search.getText().toString().trim().toLowerCase(Locale.ROOT);
-        int filter = selectedFilter, shown = 0;
+        int filter = selectedFilter, shown = 0, inCategory = 0;
         java.util.LinkedHashMap<Integer, List<JSONObject>> groups = new java.util.LinkedHashMap<>();
         for (int i = 0; i < cached.length(); i++) {
             JSONObject menu = cached.optJSONObject(i);
-            if (menu == null) continue;
+            if (menu == null || (categoryId > 0 && menu.optInt("subcategory_id") != categoryId)) continue;
+            inCategory++;
             boolean available = available(menu);
             if ((filter == 1 && !available) || (filter == 2 && available)) continue;
             StringBuilder searchable = new StringBuilder(s(menu, "name", "menu_name", "food_name"))
@@ -277,7 +373,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         });
         for (Integer group : order) {
             List<JSONObject> items = groups.get(group);
-            if (group != 0 || order.size() > 1) {
+            if (categoryId <= 0 && (group != 0 || order.size() > 1)) {
                 String label = group == 0 ? "Tanpa subkategori" : s(items.get(0), "subcategory_name");
                 TextView heading = tv(label, 15, NAVY, true);
                 heading.setPadding(dp(2), dp(6), 0, dp(5));
@@ -286,8 +382,10 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
             for (JSONObject item : items) list.addView(menuCard(item));
         }
         resultCount.setText(shown+" menu");
-        if (shown == 0) list.addView(card(cached.length() == 0
-                ? "Belum ada menu di toko ini." : "Tidak ada menu sesuai pencarian atau filter."));
+        if (shown == 0) {
+            String empty = categoryId > 0 ? "Belum ada menu di kategori ini." : "Belum ada menu di toko ini.";
+            list.addView(card(inCategory == 0 ? empty : "Tidak ada menu sesuai pencarian atau filter."));
+        }
     }
 
     private Button compactAction(String label, boolean primary) {
@@ -351,6 +449,12 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
             price += " · Diskon " + String.format(Locale.US, "%.0f%%", menu.optDouble("discount_percent"));
         }
         info.addView(line(price, 14, ui.accent(), true, 3));
+        String description = s(menu, "description");
+        if (categoryId > 0 && !description.isEmpty()) {
+            TextView detail = tv(description, 12, MUTED, false);
+            detail.setPadding(0, dp(4), 0, 0);
+            info.addView(detail);
+        }
         product.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
         row.addView(product, new LinearLayout.LayoutParams(stack ? -1 : 0, -2, stack ? 0 : 1));
         box.addView(row);

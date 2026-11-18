@@ -25,7 +25,10 @@ import java.util.Locale;
 import java.util.TreeSet;
 
 public class MerchantCategoriesActivity extends MerchantBaseActivity {
+    static final String CATEGORY_ID = "merchant_category_id";
+    static final String CATEGORY_NAME = "merchant_category_name";
     private static final int ADD_IN_CATEGORY = 707;
+    private static final int VIEW_CATEGORY = 708;
     private static final String ENDPOINT = BASE + "merchant_categories.php";
     private MerchantPremiumUi ui;
     private LinearLayout list;
@@ -33,10 +36,12 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
     private JSONArray menus = new JSONArray();
     private boolean loaded, editing, saving;
     private int loadGeneration;
+    private int directEditId;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         ui = new MerchantPremiumUi(this);
+        directEditId = getIntent().getIntExtra(CATEGORY_ID, 0);
         showList();
         load();
     }
@@ -45,6 +50,13 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
         editing = false;
         LinearLayout root = new LinearLayout(this);
         setContentView(page(root));
+        if (directEditId > 0) {
+            root.addView(title("Edit Kategori"));
+            list = new LinearLayout(this);
+            list.setOrientation(LinearLayout.VERTICAL);
+            root.addView(list);
+            return;
+        }
         LinearLayout header = actionRow();
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.addView(title("Kategori Menu"),
@@ -79,7 +91,19 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
                     categories = groups;
                     menus = items;
                     loaded = true;
-                    showList();
+                    if (directEditId > 0) {
+                        for (int i = 0; i < groups.length(); i++) {
+                            JSONObject category = groups.optJSONObject(i);
+                            if (category != null && category.optInt("id") == directEditId) {
+                                edit(category);
+                                return;
+                            }
+                        }
+                        toast("Kategori sudah tidak tersedia di cabang ini.");
+                        finish();
+                    } else {
+                        showList();
+                    }
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> readFailed(generation));
@@ -115,10 +139,17 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
             details.setPadding(0, dp(5), 0, dp(5));
             details.setMinimumHeight(dp(48));
             details.addView(tv(name, 15, NAVY, true));
-            details.addView(tv(category.optInt("menu_count") + " menu · Kelola pilihan", 12, MUTED, false));
+            details.addView(tv(category.optInt("menu_count") + " menu", 12, MUTED, false));
             details.setBackground(ui.touch(null));
             details.setFocusable(true);
-            details.setOnClickListener(v -> edit(category));
+            details.setOnClickListener(v -> {
+                if (saving) return;
+                Intent intent = new Intent(this, MerchantMenuListActivity.class)
+                        .putExtra(EXTRA_BRANCH, branchId())
+                        .putExtra(CATEGORY_ID, category.optInt("id"))
+                        .putExtra(CATEGORY_NAME, name);
+                startActivityForResult(intent, VIEW_CATEGORY);
+            });
             row.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
             ImageButton more = ui.iconButton(R.drawable.ic_merchant_overflow, MUTED, "Tindakan untuk " + name);
             more.setOnClickListener(v -> {
@@ -183,7 +214,7 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
         controls.addView(back, actionLp());
         root.addView(controls);
         Button addMenu = action("＋ Tambah menu baru", false);
-        root.addView(addMenu);
+        if (directEditId <= 0) root.addView(addMenu);
         root.addView(choices);
 
         Runnable draw = () -> renderChoices(choices, count, selected, groupId, search.getText().toString());
@@ -210,8 +241,13 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
                     save.setEnabled(true);
                     addMenu.setEnabled(true);
                 }, result -> {
-                    showList();
+                    if (directEditId > 0) {
+                        setResult(RESULT_OK, new Intent().putExtra(CATEGORY_NAME, label));
+                        finish();
+                        return;
+                    }
                     loaded = false;
+                    showList();
                     load();
                     if (openMenu) openNewMenu(result.optInt("id"), label);
                 });
@@ -288,7 +324,7 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == ADD_IN_CATEGORY) {
+        if (requestCode == ADD_IN_CATEGORY || requestCode == VIEW_CATEGORY) {
             loaded = false;
             showList();
             load();
@@ -343,6 +379,10 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
 
     private void leaveEditor() {
         if (saving) return;
+        if (directEditId > 0) {
+            finish();
+            return;
+        }
         loaded = false;
         showList();
         load();
