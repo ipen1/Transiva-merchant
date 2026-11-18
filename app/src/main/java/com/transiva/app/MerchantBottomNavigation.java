@@ -53,7 +53,7 @@ public final class MerchantBottomNavigation {
     }
 
     private static void add(LinearLayout nav, View item) {
-        nav.addView(item, new LinearLayout.LayoutParams(0, -1, 1f));
+        nav.addView(item, new LinearLayout.LayoutParams(0, -2, 1f));
     }
 
     private static View item(Activity activity, String label, int drawableId,
@@ -92,8 +92,8 @@ public final class MerchantBottomNavigation {
         TextView title = new TextView(activity);
         title.setText(label);
         title.setTextSize(11f);
-        title.setMaxLines(2);
         title.setGravity(Gravity.CENTER);
+        title.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
         title.setIncludeFontPadding(false);
         title.setTextColor(tint);
         title.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);

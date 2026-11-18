@@ -71,6 +71,7 @@ public class MerchantBaseActivity extends Activity {
             MUTED = MerchantAppSettings.DARK_MUTED; BG = MerchantAppSettings.DARK_PAGE;
         }
         MerchantWindowInsets.enable(getWindow(), !MerchantAppSettings.isDarkMode(this));
+        getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         sessionManager = new SessionManager(this);
         branchId = getIntent().getStringExtra(EXTRA_BRANCH);
         if (branchId == null) branchId = sessionManager.get("selected_merchant_branch");
@@ -147,6 +148,13 @@ public class MerchantBaseActivity extends Activity {
         scroll.setClipToPadding(false);
         scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
         shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        MerchantResponsiveUi.onSafeSizeChanged(scroll, (width, height) -> {
+            if (width == 0) return;
+            int gutter = Math.max(dp(12), (width - dp(840)) / 2);
+            if (root.getPaddingLeft() != gutter) {
+                root.setPadding(gutter, root.getPaddingTop(), gutter, root.getPaddingBottom());
+            }
+        });
 
         View bottom = actionBar == null
                 ? MerchantBottomNavigation.build(this, MerchantBottomNavigation.resolve(this)) : actionBar;
@@ -209,7 +217,6 @@ public class MerchantBaseActivity extends Activity {
         b.setTextSize(14);
         b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48));
         b.setMinWidth(0); b.setMinimumWidth(0);
-        b.setMaxLines(2);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(Color.WHITE);
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{BLUE, Color.parseColor("#279DFF")});

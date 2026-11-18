@@ -127,7 +127,7 @@ public class LoginActivity extends MerchantAuthActivity {
         FrameLayout box = new FrameLayout(this); passwordBox = box;
         passwordInput = input("Masukkan kata sandi", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD, true);
         passwordInput.setSaveEnabled(false);
-        box.addView(passwordInput, new FrameLayout.LayoutParams(-1, -1));
+        box.addView(passwordInput, new FrameLayout.LayoutParams(-1, -2));
         eyeButton = new ImageButton(this); eyeButton.setImageResource(android.R.drawable.ic_menu_view);
         eyeButton.setContentDescription("Tampilkan kata sandi"); eyeButton.setBackgroundColor(Color.TRANSPARENT);
         eyeButton.setColorFilter(Color.rgb(52,145,255));
@@ -136,7 +136,8 @@ public class LoginActivity extends MerchantAuthActivity {
         loginButton = new Button(this); loginButton.setAllCaps(false); loginButton.setTextSize(16);
         loginButton.setTextColor(Color.WHITE); loginButton.setTypeface(Typeface.DEFAULT_BOLD);
         loginButton.setBackground(gradient("#006BEF", "#2E9BFF", dp(17)));
-        loginCard.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(54)));
+        loginButton.setMinHeight(dp(54));
+        loginCard.addView(loginButton, new LinearLayout.LayoutParams(-1, -2));
         loadingView = new ProgressBar(this); loadingView.setVisibility(View.GONE);
         LinearLayout.LayoutParams loadingLp = new LinearLayout.LayoutParams(dp(30), dp(30));
         loadingLp.gravity = Gravity.CENTER; loginCard.addView(loadingView, loadingLp);
@@ -533,6 +534,7 @@ public class LoginActivity extends MerchantAuthActivity {
         EditText field = new EditText(this);
         field.setSingleLine(true);
         field.setTextSize(14);
+        field.setMinHeight(dp(52));
         field.setTextColor(inkColor);
         field.setHintTextColor(mutedColor);
         field.setHint(hint);
@@ -549,7 +551,7 @@ public class LoginActivity extends MerchantAuthActivity {
 
     private LinearLayout.LayoutParams fieldLayout() {
         LinearLayout.LayoutParams lp =
-                new LinearLayout.LayoutParams(-1, dp(52));
+                new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, 0, 0, dp(13));
         return lp;
     }

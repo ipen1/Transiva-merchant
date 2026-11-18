@@ -20,6 +20,7 @@ public class TransivaCallUiActivity extends Activity {
     public static final String ACTION_CALL_STATE="com.transiva.app.WEBRTC_CALL_STATE",EXTRA_CALL_ID="call_id",EXTRA_CALL_STATUS="call_status";
     private static final int PERMISSIONS=7101;
     private LinearLayout root,header,controls,actions;
+    private ScrollView headerPanel, controlsPanel, actionsPanel;
     private FrameLayout stage,identity,previewFrame;
     private CallVisuals.Avatar avatar;
     private TextView brand,stageHint;
@@ -77,11 +78,13 @@ public class TransivaCallUiActivity extends Activity {
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
     private TextView label(String text,int size){TextView t=new TextView(this);t.setText(text);t.setTextSize(size);t.setTextColor(Color.WHITE);t.setGravity(Gravity.CENTER);return t;}
     private Button button(String text,String icon,int kind){
-        Button b=new Button(this);b.setText(text);b.setTextSize(11);b.setMaxLines(2);
-        CallVisuals.style(b,icon,false,kind,dp(kind==0?22:28));return b;
+        Button b=new Button(this);b.setText(text);b.setTextSize(11);
+        CallVisuals.style(b,icon,false,kind,dp(kind==0?22:28));
+        b.setMinHeight(dp(kind == 0 ? 76 : 68));
+        return b;
     }
     private void addControl(LinearLayout row,Button b){
-        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(76),1);p.setMargins(dp(4),0,dp(4),0);row.addView(b,p);
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,-2,1);p.setMargins(dp(4),0,dp(4),0);row.addView(b,p);
     }
     private void build(){
         boundPhoto="";boundName="";compact=false;
@@ -95,7 +98,9 @@ public class TransivaCallUiActivity extends Activity {
         name=label(CallPeerIdentity.first(getIntent().getStringExtra("peer_name"),getIntent().getStringExtra("caller_name"),"Transiva"),28);
         name.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));name.setMaxLines(2);header.addView(name);
         status=label(incoming?"Panggilan masuk":"Menyiapkan panggilan",13);status.setTextColor(CallVisuals.MUTED);
-        status.setPadding(0,dp(4),0,dp(4));header.addView(status);root.addView(header);
+        status.setPadding(0,dp(4),0,dp(4));header.addView(status);
+        headerPanel = MerchantResponsiveUi.boundedPanel(this, header, .28f);
+        root.addView(headerPanel, new LinearLayout.LayoutParams(-1, -2));
         stage=new FrameLayout(this);stage.setClipChildren(true);stage.setClipToPadding(true);stage.setClipToOutline(true);stage.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));
         LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,0,1);sp.setMargins(0,dp(12),0,dp(16));root.addView(stage,sp);
         identity=new FrameLayout(this);identity.setBackground(CallVisuals.surface(0xff10263b,0xff091525,dp(28),0xff213b50));identity.addView(new CallVisuals.Halo(this),new FrameLayout.LayoutParams(-1,-1));
@@ -110,12 +115,17 @@ public class TransivaCallUiActivity extends Activity {
         camera=button("Kamera","video",0);swap=button("Putar kamera","swap",0);
         for(Button control:new Button[]{mute,speaker,camera,swap}){control.setEnabled(false);control.setAlpha(.45f);}
         addControl(row,mute);addControl(row,speaker);if(video){addControl(row,camera);addControl(row,swap);}
-        controls.addView(row);root.addView(controls);
+        controls.addView(row);
+        controlsPanel = MerchantResponsiveUi.boundedPanel(this, controls, .26f);
+        root.addView(controlsPanel, new LinearLayout.LayoutParams(-1, -2));
         actions=new LinearLayout(this);actions.setPadding(0,dp(14),0,0);
         accept=button(incoming?"Terima":"Coba lagi","phone",1);end=button(incoming?"Tolak":"Akhiri","end",2);
         accept.setVisibility(incoming?View.VISIBLE:View.GONE);
-        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,dp(68),1);ap.setMargins(dp(4),0,dp(4),0);
-        actions.addView(accept,ap);LinearLayout.LayoutParams ep=new LinearLayout.LayoutParams(ap);actions.addView(end,ep);root.addView(actions);
+        LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(0,-2,1);ap.setMargins(dp(4),0,dp(4),0);
+        actions.addView(accept,ap);
+        actions.addView(end,new LinearLayout.LayoutParams(ap));
+        actionsPanel = MerchantResponsiveUi.boundedPanel(this, actions, .32f);
+        root.addView(actionsPanel, new LinearLayout.LayoutParams(-1, -2));
         setContentView(root);applyCallBars();
         View content = findViewById(android.R.id.content);
         content.setBackgroundColor(CallVisuals.TOP);
@@ -129,7 +139,13 @@ public class TransivaCallUiActivity extends Activity {
             return androidx.core.view.WindowInsetsCompat.CONSUMED;
         });
         MerchantWindowInsets.requestWhenAttached(content);
-        root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{boolean small=(b-t)<dp(480);if(small!=compact){compact=small;resizeChrome();}});
+        MerchantResponsiveUi.onSafeSizeChanged(root, (width, height) -> {
+            boolean small = root.getHeight() < dp(480);
+            if (small != compact) {
+                compact = small;
+                resizeChrome();
+            }
+        });
         bindIdentity(name.getText().toString(),CallPeerIdentity.first(getIntent().getStringExtra("peer_photo"),getIntent().getStringExtra("caller_photo")));
         accept.setOnClickListener(v->requestStart());end.setOnClickListener(v->hangup());
         mute.setOnClickListener(v->{WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null){e.toggleMute();render();}});
@@ -144,8 +160,8 @@ public class TransivaCallUiActivity extends Activity {
     }
     private void resizeChrome(){
         brand.setVisibility(compact?View.GONE:View.VISIBLE);name.setTextSize(compact?20:28);
-        for(Button b:new Button[]{mute,speaker,camera,swap,accept,end}){
-            ViewGroup.LayoutParams p=b.getLayoutParams();if(p!=null){p.height=dp(compact?64:(b==accept||b==end)?68:76);b.setLayoutParams(p);}
+        for (Button b : new Button[]{mute, speaker, camera, swap, accept, end}) {
+            b.setMinHeight(dp(compact ? 52 : (b == accept || b == end) ? 68 : 76));
         }
         actions.setPadding(0,dp(compact?6:14),0,0);applyPadding();
     }
@@ -306,7 +322,7 @@ public class TransivaCallUiActivity extends Activity {
     @Override public void onBackPressed(){if(video&&startedSession){if(enterPip())return;Toast.makeText(this,"PiP tidak tersedia; suara tetap berjalan",Toast.LENGTH_SHORT).show();}finish();}
     @Override protected void onUserLeaveHint(){super.onUserLeaveHint();if(video&&startedSession&&Build.VERSION.SDK_INT<31)enterPip();}
     @RequiresApi(26)
-    @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){super.onPictureInPictureModeChanged(pip,config);pipEntering=false;MerchantWindowInsets.requestWhenAttached(findViewById(android.R.id.content));header.setVisibility(pip?View.GONE:View.VISIBLE);controls.setVisibility(pip?View.GONE:View.VISIBLE);actions.setVisibility(pip?View.GONE:View.VISIBLE);applyPadding();if(previewFrame!=null)previewFrame.setVisibility(!pip&&WebRtcCallForegroundService.current()!=null&&WebRtcCallForegroundService.current().cameraEnabled?View.VISIBLE:View.INVISIBLE);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(pip||resumed);}
+    @Override public void onPictureInPictureModeChanged(boolean pip,Configuration config){super.onPictureInPictureModeChanged(pip,config);pipEntering=false;MerchantWindowInsets.requestWhenAttached(findViewById(android.R.id.content));headerPanel.setVisibility(pip?View.GONE:View.VISIBLE);controlsPanel.setVisibility(pip?View.GONE:View.VISIBLE);actionsPanel.setVisibility(pip?View.GONE:View.VISIBLE);applyPadding();if(previewFrame!=null)previewFrame.setVisibility(!pip&&WebRtcCallForegroundService.current()!=null&&WebRtcCallForegroundService.current().cameraEnabled?View.VISIBLE:View.INVISIBLE);WebRtcSessionEngine e=WebRtcCallForegroundService.current();if(e!=null)e.setVisible(pip||resumed);}
     private void resizeLocalPreview(){
         if(stage.getHeight()<=0||stage.getWidth()<=0)return;
         int edge=Math.max(1,Math.min(dp(144),Math.min(stage.getWidth()-dp(32),stage.getHeight()-dp(64))));

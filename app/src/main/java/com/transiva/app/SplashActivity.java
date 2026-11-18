@@ -57,7 +57,11 @@ public class SplashActivity extends Activity {
         column.setGravity(Gravity.CENTER_HORIZONTAL);
         boolean compact = getResources().getConfiguration().screenHeightDp < 520;
         column.setPadding(dp(24), dp(compact ? 8 : 12), dp(24), dp(compact ? 8 : 18));
-        root.addView(column, new FrameLayout.LayoutParams(-1, -1));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.addView(column, new android.widget.ScrollView.LayoutParams(-1, -2));
+        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
         View topSpace = new View(this);
         column.addView(topSpace, new LinearLayout.LayoutParams(1, 0, .9f));
         hero = new LinearLayout(this);

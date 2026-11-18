@@ -144,7 +144,7 @@ final class OrderChatStyle {
             if(box.getChildCount()==1&&box.getChildAt(0) instanceof TextView
                     &&((TextView)box.getChildAt(0)).getText().toString().startsWith("Belum ada pesan"))
                 box.removeViewAt(0);
-            box.addView(callCard(box, call));
+            box.addView(callCard(call));
             added = true;
         }
         // Also re-sort when a message page arrives after earlier call cards.
@@ -181,7 +181,7 @@ final class OrderChatStyle {
         return fill;
     }
 
-    private View callCard(LinearLayout box, JSONObject call) {
+    private View callCard(JSONObject call) {
         boolean mine = call.optInt("outgoing") == 1;
         boolean video = "video".equals(call.optString("call_type"));
         boolean unanswered = !stamped(call, "accepted_at");
@@ -193,16 +193,22 @@ final class OrderChatStyle {
         row.setLayoutParams(rowParams);
         row.setTag(new Item(call.optString("created_at"), 0, call.optLong("id")));
 
-        LinearLayout card = new LinearLayout(activity);
+        LinearLayout card = new LinearLayout(activity) {
+            @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                if (View.MeasureSpec.getMode(widthMeasureSpec) == View.MeasureSpec.AT_MOST) {
+                    int available = View.MeasureSpec.getSize(widthMeasureSpec);
+                    int width = Math.min(dp(258), Math.max(0, available - dp(20)));
+                    widthMeasureSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
+        };
         card.setGravity(Gravity.CENTER_VERTICAL);
         card.setPadding(dp(11), dp(9), dp(12), dp(8));
         GradientDrawable fill = bubbleFill(mine);
         fill.setStroke(dp(1), mine ? 0x669acbff : dark() ? 0xff465669 : 0xffccd6e2);
         card.setBackground(fill);
-        int viewport = box.getWidth();
-        if (viewport == 0) viewport = activity.getResources().getDisplayMetrics().widthPixels - dp(24);
-        int available = viewport - box.getPaddingLeft() - box.getPaddingRight();
-        row.addView(card, new LinearLayout.LayoutParams(Math.min(dp(258), Math.max(1, available - dp(20))), -2));
+        row.addView(card, new LinearLayout.LayoutParams(-2, -2));
 
         int accent = unanswered ? (mine || dark() ? 0xffffb9b0 : 0xff922d28)
                 : (mine || dark() ? 0xffbddeff : 0xff214d83);
@@ -247,15 +253,19 @@ final class OrderChatStyle {
         return direction + " · " + duration;
     }
 
-    void overflow(LinearLayout header, Runnable search, Fetch fetch, LinearLayout messages) {
+    void overflow(LinearLayout header, Button quickAction, Fetch fetch, LinearLayout messages) {
         TextView more = label("⋮", 24, false, true);
         more.setGravity(Gravity.CENTER);
         more.setContentDescription("Opsi percakapan");
         header.addView(more, new LinearLayout.LayoutParams(dp(42), dp(48)));
         more.setOnClickListener(v -> {
             PopupMenu menu = new PopupMenu(activity, more);
+            if (!quickAction.isShown()) {
+                menu.getMenu().add("Pesan cepat").setEnabled(quickAction.isEnabled())
+                        .setOnMenuItemClickListener(item -> quickAction.performClick());
+            }
             menu.getMenu().add("Cari pesan").setOnMenuItemClickListener(item -> {
-                if (search != null) search.run(); else lookup(fetch, messages, false);
+                lookup(fetch, messages, false);
                 return true;
             });
             menu.getMenu().add("Riwayat panggilan").setOnMenuItemClickListener(item -> {

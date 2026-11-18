@@ -35,6 +35,16 @@ public final class MerchantBranchMapActivity extends MerchantBaseActivity {
 
         FrameLayout frame = new FrameLayout(this);
         root.addView(frame, new LinearLayout.LayoutParams(-1, dp(390)));
+        View scroll = (View) root.getParent();
+        MerchantResponsiveUi.onSafeSizeChanged(scroll, (width, height) -> {
+            if (height == 0) return;
+            int mapHeight = Math.min(dp(390), Math.max(dp(96), Math.round(height * .62f)));
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) frame.getLayoutParams();
+            if (params.height != mapHeight) {
+                params.height = mapHeight;
+                frame.setLayoutParams(params);
+            }
+        });
         mapView = new MapView(this) {
             @Override public boolean dispatchTouchEvent(MotionEvent event) {
                 if (getParent() != null) getParent().requestDisallowInterceptTouchEvent(

@@ -138,10 +138,10 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             tab.setPadding(dp(8), 0, dp(8), 0);
             tab.setElevation(0);
         }
-        LinearLayout.LayoutParams activeLp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams activeLp = new LinearLayout.LayoutParams(0, -2, 1);
         activeLp.rightMargin = dp(3);
         tabs.addView(active, activeLp);
-        LinearLayout.LayoutParams historyLp = new LinearLayout.LayoutParams(0, dp(48), 1);
+        LinearLayout.LayoutParams historyLp = new LinearLayout.LayoutParams(0, -2, 1);
         historyLp.leftMargin = dp(3);
         tabs.addView(hist, historyLp);
         LinearLayout.LayoutParams tabsLp = new LinearLayout.LayoutParams(-1, -2);

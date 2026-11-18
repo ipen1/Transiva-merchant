@@ -126,7 +126,7 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         chatStyle.addAvatar(head,driverName,getIntent().getStringExtra("participant_photo"));
         LinearLayout info = new LinearLayout(this); info.setOrientation(LinearLayout.VERTICAL); info.setPadding(0,0,dp(6),0);
         driverTitle=tv(driverName, 16, NAVY, true);
-        driverTitle.setMaxLines(1);
+        driverTitle.setMaxLines(2);
         driverTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
         info.addView(driverTitle);
         status = tv("Pesanan #" + (orderId.isEmpty()?orderDbId:orderId), 11, MUTED, false); info.addView(status);
@@ -146,10 +146,13 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
         quick.setElevation(0);
         quick.setTextSize(12);
         quick.setEnabled(false);
-        quick.setOnClickListener(v->PremiumDialogs.builder(this).setTitle("Pesan cepat")
-            .setItems(new String[]{"Pesanan sedang disiapkan","Pesanan sudah siap","Tunggu sebentar ya","Silakan ambil pesanan"},(d,w)->{
-                String[] texts={"Pesanan sedang disiapkan","Pesanan sudah siap","Tunggu sebentar ya","Silakan ambil pesanan"};sendText(texts[w], false);
-            }).setNegativeButton("Tutup",null).show());page.addView(quick,new LinearLayout.LayoutParams(dp(118),dp(48)));
+        quick.setOnClickListener(v -> {
+            String[] texts = {"Pesanan sedang disiapkan", "Pesanan sudah siap", "Tunggu sebentar ya", "Silakan ambil pesanan"};
+            PremiumDialogs.builder(this).setTitle("Pesan cepat").setItems(texts, (d, w) -> sendText(texts[w], false))
+                    .setNegativeButton("Tutup", null).show();
+        });
+        quick.setPadding(dp(8), 0, dp(8), 0);
+        page.addView(quick, new LinearLayout.LayoutParams(-2, -2));
 
         scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setClipToPadding(false);
         messages = new LinearLayout(this); messages.setOrientation(LinearLayout.VERTICAL); messages.setPadding(dp(2),0,dp(2),dp(6));
@@ -160,14 +163,25 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
                 main.postDelayed(reportVisibleRead,1250);
             }
         });
-        chatStyle.overflow(head,null,query->new JSONObject(get(chatEndpoint()+query)),messages);
+        chatStyle.overflow(head, quick, query -> new JSONObject(get(chatEndpoint() + query)), messages);
         page.addView(scroll, new LinearLayout.LayoutParams(-1,0,1));
 
         LinearLayout composer = new LinearLayout(this); composer.setGravity(Gravity.CENTER_VERTICAL); composer.setPadding(dp(5),dp(4),dp(5),dp(4)); composer.setBackground(round(Color.WHITE,dp(18)));
         input = new EditText(this); input.setHint("Pesan ke driver…"); input.setMinHeight(dp(48)); input.setEnabled(false); input.setSingleLine(false); input.setMaxLines(4); input.setMinLines(1); input.setTextSize(compactScreen() ? 13 : 14); input.setTextColor(TEXT); input.setHintTextColor(Color.parseColor("#98A2B3")); input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|InputType.TYPE_TEXT_FLAG_MULTI_LINE); input.setBackground(stroke(Color.parseColor("#F8FBFF"),Color.parseColor("#DDE7F3"),dp(14))); input.setPadding(dp(12),dp(8),dp(12),dp(8));
         composer.addView(input,new LinearLayout.LayoutParams(0,-2,1));
-        send = btn("Kirim"); LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(dp(64),dp(48));sp.setMarginStart(dp(6));send.setPadding(0,0,0,0);send.setEnabled(false);composer.addView(send,sp); send.setOnClickListener(v->sendText(input.getText().toString(), true));
+        send = btn("Kirim");
+        send.setMinWidth(dp(64));
+        LinearLayout.LayoutParams sendParams = new LinearLayout.LayoutParams(-2, -2);
+        sendParams.setMarginStart(dp(6));
+        send.setEnabled(false);
+        send.setOnClickListener(v -> sendText(input.getText().toString(), true));
+        composer.addView(send, sendParams);
         page.addView(composer);
+        MerchantResponsiveUi.onSafeSizeChanged(page, (width, height) -> {
+            boolean compact = height < dp(260);
+            quick.setVisibility(compact ? View.GONE : View.VISIBLE);
+            input.setMaxLines(compact ? 2 : 4);
+        });
     }
 
     private void applyChatInsets(LinearLayout page) {
@@ -190,10 +204,6 @@ public class MerchantDriverChatActivity extends MerchantBaseActivity {
                 scroll.post(this::scrollToLatest);
             }
         });
-    }
-
-    private void addQuick(LinearLayout parent, String text) {
-        Button b = outlineBtn(text); b.setTextSize(compactScreen() ? 10 : 11); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(compactScreen() ? 48 : 44),1); lp.setMargins(dp(3),0,dp(3),0); parent.addView(b,lp); b.setOnClickListener(v->sendText(text, false));
     }
 
     @Override public void onWindowFocusChanged(boolean focused){

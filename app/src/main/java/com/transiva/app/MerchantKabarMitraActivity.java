@@ -38,9 +38,7 @@ public class MerchantKabarMitraActivity extends MerchantBaseActivity {
   pick.setOnClickListener(v->{Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("image/*");i.addCategory(Intent.CATEGORY_OPENABLE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);startActivityForResult(i,708);});publish.setOnClickListener(v->publish());
   pick.setTextSize(13);publish.setTextSize(13);pick.setElevation(0);publish.setElevation(0);
   pick.setPadding(dp(8),0,dp(8),0);publish.setPadding(dp(8),0,dp(8),0);
-  LinearLayout.LayoutParams pickLp=new LinearLayout.LayoutParams(0,dp(48),1);pickLp.rightMargin=dp(4);
-  LinearLayout.LayoutParams publishLp=new LinearLayout.LayoutParams(0,dp(48),1);publishLp.leftMargin=dp(4);
-  actions.addView(pick,pickLp);actions.addView(publish,publishLp);composer.addView(actions);
+  actions.addView(pick,actionLp());actions.addView(publish,actionLp());composer.addView(actions);
   status=tv("",12,MUTED,false);status.setVisibility(View.GONE);status.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int st,int c,int a){}public void onTextChanged(CharSequence t,int st,int b,int c){status.setVisibility(t.length()==0?View.GONE:View.VISIBLE);}public void afterTextChanged(android.text.Editable e){}});content.addView(status,1);storyContent.addView(composer);
   storyContent.addView(label("Cerita aktif"));stories=new LinearLayout(this);stories.setOrientation(LinearLayout.VERTICAL);storyContent.addView(stories);
   followerContent=new LinearLayout(this);followerContent.setOrientation(LinearLayout.VERTICAL);content.addView(followerContent);

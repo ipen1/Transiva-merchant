@@ -21,7 +21,7 @@ final class CallVisuals {
         b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x38ffffff),
                 surface(a,z,densitySize,kind==0?0xff38516a:0x55ffffff),null));
         b.setTextColor(Color.WHITE);b.setAllCaps(false);b.setTypeface(Typeface.create("sans-serif-medium",Typeface.NORMAL));
-        b.setGravity(Gravity.CENTER);b.setMinHeight(0);b.setMinimumHeight(0);b.setMinWidth(0);b.setMinimumWidth(0);
+        b.setGravity(Gravity.CENTER);b.setMinWidth(0);b.setMinimumWidth(0);
         b.setPadding(4,4,4,4);b.setElevation(kind==0?0:4*b.getResources().getDisplayMetrics().density);
         Icon glyph=new Icon(icon,selected);int edge=Math.round(24*b.getResources().getDisplayMetrics().density);
         glyph.setBounds(0,0,edge,edge);b.setCompoundDrawables(null,glyph,null,null);

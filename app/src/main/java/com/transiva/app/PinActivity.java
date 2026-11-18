@@ -151,7 +151,20 @@ public class PinActivity extends Activity {
         stepText.setGravity(Gravity.CENTER);
         card.addView(stepText, new LinearLayout.LayoutParams(-1, -2));
 
-        dotsContainer = new LinearLayout(this);
+        dotsContainer = new LinearLayout(this) {
+            @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                int available = MeasureSpec.getSize(widthMeasureSpec);
+                int gap = Math.min(dp(5), available / (PIN_LENGTH * 6));
+                int cell = Math.max(0, Math.min(dp(38), available / PIN_LENGTH - 2 * gap));
+                for (int i = 0; i < getChildCount(); i++) {
+                    LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) getChildAt(i).getLayoutParams();
+                    params.width = cell;
+                    params.leftMargin = gap;
+                    params.rightMargin = gap;
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
+        };
         dotsContainer.setOrientation(LinearLayout.HORIZONTAL);
         dotsContainer.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams dotsLp = new LinearLayout.LayoutParams(-1, dp(58));
@@ -223,7 +236,7 @@ public class PinActivity extends Activity {
         addKey(row, b);
         addKey(row, c);
 
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(62));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, -2);
         rowLp.setMargins(0, dp(3), 0, dp(3));
         parent.addView(row, rowLp);
     }
@@ -231,7 +244,9 @@ public class PinActivity extends Activity {
     private void addKey(LinearLayout row, String value) {
         if (value.isEmpty()) {
             View spacer = new View(this);
-            row.addView(spacer, new LinearLayout.LayoutParams(0, -1, 1f));
+            LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, 0, 1f);
+            spacerParams.setMargins(dp(5), 0, dp(5), 0);
+            row.addView(spacer, spacerParams);
             return;
         }
 
@@ -241,7 +256,8 @@ public class PinActivity extends Activity {
         key.setClickable(true);
         key.setFocusable(true);
 
-        LinearLayout.LayoutParams keyLp = new LinearLayout.LayoutParams(0, -1, 1f);
+        key.setMinHeight(dp(58));
+        LinearLayout.LayoutParams keyLp = new LinearLayout.LayoutParams(0, -2, 1f);
         keyLp.setMargins(dp(5), dp(2), dp(5), dp(2));
         row.addView(key, keyLp);
 
@@ -446,7 +462,7 @@ public class PinActivity extends Activity {
 
             dot.setGravity(Gravity.CENTER);
             dot.setText(filled ? "●" : "");
-            dot.setTextSize(20);
+            dot.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 18);
             dot.setTextColor(Color.WHITE);
             dot.setBackground(
                     filled

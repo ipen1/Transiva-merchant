@@ -176,13 +176,11 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         metrics.setPadding(dp(11), dp(34), dp(11), dp(7));
         LinearLayout first = metricRow();
         todayText = stat(first, "Pesanan hari ini");
-        first.addView(divider(), new LinearLayout.LayoutParams(dp(1), -1));
         revenueText = stat(first, "Omzet hari ini");
         metrics.addView(first);
         metrics.addView(divider(), new LinearLayout.LayoutParams(-1, dp(1)));
         LinearLayout second = metricRow();
         ratingText = stat(second, "Rating");
-        second.addView(divider(), new LinearLayout.LayoutParams(dp(1), -1));
         reviewText = stat(second, "Ulasan");
         metrics.addView(second);
         panel.addView(metrics, new FrameLayout.LayoutParams(-1, -2));
@@ -197,6 +195,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         LinearLayout row = new LinearLayout(this);
         row.setBaselineAligned(false);
         row.setLayoutParams(new LinearLayout.LayoutParams(-1, -2));
+        setMiddleDivider(row);
         return row;
     }
 
@@ -214,12 +213,15 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout branchActions() {
         LinearLayout branches = actions();
         branches.setBackground(ui.surface(14));
+        branches.setGravity(Gravity.CENTER_VERTICAL);
         boolean stacked = branches.getOrientation() == LinearLayout.VERTICAL;
-        addPair(branches, branchLink(R.drawable.ic_merchant_store, "Kelola toko & cabang",
-                () -> open(MerchantBranchesActivity.class)));
-        branches.addView(divider(), new LinearLayout.LayoutParams(stacked ? -1 : dp(1), stacked ? dp(1) : -1));
-        addPair(branches, branchLink(R.drawable.ic_merchant_package, "Pesanan semua cabang",
-                () -> open(MerchantOrdersActivity.class)));
+        setMiddleDivider(branches);
+        branches.addView(branchLink(R.drawable.ic_merchant_store, "Kelola toko & cabang",
+                () -> open(MerchantBranchesActivity.class)),
+                new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
+        branches.addView(branchLink(R.drawable.ic_merchant_package, "Pesanan semua cabang",
+                () -> open(MerchantOrdersActivity.class)),
+                new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
         return branches;
     }
 
@@ -265,6 +267,14 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             else params.leftMargin = dp(8);
         }
         parent.addView(view, params);
+    }
+
+    private void setMiddleDivider(LinearLayout row) {
+        GradientDrawable line = new GradientDrawable();
+        line.setColor(ui.divider());
+        line.setSize(dp(1), dp(1));
+        row.setDividerDrawable(line);
+        row.setShowDividers(LinearLayout.SHOW_DIVIDER_MIDDLE);
     }
 
     private View divider() {
