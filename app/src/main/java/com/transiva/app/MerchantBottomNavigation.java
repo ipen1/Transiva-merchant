@@ -93,7 +93,6 @@ public final class MerchantBottomNavigation {
         title.setText(label);
         title.setTextSize(11f);
         title.setGravity(Gravity.CENTER);
-        title.setBreakStrategy(android.text.Layout.BREAK_STRATEGY_SIMPLE);
         title.setIncludeFontPadding(false);
         title.setTextColor(tint);
         title.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
