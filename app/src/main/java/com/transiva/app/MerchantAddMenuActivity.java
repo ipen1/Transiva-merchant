@@ -62,6 +62,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private String editMenuId = "";
     private String existingImage = "";
     private String selectedCategory = "";
+    private String toppingRevision = "";
+    private int subcategoryId;
+    private String menuRequestKey = java.util.UUID.randomUUID().toString();
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -69,13 +72,29 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         editMenuId = safe(getIntent().getStringExtra("menu_id"));
         existingImage = safe(getIntent().getStringExtra("image"));
         originalPhoto = safe(getIntent().getStringExtra("original_photo"));
+        subcategoryId = getIntent().getIntExtra("new_subcategory_id", 0);
+        toppingRevision = safe(getIntent().getStringExtra("topping_revision"));
+        if (b != null) {
+            editMode = b.getBoolean("edit_mode", editMode);
+            toppingRevision = b.getString("topping_revision", toppingRevision);
+            editMenuId = b.getString("edit_menu_id", editMenuId);
+            existingImage = b.getString("saved_image", existingImage);
+            originalPhoto = b.getString("saved_original_photo", originalPhoto);
+            menuRequestKey = b.getString("menu_request_key", menuRequestKey);
+        }
         String options = getIntent().getStringExtra("options_json");
         if (editMode && options != null && !options.isEmpty()) legacyOptions = options;
         toppingEditor = new MerchantToppingEditor(this, this::mainPhoto, this::toppingCustomerPrice, legacyOptions);
         build();
         prefillEditData();
-        badge.load(getIntent().getStringExtra("photo_badge"), b == null ? null : b.getString("photo_badge"));
+        if (!editMode && subcategoryId > 0) setCategory("Lainnya");
+        String savedBadge = getIntent().getStringExtra("photo_badge");
+        badge.load(b == null ? savedBadge : b.getString("saved_badge", savedBadge),
+                b == null ? null : b.getString("photo_badge"));
+        if (editMode && subcategoryId > 0) setResult(RESULT_OK);
         if (b!=null) {
+            initialTrack = b.getBoolean("initial_track", initialTrack);
+            initialStock = b.getInt("initial_stock", initialStock);
             nameInput.setText(b.getString("menu_name",""));
             priceInput.setText(b.getString("menu_price",""));
             descriptionInput.setText(b.getString("description",""));
@@ -101,6 +120,15 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state);
+        state.putBoolean("edit_mode", editMode);
+        state.putString("topping_revision", toppingRevision);
+        state.putBoolean("initial_track", initialTrack);
+        state.putInt("initial_stock", initialStock);
+        state.putString("edit_menu_id", editMenuId);
+        state.putString("saved_image", existingImage);
+        state.putString("saved_original_photo", originalPhoto);
+        state.putString("menu_request_key", menuRequestKey);
+        state.putString("saved_badge", getIntent().getStringExtra("photo_badge"));
         state.putString("menu_name",nameInput.getText().toString());
         state.putString("menu_price",priceInput.getText().toString());
         state.putString("description",descriptionInput.getText().toString());
@@ -133,10 +161,12 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         core.addView(editorLabel("Nama menu"));
         nameInput=editorField("Contoh: Risol Original",InputType.TYPE_CLASS_TEXT);
         core.addView(nameInput);
-        core.addView(editorLabel("Harga toko / porsi (Rp)"));
+        core.addView(editorLabel("Harga Tanpa Toping/Porsi (Rp)"));
         priceInput=editorField("Contoh: 7000",InputType.TYPE_CLASS_NUMBER);
         core.addView(priceInput);
+        core.addView(sub("Kosongkan harga tanpa topping jika tidak menjual menu tanpa topping."));
         core.addView(categorySelector());
+        if (subcategoryId > 0) core.addView(sub("Kategori toko: " + safe(getIntent().getStringExtra("new_subcategory_name"))));
         core.addView(editorLabel("Deskripsi · opsional"));
         descriptionInput=editorField("Rasa, isi, atau ukuran",InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         descriptionInput.setMaxLines(3);
@@ -144,10 +174,19 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
         toppingButton=editorButton("Topping · "+toppingEditor.size()+" pilihan ›",false);
         toppingButton.setOnClickListener(v -> {
-            if (!grossupLoaded || baseToppingPrice()<=0) {
-                toast("Isi harga menu dan tunggu aturan harga dimuat.");
+            if (!grossupLoaded) {
+                toast("Tunggu sampai aturan harga dimuat.");
                 return;
             }
+            if (nameInput.getText().toString().trim().isEmpty() || selectedCategory.isEmpty()) {
+                showFormError("Isi nama dan kategori menu sebelum menambah topping.");
+                return;
+            }
+            if (imagePreparing || (!editMode && preparedMenuImage == null)) {
+                showFormError("Pilih foto menu dan tunggu sampai siap sebelum menambah topping.");
+                return;
+            }
+            showFormError("");
             toppingEditor.show();
         });
         root.addView(toppingButton);
@@ -175,7 +214,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         advanced.addView(discountActiveInput);
         discountInput=editorField("Diskon (%) · maksimal 90",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL);
         advanced.addView(discountInput);
-        if (hasLegacyChoices()) advanced.addView(tv("Varian dan tambahan lama tetap tersedia.",11,MUTED,false));
+        if (hasLegacyChoices()) advanced.addView(tv("Varian dan tambahan lama tersedia saat menu dijual tanpa topping.",11,MUTED,false));
         root.addView(advanced);
 
         addWatchers();
@@ -306,6 +345,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     @Override public void onBackPressed() {
+        if (saving) return;
         if (toppingEditor.isOpen()) toppingEditor.back();
         else if (categoryPage) showFormPage();
         else super.onBackPressed();
@@ -341,7 +381,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             original = displayPrice - storedGrossup;
         }
         if (original <= 0) original = displayPrice;
-        if (original > 0) priceInput.setText(String.valueOf(original));
+        if (original > 0 && !MerchantToppingEditor.isRequired(legacyOptions)) priceInput.setText(String.valueOf(original));
         fileText.setText(existingImage.isEmpty()?"Tambahkan foto menu":"Foto menu saat ini");
         updatePreview();
     }
@@ -435,17 +475,20 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     private void updatePreview() {
         if (originalText == null || priceInput == null) return;
-        long original = parseLong(priceInput.getText().toString());
+        long base = baseToppingPrice();
+        long original = base > 0 ? base : toppingEditor.lowestPrice();
         double discountPercent = Math.max(0d, Math.min(90d, parseDouble(discountInput == null ? "0" : discountInput.getText().toString())));
         boolean discountActive = discountActiveInput != null && discountActiveInput.isChecked() && discountPercent > 0;
         long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
         long fee = gross(effectiveOriginal);
         long appPrice = effectiveOriginal + fee;
-        originalText.setText("Harga toko "+rupiah(effectiveOriginal)
-                +(discountActive?" setelah diskon":"")+(grossupLoaded?" · Biaya "+rupiah(fee):" · Menghitung biaya…"));
+        originalText.setText(base == 0 ? (original == 0 ? "Tambahkan pilihan topping untuk menentukan harga." : "Pelanggan wajib memilih topping.")
+                : "Harga tanpa topping " + rupiah(effectiveOriginal)
+                  + (discountActive ? " setelah diskon" : "")
+                  + (grossupLoaded ? " · Biaya " + rupiah(fee) : " · Menghitung biaya…"));
         String name = nameInput.getText().toString().trim();
         previewName.setText(name.isEmpty() ? "Nama menu" : name);
-        previewPrice.setText(rupiah(appPrice));
+        previewPrice.setText(original <= 0 ? "Harga belum diisi" : (base == 0 ? "Mulai " : "") + rupiah(appPrice));
     }
 
     private boolean hasLegacyChoices() {
@@ -558,32 +601,54 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
 
     void returnFromToppings() {
         toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan ›");
+        if (editMode) saveMenuButton.setText("Simpan perubahan");
         showFormPage();
     }
 
+    boolean isSavingMenu() { return saving; }
+
+    void saveToppings(Button save, TextView error, boolean remove) {
+        save(save, true, remove, detail -> {
+            error.setText(detail);
+            error.setVisibility(detail.isEmpty() ? View.GONE : View.VISIBLE);
+        });
+    }
+
     private void save(Button save) {
+        save(save, false, false, this::showFormError);
+    }
+
+    private void save(Button save, boolean toppingWrite, boolean remove, java.util.function.Consumer<String> feedback) {
         if (saving) return;
-        showFormError("");
+        feedback.accept("");
         String name = nameInput.getText().toString().trim();
         String cat = selectedCategory.trim();
-        long original = parseLong(priceInput.getText().toString());
-        if (name.isEmpty() || cat.isEmpty() || original <= 0) { showFormError("Nama, harga, dan kategori wajib diisi."); return; }
-        if (!grossupLoaded) { showFormError("Biaya aplikasi belum berhasil dimuat. Buka ulang halaman untuk mencoba lagi."); return; }
+        String raw = priceInput.getText().toString().trim();
+        long original = baseToppingPrice();
+        if (name.isEmpty() || cat.isEmpty()) {
+            feedback.accept("Isi nama dan kategori menu terlebih dahulu.");
+            return;
+        }
+        if ((!raw.isEmpty() && original <= 0) || original > 100000000L) {
+            feedback.accept("Isi harga tanpa topping Rp1–Rp100.000.000 atau kosongkan.");
+            return;
+        }
+        if (!grossupLoaded) { feedback.accept("Biaya aplikasi belum berhasil dimuat. Buka ulang halaman untuk mencoba lagi."); return; }
         double discountPercent = Math.max(0d, Math.min(90d, parseDouble(discountInput == null ? "0" : discountInput.getText().toString())));
         boolean discountActive = discountActiveInput != null && discountActiveInput.isChecked() && discountPercent > 0;
-        long effectiveOriginal = discountActive ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
+        long effectiveOriginal = discountActive && original > 0 ? Math.max(1L, Math.round(original * (1d - discountPercent / 100d))) : original;
         long fee = gross(effectiveOriginal), appPrice = effectiveOriginal + fee;
-        if (imagePreparing) { showFormError("Tunggu sampai gambar selesai disiapkan."); return; }
-        if (!editMode && imageUri == null) { showFormError("Pilih gambar menu terlebih dahulu."); return; }
-        if (imageUri != null && preparedMenuImage == null) { showFormError("Pilih ulang gambar lalu tunggu sampai siap."); return; }
-        String normalButton = editMode ? "Simpan Perubahan" : "Simpan Menu";
+        if (imagePreparing) { feedback.accept("Tunggu sampai gambar selesai disiapkan."); return; }
+        if (!editMode && imageUri == null) { feedback.accept("Pilih gambar menu terlebih dahulu."); return; }
+        if (imageUri != null && preparedMenuImage == null) { feedback.accept("Pilih ulang gambar lalu tunggu sampai siap."); return; }
+        String normalButton = toppingWrite ? "Simpan topping" : editMode ? "Simpan perubahan" : "Simpan menu";
         setButtonLoading(save, true, normalButton, imageUri == null ? "Menyimpan..." : "Mengupload menu...");
         String description = descriptionInput.getText().toString().trim();
         boolean trackStock = trackStockInput.isChecked();
         long parsedStock = parseLong(stockInput.getText().toString());
         if (parsedStock > Integer.MAX_VALUE) {
             setButtonLoading(save, false, normalButton, "");
-            showFormError("Jumlah stok terlalu besar.");
+            feedback.accept("Jumlah stok terlalu besar.");
             return;
         }
         int stock = (int)Math.max(0, parsedStock);
@@ -592,11 +657,14 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         if (preparedMenuImage != null) uploads.put("image",preparedMenuImage);
         final JSONArray toppings;
         try {
-            JSONArray checked=toppingEditor.request(original,uploads);
-            toppings=(!editMode || toppingEditor.isDirty()) ? checked : null;
+            JSONArray checked = toppingEditor.request(original, uploads, toppingWrite, remove);
+            if (original == 0 && checked.length() == 0) {
+                throw new IllegalArgumentException("Tambahkan minimal satu topping jika harga tanpa topping kosong.");
+            }
+            toppings = (!editMode || toppingWrite || toppingEditor.isDirty()) ? checked : null;
         } catch (Exception error) {
             setButtonLoading(save,false,normalButton,"");
-            showFormError(error.getMessage());
+            feedback.accept(error.getMessage());
             return;
         }
         String photoBadge = !editMode || badge.changed() || preparedMenuImage != null ? badge.value() : null;
@@ -609,6 +677,11 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 f.put("name", name); f.put("price", appPrice); f.put("original_price", original); f.put("grossup_fee", fee); f.put("category", cat);
                 f.put("discount_percent", discountPercent); f.put("discount_active", discountActive ? 1 : 0);
                 f.put("description", description);
+                f.put("topping_required", original == 0 ? 1 : 0);
+                if (!editMode) {
+                    f.put("menu_request_key", menuRequestKey);
+                    if (subcategoryId > 0) f.put("subcategory_id", subcategoryId);
+                }
                 if (photoBadge != null) f.put("photo_badge", photoBadge);
                 if (!editMode) f.put("menu_format", "single_price");
                 if (toppings != null) f.put("bundle_toppings",toppings.toString());
@@ -616,26 +689,63 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                     f.put("track_stock", trackStock ? 1 : 0);
                     f.put("stock", stock);
                 }
-                if (editMode) { f.put("menu_id", editMenuId); f.put("id", editMenuId); f.put("action", "update"); }
+                if (editMode) {
+                    f.put("menu_id", editMenuId);
+                    f.put("id", editMenuId);
+                    f.put("action", "update");
+                    if (!toppingRevision.isEmpty()) f.put("topping_revision", toppingRevision);
+                }
                 String endpoint = editMode ? BASE + "merchant_update_menu.php" : BASE + "add_food_menu.php";
                 JSONObject res = new JSONObject(MerchantHttpClient.postMultipart(this,endpoint,f,uploads));
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     unlockSave(save, normalButton);
-                    if (res.optBoolean("success", false)) { toast(res.optString("message", editMode ? "Menu berhasil diperbarui" : "Menu berhasil disimpan")); finish(); }
-                    else showFormError(res.optString("message", editMode ? "Gagal memperbarui menu" : "Gagal menyimpan menu"));
+                    if (!res.optBoolean("success", false)) {
+                        feedback.accept(res.optString("message", "Menu belum tersimpan."));
+                    } else if (!toppingWrite) {
+                        setResult(RESULT_OK);
+                        toast(res.optString("message", "Menu tersimpan."));
+                        finish();
+                    } else {
+                        JSONArray saved = res.optJSONArray("options");
+                        String id = res.optString("menu_id");
+                        if (saved == null || id.isEmpty()) {
+                            feedback.accept("Server belum mengirim konfirmasi topping. Muat ulang daftar menu.");
+                            return;
+                        }
+                        editMode = true;
+                        editMenuId = id;
+                        toppingRevision = res.optString("topping_revision");
+                        initialTrack = trackStock;
+                        initialStock = stock;
+                        existingImage = res.optString("image", existingImage);
+                        originalPhoto = res.optString("original_photo", originalPhoto);
+                        imageUri = null;
+                        preparedMenuImage = null;
+                        String savedBadge = res.optString("photo_badge", badge.value());
+                        getIntent().putExtra("photo_badge", savedBadge);
+                        badge.load(savedBadge, null);
+                        legacyOptions = saved.toString();
+                        toppingEditor.loadSaved(saved);
+                        setResult(RESULT_OK);
+                        fileText.setText("Foto menu saat ini");
+                        showPhotoPreview();
+                        updatePreview();
+                        toast(remove ? "Topping dihapus." : "Topping tersimpan.");
+                        toppingEditor.show();
+                    }
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
                     unlockSave(save, normalButton);
-                    showFormError("Server atau koneksi sedang bermasalah. Coba lagi.");
+                    feedback.accept("Server atau koneksi sedang bermasalah. Coba lagi.");
                 });
             }
         });
         if (!queued) {
             unlockSave(save, normalButton);
-            showFormError("Permintaan sedang antre. Coba lagi.");
+            feedback.accept("Permintaan sedang antre. Coba lagi.");
         }
     }
 

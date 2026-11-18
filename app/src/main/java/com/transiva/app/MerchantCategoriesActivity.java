@@ -1,5 +1,6 @@
 package com.transiva.app;
 
+import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.text.Editable;
@@ -24,6 +25,7 @@ import java.util.Locale;
 import java.util.TreeSet;
 
 public class MerchantCategoriesActivity extends MerchantBaseActivity {
+    private static final int ADD_IN_CATEGORY = 707;
     private static final String ENDPOINT = BASE + "merchant_categories.php";
     private MerchantPremiumUi ui;
     private LinearLayout list;
@@ -122,9 +124,11 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
             more.setOnClickListener(v -> {
                 PopupMenu popup = new PopupMenu(this, more);
                 popup.getMenu().add(0, 1, 0, "Edit kategori");
-                popup.getMenu().add(0, 2, 1, "Hapus kategori");
+                popup.getMenu().add(0, 3, 1, "Tambah menu baru");
+                popup.getMenu().add(0, 2, 2, "Hapus kategori");
                 popup.setOnMenuItemClickListener(item -> {
                     if (item.getItemId() == 1) edit(category);
+                    else if (item.getItemId() == 3) openNewMenu(category.optInt("id"), name);
                     else confirmDelete(category);
                     return true;
                 });
@@ -178,6 +182,8 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
         controls.addView(save, actionLp());
         controls.addView(back, actionLp());
         root.addView(controls);
+        Button addMenu = action("＋ Tambah menu baru", false);
+        root.addView(addMenu);
         root.addView(choices);
 
         Runnable draw = () -> renderChoices(choices, count, selected, groupId, search.getText().toString());
@@ -187,7 +193,8 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
             @Override public void afterTextChanged(Editable value) {}
         });
         draw.run();
-        save.setOnClickListener(v -> {
+        java.util.function.Consumer<Boolean> saveCategory = openMenu -> {
+            if (saving) return;
             String label = name.getText().toString().trim();
             if (label.isEmpty()) {
                 name.setError("Masukkan nama kategori.");
@@ -197,11 +204,23 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
                 JSONObject payload = new JSONObject().put("action", "save").put("id", groupId)
                         .put("name", label).put("menu_ids", new JSONArray(selected));
                 save.setEnabled(false);
-                submit(payload, error -> { message.setText(error); save.setEnabled(true); });
+                addMenu.setEnabled(false);
+                submit(payload, error -> {
+                    message.setText(error);
+                    save.setEnabled(true);
+                    addMenu.setEnabled(true);
+                }, result -> {
+                    showList();
+                    loaded = false;
+                    load();
+                    if (openMenu) openNewMenu(result.optInt("id"), label);
+                });
             } catch (Exception error) {
                 message.setText("Data kategori belum dapat disiapkan.");
             }
-        });
+        };
+        save.setOnClickListener(v -> saveCategory.accept(false));
+        addMenu.setOnClickListener(v -> saveCategory.accept(true));
     }
 
     private void renderChoices(LinearLayout choices, TextView count, Set<Integer> selected,
@@ -258,7 +277,34 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
                 }).show();
     }
 
+    private void openNewMenu(int id, String name) {
+        if (id <= 0 || saving) return;
+        Intent intent = new Intent(this, MerchantAddMenuActivity.class);
+        intent.putExtra(EXTRA_BRANCH, branchId());
+        intent.putExtra("new_subcategory_id", id);
+        intent.putExtra("new_subcategory_name", name);
+        startActivityForResult(intent, ADD_IN_CATEGORY);
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == ADD_IN_CATEGORY) {
+            loaded = false;
+            showList();
+            load();
+        }
+    }
+
     private void submit(JSONObject payload, java.util.function.Consumer<String> failed) {
+        submit(payload, failed, result -> {
+            loaded = false;
+            showList();
+            load();
+        });
+    }
+
+    private void submit(JSONObject payload, java.util.function.Consumer<String> failed,
+                        java.util.function.Consumer<JSONObject> succeeded) {
         if (saving) return;
         saving = true;
         if (!MerchantNetworkExecutor.executeWrite("merchant-categories:" + branchId(), () -> {
@@ -278,9 +324,7 @@ public class MerchantCategoriesActivity extends MerchantBaseActivity {
                     return;
                 }
                 toast(result.optString("message", "Kategori disimpan."));
-                loaded = false;
-                showList();
-                load();
+                succeeded.accept(result);
             });
         })) {
             saving = false;

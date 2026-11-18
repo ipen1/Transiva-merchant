@@ -346,7 +346,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         String details = category.isEmpty() ? "Tanpa kategori" : category;
         if (track == 1) details += " · Stok " + stock;
         info.addView(line(details, 12, MUTED, false, 2));
-        String price = rupiah(menu.optLong("price", 0));
+        String price = (menu.optBoolean("topping_required") ? "Mulai " : "") + rupiah(menu.optLong("price", 0));
         if (menu.optInt("discount_active") == 1 && menu.optDouble("discount_percent") > 0) {
             price += " · Diskon " + String.format(Locale.US, "%.0f%%", menu.optDouble("discount_percent"));
         }
@@ -576,6 +576,7 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         intent.putExtra("discount_percent", menu.optDouble("discount_percent", 0));
         JSONArray options = menu.optJSONArray("options");
         if (options != null) intent.putExtra("options_json", options.toString());
+        intent.putExtra("topping_revision", menu.optString("topping_revision"));
         startActivity(intent);
     }
     private void loadMenuImage(ImageView iv,TextView fallback,String raw){String url=normalizeImageUrl(raw);if(url.isEmpty())return;Glide.with(this).load(url).centerCrop().thumbnail(0.25f).listener(new com.bumptech.glide.request.RequestListener<android.graphics.drawable.Drawable>(){@Override public boolean onLoadFailed(com.bumptech.glide.load.engine.GlideException e,Object model,com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,boolean first){fallback.setVisibility(android.view.View.VISIBLE);return false;}@Override public boolean onResourceReady(android.graphics.drawable.Drawable resource,Object model,com.bumptech.glide.request.target.Target<android.graphics.drawable.Drawable> target,com.bumptech.glide.load.DataSource dataSource,boolean first){fallback.setVisibility(android.view.View.GONE);return false;}}).into(iv);}

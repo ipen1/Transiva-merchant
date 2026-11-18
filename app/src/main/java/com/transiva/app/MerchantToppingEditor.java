@@ -28,7 +28,6 @@ import java.util.function.Supplier;
 
 final class MerchantToppingEditor {
     static final int PICK_PHOTO = 802;
-    private static final int LIMIT = 8;
     private final MerchantAddMenuActivity host;
     private final Supplier<Object> mainPhoto;
     private final LongUnaryOperator customerPrice;
@@ -45,30 +44,50 @@ final class MerchantToppingEditor {
     MerchantToppingEditor(MerchantAddMenuActivity host, Supplier<Object> mainPhoto,
                           LongUnaryOperator customerPrice, String options) {
         this.host=host; this.mainPhoto=mainPhoto; this.customerPrice=customerPrice;
-        try {
-            JSONArray groups = new JSONArray(options);
-            for (int i=0;i<groups.length();i++) {
-                JSONObject group=groups.optJSONObject(i);
-                if (group==null || !"bundle_topping".equals(group.optString("type"))) continue;
-                JSONArray items=group.optJSONArray("items");
-                if (items==null) continue;
-                for (int j=0;j<items.length();j++) {
-                    JSONObject item=items.optJSONObject(j);
-                    if (item==null) continue;
-                    Topping topping=new Topping();
-                    topping.name=item.optString("name");
-                    topping.originalName=topping.name;
-                    topping.description=item.optString("description");
-                    topping.price=item.optLong("bundle_price");
-                    topping.image=item.optString("image","");
-                    toppings.add(topping);
-                }
+        try { loadSaved(new JSONArray(options)); }
+        catch (org.json.JSONException ignored) {}
+    }
+
+    void loadSaved(JSONArray groups) {
+        toppings.clear();
+        dirty = false;
+        for (int i=0;i<groups.length();i++) {
+            JSONObject group=groups.optJSONObject(i);
+            if (group==null || !"bundle_topping".equals(group.optString("type"))) continue;
+            JSONArray items=group.optJSONArray("items");
+            if (items==null) continue;
+            for (int j=0;j<items.length();j++) {
+                JSONObject item=items.optJSONObject(j);
+                if (item==null) continue;
+                Topping topping=new Topping();
+                topping.name=item.optString("name");
+                topping.originalName=topping.name;
+                topping.description=item.optString("description");
+                topping.price=item.optLong("bundle_price");
+                topping.image=item.optString("image","");
+                toppings.add(topping);
             }
-        } catch (Exception ignored) {}
+        }
     }
 
     int size() { return toppings.size(); }
     boolean isOpen() { return opened; }
+    long lowestPrice() {
+        long minimum = Long.MAX_VALUE;
+        for (Topping item : toppings) minimum = Math.min(minimum, item.price);
+        return minimum == Long.MAX_VALUE ? 0 : minimum;
+    }
+    static boolean isRequired(String options) {
+        try {
+            JSONArray groups = new JSONArray(options);
+            for (int i = 0; i < groups.length(); i++) {
+                JSONObject group = groups.optJSONObject(i);
+                if (group != null && "bundle_topping".equals(group.optString("type"))
+                        && group.optBoolean("required")) return true;
+            }
+        } catch (org.json.JSONException ignored) {}
+        return false;
+    }
     boolean isDirty() { return dirty; }
 
     private LinearLayout page(String title, LinearLayout footer) {
@@ -83,14 +102,31 @@ final class MerchantToppingEditor {
         draft=null;
         refreshPrice=null;
         Button add=host.editorButton("＋ Tambah topping",true);
-        add.setEnabled(toppings.size()<LIMIT);
         add.setOnClickListener(v->edit(-1));
         LinearLayout screen=page("Topping Menu",host.editorFooter(add));
-        TextView counter=host.tv(toppings.size()+" dari "+LIMIT+" pilihan · Satu topping per porsi",12,host.MUTED,true);
+        TextView counter=host.tv(toppings.size()+" pilihan · Satu topping per porsi",12,host.MUTED,true);
         counter.setPadding(host.dp(2),0,0,host.dp(8));
         screen.addView(counter);
+        if (host.baseToppingPrice() == 0) screen.addView(host.sub("Pelanggan wajib memilih topping."));
         if (toppings.isEmpty()) screen.addView(host.card("Belum ada topping. Tambahkan pilihan untuk menu ini."));
-        for (int i=0;i<toppings.size();i++) {
+        LinearLayout items = new LinearLayout(host);
+        items.setOrientation(LinearLayout.VERTICAL);
+        screen.addView(items);
+        Button more = host.editorButton("Lihat topping berikutnya", false);
+        screen.addView(more);
+        int[] next = {0};
+        Runnable append = () -> {
+            int end = Math.min(toppings.size(), next[0] + 24);
+            appendRows(items, next[0], end);
+            next[0] = end;
+            more.setVisibility(end < toppings.size() ? View.VISIBLE : View.GONE);
+        };
+        more.setOnClickListener(v -> append.run());
+        append.run();
+    }
+
+    private void appendRows(LinearLayout screen, int start, int end) {
+        for (int i = start; i < end; i++) {
             final int index=i;
             Topping topping=toppings.get(i);
             LinearLayout card=host.editorSection();
@@ -211,7 +247,7 @@ final class MerchantToppingEditor {
         update.run();
 
         saveButton.setOnClickListener(v->{
-            if (photoLoading) return;
+            if (photoLoading || host.isSavingMenu()) return;
             long base=host.baseToppingPrice();
             if (draft.name.isEmpty() || draft.price<=0 || draft.price<base || draft.price>100000000) {
                 error.setVisibility(View.VISIBLE);
@@ -225,21 +261,17 @@ final class MerchantToppingEditor {
                     return;
                 }
             }
-            if (editingIndex<0) toppings.add(draft); else toppings.set(editingIndex,draft);
-            dirty=true;
-            show();
+            host.saveToppings(saveButton, error, false);
         });
         if (index>=0) {
             Button delete=host.editorButton("Hapus topping",false);
             delete.setTextColor(Color.parseColor("#B42318"));
             delete.setOnClickListener(v->{
-                if (photoLoading) return;
+                if (photoLoading || host.isSavingMenu()) return;
                 PremiumDialogs.builder(host).setTitle("Hapus topping?")
-                        .setMessage(draft.name+" akan dihapus saat menu disimpan.")
+                        .setMessage(draft.name+" akan dihapus dari pilihan pelanggan.")
                         .setNegativeButton("Batal",null).setPositiveButton("Hapus",(dialog,which)->{
-                            toppings.remove(index);
-                            dirty=true;
-                            show();
+                            host.saveToppings(saveButton, error, true);
                         }).show();
             });
             screen.addView(delete);
@@ -260,7 +292,7 @@ final class MerchantToppingEditor {
     }
 
     private void pickPhoto() {
-        if (photoLoading) return;
+        if (photoLoading || host.isSavingMenu()) return;
         photoTarget=draft;
         Intent intent=new Intent(Intent.ACTION_GET_CONTENT).setType("image/*");
         host.startActivityForResult(Intent.createChooser(intent,"Pilih foto topping"),PICK_PHOTO);
@@ -305,7 +337,7 @@ final class MerchantToppingEditor {
     }
 
     void back() {
-        if (photoLoading) return;
+        if (photoLoading || host.isSavingMenu()) return;
         if (draft!=null) show();
         else {
             opened=false;
@@ -345,13 +377,20 @@ final class MerchantToppingEditor {
         renderDraft();
     }
 
-    JSONArray request(long base, Map<String,MerchantBaseActivity.PreparedImage> files) throws Exception {
+    JSONArray request(long base, Map<String,MerchantBaseActivity.PreparedImage> files,
+                      boolean saveTopping, boolean remove) throws Exception {
+        ArrayList<Topping> pending = new ArrayList<>(toppings);
+        if (saveTopping) {
+            if (remove) pending.remove(editingIndex);
+            else if (editingIndex < 0) pending.add(draft);
+            else pending.set(editingIndex, draft);
+        }
         JSONArray out=new JSONArray();
         HashSet<String> names=new HashSet<>();
-        for (int i=0;i<toppings.size();i++) {
-            Topping topping=toppings.get(i);
-            if (topping.name.isEmpty() || !names.add(topping.name.toLowerCase(Locale.ROOT)) || topping.price<base)
-                throw new IllegalArgumentException("Periksa topping. Harga satu porsi dengan topping minimal "+host.rupiah(base)+".");
+        for (int i=0;i<pending.size();i++) {
+            Topping topping=pending.get(i);
+            if (topping.name.isEmpty() || !names.add(topping.name.toLowerCase(Locale.ROOT)) || topping.price<Math.max(1,base) || topping.price>100000000)
+                throw new IllegalArgumentException("Periksa topping. Harga satu porsi dengan topping minimal "+host.rupiah(Math.max(1,base))+".");
             out.put(new JSONObject().put("name",topping.name).put("description",topping.description)
                     .put("bundle_price",topping.price).put("image",topping.image)
                     .put("original_name",topping.originalName));
