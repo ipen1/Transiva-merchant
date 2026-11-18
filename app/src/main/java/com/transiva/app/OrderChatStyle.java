@@ -94,19 +94,24 @@ final class OrderChatStyle {
         view.setContentDescription(time + (!mine ? "" : read ? " Dibaca" : delivered ? " Notifikasi diterima" : " Terkirim"));
     }
 
-    void decorate(LinearLayout wrapper, JSONObject item, boolean mine) {
-        LinearLayout bubble = new LinearLayout(activity);
+    LinearLayout addMessageBubble(LinearLayout row, JSONObject item, boolean mine) {
+        LinearLayout bubble = new LinearLayout(activity) {
+            @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                int mode = View.MeasureSpec.getMode(widthMeasureSpec);
+                if (mode == View.MeasureSpec.AT_MOST) {
+                    int available = View.MeasureSpec.getSize(widthMeasureSpec);
+                    int maxWidth = Math.min(dp(420), Math.round(available * 0.75f));
+                    widthMeasureSpec = View.MeasureSpec.makeMeasureSpec(maxWidth, View.MeasureSpec.AT_MOST);
+                }
+                super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            }
+        };
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(10), dp(6), dp(10), dp(5));
         bubble.setBackground(bubbleFill(mine));
-        while (wrapper.getChildCount() > 0) {
-            View child = wrapper.getChildAt(0);
-            android.view.ViewGroup.LayoutParams previous = child.getLayoutParams();
-            wrapper.removeViewAt(0);
-            bubble.addView(child, previous);
-        }
-        wrapper.addView(bubble, new LinearLayout.LayoutParams(-2, -2));
-        wrapper.setTag(new Item(item.optString("created_at"), item.optInt("id"), 0));
+        row.addView(bubble, new LinearLayout.LayoutParams(-2, -2));
+        row.setTag(new Item(item.optString("created_at"), item.optInt("id"), 0));
+        return bubble;
     }
 
     void appendMeta(LinearLayout wrapper, TextView view) {
