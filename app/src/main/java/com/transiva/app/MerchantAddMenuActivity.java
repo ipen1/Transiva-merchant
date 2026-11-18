@@ -1,11 +1,9 @@
 package com.transiva.app;
 
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -45,6 +43,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     private CheckBox trackStockInput, discountActiveInput;
     private TextView categoryValue, originalText, fileText, previewName, previewPrice, previewIcon;
     private ImageView previewImage;
+    private MerchantPhotoBadge badge;
+    private String originalPhoto;
+    private boolean saving;
     private TextView formError;
     private Button pickImageButton, saveMenuButton;
     private String legacyOptions = "[]";
@@ -67,15 +68,13 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         editMode = getIntent().getBooleanExtra("edit_mode", false);
         editMenuId = safe(getIntent().getStringExtra("menu_id"));
         existingImage = safe(getIntent().getStringExtra("image"));
+        originalPhoto = safe(getIntent().getStringExtra("original_photo"));
         String options = getIntent().getStringExtra("options_json");
         if (editMode && options != null && !options.isEmpty()) legacyOptions = options;
         toppingEditor = new MerchantToppingEditor(this, this::mainPhoto, this::toppingCustomerPrice, legacyOptions);
         build();
         prefillEditData();
-        if (!existingImage.isEmpty()) {
-            previewIcon.setVisibility(View.GONE);
-            com.bumptech.glide.Glide.with(this).load(mainPhoto()).centerCrop().into(previewImage);
-        }
+        badge.load(getIntent().getStringExtra("photo_badge"), b == null ? null : b.getString("photo_badge"));
         if (b!=null) {
             nameInput.setText(b.getString("menu_name",""));
             priceInput.setText(b.getString("menu_price",""));
@@ -88,13 +87,15 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             preparedMenuImage=MerchantToppingEditor.unpackPhoto(b.getBundle("menu_photo"));
             if (preparedMenuImage!=null) {
                 imageUri=preparedMenuImage.uri;
-                previewIcon.setVisibility(View.GONE);
-                com.bumptech.glide.Glide.with(this).load(mainPhoto()).centerCrop().into(previewImage);
                 fileText.setText("Foto menu siap.");
+            } else if (b.getString("pending_photo") != null) {
+                imageUri = Uri.parse(b.getString("pending_photo"));
+                prepareMenuImageAi();
             }
             toppingEditor.restoreState(b.getBundle("topping_editor"));
             toppingButton.setText("Topping · "+toppingEditor.size()+" pilihan ›");
         }
+        showPhotoPreview();
         loadGrossupRules();
     }
 
@@ -108,6 +109,8 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         state.putString("discount",discountInput.getText().toString());
         state.putBoolean("discount_active",discountActiveInput.isChecked());
         state.putString("category",selectedCategory);
+        state.putString("photo_badge",badge.value());
+        if (imageUri != null && preparedMenuImage == null) state.putString("pending_photo",imageUri.toString());
         if (preparedMenuImage!=null) state.putBundle("menu_photo",MerchantToppingEditor.packPhoto(preparedMenuImage));
         state.putBundle("topping_editor",toppingEditor.saveState());
     }
@@ -380,6 +383,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         box.addView(originalText);
         fileText=tv("Foto dioptimalkan otomatis",11,MUTED,false);
         box.addView(fileText);
+        Button badgeButton = editorButton("Lencana foto", false);
+        badge = new MerchantPhotoBadge(this, imgWrap, badgeButton, this::showPhotoPreview);
+        box.addView(badgeButton, new LinearLayout.LayoutParams(-1, -2));
         return box;
     }
 
@@ -458,7 +464,9 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private void chooseImage() {
-        Intent i = new Intent(Intent.ACTION_GET_CONTENT); i.setType("image/*");
+        if (saving || imagePreparing) return;
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE);
+        i.setType("image/*");
         startActivityForResult(Intent.createChooser(i, "Pilih gambar menu"), PICK_IMAGE);
     }
 
@@ -468,8 +476,11 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             toppingEditor.receivePhoto(c == RESULT_OK && data != null ? data.getData() : null);
             return;
         }
-        if (r == PICK_IMAGE && c == RESULT_OK && data != null) {
-            imageUri = data.getData(); preparedMenuImage = null; showPickedImage(imageUri); prepareMenuImageAi();
+        if (r == PICK_IMAGE && c == RESULT_OK && data != null && data.getData() != null) {
+            imageUri = data.getData();
+            preparedMenuImage = null;
+            showPhotoPreview();
+            prepareMenuImageAi();
         }
     }
 
@@ -480,35 +491,45 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
         setButtonLoading(pickImageButton,true,"Foto","…");
         fileText.setText("Mengoptimalkan foto…");
         final Uri source = imageUri;
-        MerchantTaskExecutor.execute(() -> {
+        if (!MerchantTaskExecutor.execute(() -> {
             try {
                 PreparedImage result = prepareAiResizeToWebp(source, "menu", 900, 150 * 1024L, 110 * 1024L);
-                preparedMenuImage = result;
                 runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    preparedMenuImage = result;
                     imagePreparing = false;
                     setButtonLoading(pickImageButton,false,"Foto","");
-                    if (result != null && result.transformed) {
-                        fileText.setText("Foto siap · "+humanBytes(result.finalBytes));
-                    } else if (result != null) {
-                        fileText.setText("Foto siap · "+humanBytes(result.finalBytes));
-                    }
+                    fileText.setText("Foto siap · " + humanBytes(result.finalBytes));
+                    showPhotoPreview();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> {
-                    imagePreparing = false; preparedMenuImage = null;
-                    setButtonLoading(pickImageButton,false,"Foto","");
-                    alert("Gambar Tidak Dapat Diproses", e.getMessage() == null ? "Pilih gambar lain." : e.getMessage());
+                    if (isFinishing() || isDestroyed()) return;
+                    photoFailed(e.getMessage());
                 });
             }
-        });
+        })) photoFailed("Antrean foto penuh. Coba lagi.");
     }
 
-    private void showPickedImage(Uri uri) {
-        if (uri == null) return;
-        try {
-            Bitmap bmp = MediaStore.Images.Media.getBitmap(getContentResolver(), uri);
-            if (bmp != null) { previewIcon.setVisibility(View.GONE); previewImage.setImageBitmap(bmp); }
-        } catch (Exception e) { toast("Preview gambar gagal, tetapi file tetap dapat diupload."); }
+    private void photoFailed(String detail) {
+        imagePreparing = false;
+        imageUri = null;
+        preparedMenuImage = null;
+        setButtonLoading(pickImageButton,false,"Foto","");
+        fileText.setText(existingImage.isEmpty() ? "Tambahkan foto menu" : "Foto menu saat ini");
+        showPhotoPreview();
+        showFormError(detail == null ? "Pilih gambar lain." : detail);
+    }
+
+    private void showPhotoPreview() {
+        boolean draft = imageUri != null || badge.changed();
+        Object photo = draft && imageUri == null && !originalPhoto.isEmpty()
+                ? MerchantToppingEditor.imageUrl(originalPhoto) : mainPhoto();
+        boolean hasPhoto = imageUri != null || !existingImage.isEmpty();
+        previewIcon.setVisibility(hasPhoto ? View.GONE : View.VISIBLE);
+        com.bumptech.glide.Glide.with(this).load(hasPhoto ? photo : null).fitCenter().into(previewImage);
+        badge.showDraft(draft && hasPhoto);
+        badge.setEnabled(!saving);
     }
 
     private void showFormError(String message) {
@@ -541,6 +562,7 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
     }
 
     private void save(Button save) {
+        if (saving) return;
         showFormError("");
         String name = nameInput.getText().toString().trim();
         String cat = selectedCategory.trim();
@@ -577,12 +599,17 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
             showFormError(error.getMessage());
             return;
         }
+        String photoBadge = !editMode || badge.changed() || preparedMenuImage != null ? badge.value() : null;
+        saving = true;
+        badge.setEnabled(false);
+        pickImageButton.setEnabled(false);
         boolean queued = MerchantNetworkExecutor.executeWrite("menu-save:" + (editMode ? editMenuId : "new") + ":" + name, () -> {
             try {
                 JSONObject f = new JSONObject();
                 f.put("name", name); f.put("price", appPrice); f.put("original_price", original); f.put("grossup_fee", fee); f.put("category", cat);
                 f.put("discount_percent", discountPercent); f.put("discount_active", discountActive ? 1 : 0);
                 f.put("description", description);
+                if (photoBadge != null) f.put("photo_badge", photoBadge);
                 if (!editMode) f.put("menu_format", "single_price");
                 if (toppings != null) f.put("bundle_toppings",toppings.toString());
                 if (changeStock) {
@@ -593,18 +620,30 @@ public class MerchantAddMenuActivity extends MerchantBaseActivity {
                 String endpoint = editMode ? BASE + "merchant_update_menu.php" : BASE + "add_food_menu.php";
                 JSONObject res = new JSONObject(MerchantHttpClient.postMultipart(this,endpoint,f,uploads));
                 runOnUiThread(() -> {
-                    setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", "");
+                    if (isFinishing() || isDestroyed()) return;
+                    unlockSave(save, normalButton);
                     if (res.optBoolean("success", false)) { toast(res.optString("message", editMode ? "Menu berhasil diperbarui" : "Menu berhasil disimpan")); finish(); }
                     else showFormError(res.optString("message", editMode ? "Gagal memperbarui menu" : "Gagal menyimpan menu"));
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> { setButtonLoading(save, false, editMode ? "Simpan Perubahan" : "Simpan Menu", ""); showFormError("Server atau koneksi sedang bermasalah. Coba lagi."); });
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    unlockSave(save, normalButton);
+                    showFormError("Server atau koneksi sedang bermasalah. Coba lagi.");
+                });
             }
         });
         if (!queued) {
-            setButtonLoading(save, false, normalButton, "");
+            unlockSave(save, normalButton);
             showFormError("Permintaan sedang antre. Coba lagi.");
         }
+    }
+
+    private void unlockSave(Button save, String label) {
+        saving = false;
+        badge.setEnabled(true);
+        pickImageButton.setEnabled(true);
+        setButtonLoading(save, false, label, "");
     }
 
     private long parseLong(String s) { try { return Long.parseLong(s == null ? "0" : s.trim()); } catch (Exception e) { return 0; } }

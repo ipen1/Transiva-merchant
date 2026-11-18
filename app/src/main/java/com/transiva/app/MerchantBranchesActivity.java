@@ -1,7 +1,14 @@
 package com.transiva.app;
 
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.Gravity;
+import android.widget.FrameLayout;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+import com.bumptech.glide.Glide;
 import android.text.InputType;
 import android.widget.Button;
 import android.widget.EditText;
@@ -13,11 +20,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public final class MerchantBranchesActivity extends MerchantBaseActivity {
-    private static final int PICK_POINT = 931;
+    private static final int PICK_POINT = 931, EDIT_PROFILE = 932;
     private static final String ENDPOINT = BASE + "merchant_branches.php";
     private JSONArray branches = new JSONArray();
     private boolean editing, saving;
     private String requestKey;
+    private int movingId;
+    private MerchantPremiumUi ui;
+    private TextView listFeedback;
     private double latitude = Double.NaN, longitude = Double.NaN;
     private LinearLayout root;
     private EditText name;
@@ -26,20 +36,24 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        ui = new MerchantPremiumUi(this);
         if (state != null) {
             editing = state.getBoolean("editing");
             requestKey = state.getString("request_key");
+            movingId = state.getInt("moving_id");
             latitude = state.getDouble("lat", Double.NaN);
             longitude = state.getDouble("lng", Double.NaN);
             try { branches = new JSONArray(state.getString("branches", "[]")); } catch (Exception ignored) {}
         }
         if (editing) showCreate(state.getString("name", ""), state.getInt("copy", 0));
+        else if (movingId != 0) showList();
         else load();
     }
 
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("editing", editing);
         state.putString("request_key", requestKey);
+        state.putInt("moving_id", movingId);
         state.putDouble("lat", latitude);
         state.putDouble("lng", longitude);
         state.putString("branches", branches.toString());
@@ -53,55 +67,192 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
     private void show(String heading) {
         root = new LinearLayout(this);
         setContentView(page(root));
-        root.addView(title(heading));
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        ImageButton back = ui.iconButton(R.drawable.ic_merchant_chevron, ui.accent(), "Kembali");
+        back.setRotation(180f);
+        back.setOnClickListener(v -> onBackPressed());
+        header.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        header.addView(title(heading), new LinearLayout.LayoutParams(0, -2, 1));
+        root.addView(header);
     }
 
     private void load() {
         show("Toko & Cabang");
         root.addView(sub("Memuat daftar cabang…"));
-        MerchantNetworkExecutor.executeRead(this, "branches", () -> {
+        if (MerchantNetworkExecutor.executeRead(this, "branches", () -> {
             try {
                 JSONObject result = new JSONObject(get(ENDPOINT));
                 if (!result.optBoolean("success")) throw new IllegalStateException(result.optString("message"));
                 JSONArray data = result.getJSONArray("branches");
-                runOnUiThread(() -> { branches = data; showList(); });
-            } catch (Exception error) {
                 runOnUiThread(() -> {
-                    show("Toko & Cabang");
-                    root.addView(card("Daftar cabang belum bisa dimuat."));
-                    Button retry = btn("Coba lagi");
-                    retry.setOnClickListener(v -> load());
-                    root.addView(retry);
+                    if (!alive()) return;
+                    branches = data;
+                    showList();
                 });
+            } catch (Exception error) {
+                runOnUiThread(this::loadFailed);
             }
-        });
+        }) == null) loadFailed();
     }
+
+    private void loadFailed() {
+        if (!alive()) return;
+        show("Toko & Cabang");
+        root.addView(sub("Daftar toko belum bisa dimuat."));
+        Button retry = btn("Coba lagi");
+        retry.setOnClickListener(v -> load());
+        root.addView(retry);
+    }
+
+    private boolean alive() { return !isFinishing() && !isDestroyed(); }
 
     private void showList() {
         editing = false;
         show("Toko & Cabang");
-        root.addView(sub("Pilih toko untuk mengelola menu, stok, jam buka dan pesanan dari akun ini."));
-        String selected = branchId().isEmpty() ? sessionManager.getRestaurantId() : branchId();
+        root.addView(sub("Pilih toko untuk mengelola menu, stok, dan pesanan."));
+        listFeedback = sub("");
+        listFeedback.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        listFeedback.setVisibility(android.view.View.GONE);
+        root.addView(listFeedback);
         for (int i = 0; i < branches.length(); i++) {
             JSONObject row = branches.optJSONObject(i);
-            if (row == null) continue;
-            String id = row.optString("id");
-            boolean main = row.optInt("is_main") == 1;
-            String label = row.optString("name", "Toko") + (main ? " · Utama" : " · Cabang");
-            Button choice = outlineBtn(label + (id.equals(selected) ? " ✓" : ""));
-            choice.setOnClickListener(v -> select(main ? "" : id));
-            root.addView(choice);
+            if (row != null) addOutlet(row);
         }
-        Button add = btn("Tambah cabang");
+        Button add = btn("+ Tambah cabang");
         add.setOnClickListener(v -> {
+            if (saving) return;
             requestKey = java.util.UUID.randomUUID().toString();
             latitude = longitude = Double.NaN;
             showCreate("", 0);
         });
         root.addView(add);
-        Button back = outlineBtn("Kembali");
-        back.setOnClickListener(v -> finish());
-        root.addView(back);
+    }
+
+    private void addOutlet(JSONObject outlet) {
+        int id = outlet.optInt("id");
+        boolean main = outlet.optInt("is_main") == 1;
+        String label = outlet.optString("name", "Toko");
+        String selectedId = branchId().isEmpty() ? sessionManager.getRestaurantId() : branchId();
+        boolean active = Integer.toString(id).equals(selectedId) || (main && branchId().isEmpty());
+
+        LinearLayout card = new LinearLayout(this);
+        card.setBackground(ui.surface(16));
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(8), dp(4), dp(8));
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, -2);
+        cardParams.bottomMargin = dp(8);
+        root.addView(card, cardParams);
+
+        LinearLayout selectArea = new LinearLayout(this);
+        selectArea.setGravity(Gravity.CENTER_VERTICAL);
+        selectArea.setBackground(ui.touch(null));
+        selectArea.setOnClickListener(v -> { if (!saving) select(main ? "" : Integer.toString(id)); });
+        card.addView(selectArea, new LinearLayout.LayoutParams(0, -2, 1));
+        FrameLayout photo = new FrameLayout(this);
+        photo.setBackground(round(ui.dark() ? 0xFF20344B : 0xFFE8F1FF, dp(10)));
+        photo.setClipToOutline(true);
+        photo.addView(ui.icon(R.drawable.ic_merchant_store, ui.accent()),
+                new FrameLayout.LayoutParams(dp(25), dp(25), Gravity.CENTER));
+        ImageView image = new ImageView(this);
+        photo.addView(image, new FrameLayout.LayoutParams(-1, -1));
+        String banner = outlet.optString("banner", "");
+        if (banner.startsWith("http://transiva.my.id/")) banner = "https://" + banner.substring(7);
+        if (!banner.isEmpty() && !banner.startsWith("http://")) {
+            String url = banner.startsWith("https://") ? banner : "https://transiva.my.id/" + banner.replaceFirst("^/+", "");
+            Glide.with(this).load(url).centerCrop().into(image);
+        }
+        selectArea.addView(photo, new LinearLayout.LayoutParams(dp(62), dp(54)));
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.setPadding(dp(10), 0, 0, 0);
+        selectArea.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView name = tv(label, 15, NAVY, true);
+        name.setMaxLines(2);
+        name.setEllipsize(TextUtils.TruncateAt.END);
+        details.addView(name);
+        details.addView(tv((main ? "Toko utama" : "Cabang") + (active ? " · Dipilih" : ""), 12,
+                active ? ui.accent() : MUTED, active));
+        details.addView(tv(outlet.optBoolean("accepting_orders", outlet.optInt("is_open") == 1) ? "Buka" : "Tutup", 12, MUTED, false));
+
+        ImageButton actions = ui.iconButton(R.drawable.ic_merchant_overflow, ui.accent(), "Kelola " + label);
+        actions.setOnClickListener(v -> { if (!saving) showOutletActions(outlet, actions); });
+        card.addView(actions, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    }
+
+    private void showOutletActions(JSONObject outlet, ImageButton anchor) {
+        boolean main = outlet.optInt("is_main") == 1;
+        int id = outlet.optInt("id");
+        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+        menu.getMenu().add(0, 1, 0, "Edit profil & foto");
+        menu.getMenu().add(0, 2, 1, "Pindah titik pickup");
+        if (!main) menu.getMenu().add(0, 3, 2, "Hapus cabang");
+        menu.setOnMenuItemClickListener(item -> {
+            if (saving) return false;
+            switch (item.getItemId()) {
+                case 1:
+                    Intent profile = new Intent(this, MerchantRestaurantProfileActivity.class);
+                    profile.putExtra(EXTRA_BRANCH, main ? "" : Integer.toString(id));
+                    startActivityForResult(profile, EDIT_PROFILE);
+                    break;
+                case 2:
+                    movingId = id;
+                    launchMap(outlet.optDouble("latitude", Double.NaN), outlet.optDouble("longitude", Double.NaN));
+                    break;
+                case 3:
+                    new AlertDialog.Builder(this)
+                            .setTitle("Hapus " + outlet.optString("name", "cabang") + "?")
+                            .setMessage("Cabang akan ditutup dan hilang dari daftar. Riwayat pesanan tetap tersimpan.")
+                            .setNegativeButton("Batal", null)
+                            .setPositiveButton("Hapus cabang", (d, which) -> updateOutlet("delete", id, 0, 0))
+                            .show();
+                    break;
+                default:
+                    return false;
+            }
+            return true;
+        });
+        menu.show();
+    }
+
+    private void showFeedback(String message) {
+        listFeedback.setText(message);
+        listFeedback.setVisibility(android.view.View.VISIBLE);
+    }
+
+    private void updateOutlet(String action, int id, double lat, double lng) {
+        if (saving) return;
+        saving = true;
+        showFeedback("Menyimpan perubahan…");
+        boolean queued = MerchantNetworkExecutor.executeWrite("branch:" + id, () -> {
+            try {
+                JSONObject payload = new JSONObject().put("action", action).put("restaurant_id", id);
+                if ("relocate".equals(action)) payload.put("latitude", lat).put("longitude", lng);
+                JSONObject result = new JSONObject(postJson(ENDPOINT, payload));
+                runOnUiThread(() -> {
+                    if (!alive()) return;
+                    saving = false;
+                    if (!result.optBoolean("success")) {
+                        showFeedback(result.optString("message", "Cabang belum bisa diperbarui."));
+                        return;
+                    }
+                    toast(result.optString("message", "Cabang diperbarui."));
+                    if ("delete".equals(action) && Integer.toString(id).equals(branchId())) select("");
+                    else load();
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    if (!alive()) return;
+                    saving = false;
+                    showFeedback("Perubahan belum dapat dikonfirmasi. Periksa koneksi dan coba lagi.");
+                });
+            }
+        });
+        if (!queued) {
+            saving = false;
+            showFeedback("Permintaan sedang antre. Coba lagi.");
+        }
     }
 
     private void showCreate(String draftName, int sourceId) {
@@ -161,6 +312,10 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
                 lng = main.optDouble("longitude", Double.NaN);
             }
         }
+        launchMap(lat, lng);
+    }
+
+    private void launchMap(double lat, double lng) {
         Intent map = new Intent(this, MerchantBranchMapActivity.class);
         map.putExtra("lat", lat);
         map.putExtra("lng", lng);
@@ -169,10 +324,21 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request != PICK_POINT || result != RESULT_OK || data == null || !editing) return;
-        latitude = data.getDoubleExtra("lat", Double.NaN);
-        longitude = data.getDoubleExtra("lng", Double.NaN);
-        showPoint();
+        if (request == EDIT_PROFILE && result == RESULT_OK) load();
+        if (request != PICK_POINT) return;
+        int target = movingId;
+        movingId = 0;
+        if (result != RESULT_OK || data == null) return;
+        double lat = data.getDoubleExtra("lat", Double.NaN);
+        double lng = data.getDoubleExtra("lng", Double.NaN);
+        if (!Double.isFinite(lat) || !Double.isFinite(lng)) return;
+        if (editing) {
+            latitude = lat;
+            longitude = lng;
+            showPoint();
+        } else if (target > 0) {
+            updateOutlet("relocate", target, lat, lng);
+        }
     }
 
     private void showPoint() {

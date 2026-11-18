@@ -567,6 +567,8 @@ public class MerchantMenuListActivity extends MerchantBaseActivity {
         intent.putExtra("original_price", menu.optLong("original_price", menu.optLong("merchant_price", 0)));
         intent.putExtra("grossup_fee", menu.optLong("grossup_fee", 0));
         intent.putExtra("image", image);
+        intent.putExtra("photo_badge", menu.optString("photo_badge", ""));
+        intent.putExtra("original_photo", menu.optString("original_photo", ""));
         intent.putExtra("description", menu.optString("description", ""));
         intent.putExtra("track_stock", track);
         intent.putExtra("stock", stock);

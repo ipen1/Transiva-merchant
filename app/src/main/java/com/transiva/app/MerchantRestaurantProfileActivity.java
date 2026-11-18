@@ -34,6 +34,8 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
     private PreparedImage preparedBanner;
     private String savedName = "", savedBanner = "";
     private boolean loaded, preparing, saving;
+    private MerchantPhotoBadge badge;
+    private String originalBanner = "", restoredBadge;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -120,7 +122,15 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         pickBannerButton.setOnClickListener(v -> choose());
         actions.addView(pickBannerButton, new LinearLayout.LayoutParams(stacked ? -1 : -2, -2));
         profile.addView(actions);
-        profile.addView(tv("Foto dioptimalkan otomatis sebelum disimpan.", 12, MUTED, false));
+        Button badgeButton = outlineBtn("Lencana foto");
+        badgeButton.setBackground(ui.touch(ui.surface(12)));
+        badgeButton.setTextColor(ui.accent());
+        badgeButton.setElevation(0);
+        badge = new MerchantPhotoBadge(this, preview, badgeButton, () -> {
+            showBannerPreview();
+            updateControls();
+        });
+        profile.addView(badgeButton);
         addPanel(root, profile);
 
         LinearLayout form = panel();
@@ -153,6 +163,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if (state != null && !state.getString("draft_banner", "").isEmpty()) {
             draftBanner = Uri.parse(state.getString("draft_banner"));
         }
+        restoredBadge = state == null ? null : state.getString("draft_badge");
         updateControls();
         root.requestFocus();
     }
@@ -179,6 +190,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putString("draft_name", nameInput.getText().toString());
         if (draftBanner != null) state.putString("draft_banner", draftBanner.toString());
+        state.putString("draft_badge", loaded ? badge.value() : restoredBadge);
         super.onSaveInstanceState(state);
     }
 
@@ -190,7 +202,8 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         boolean editable = loaded && !saving;
         nameInput.setEnabled(editable);
         pickBannerButton.setEnabled(editable && !preparing);
-        boolean dirty = !savedName.equals(nameInput.getText().toString().trim()) || preparedBanner != null;
+        badge.setEnabled(editable && !preparing);
+        boolean dirty = !savedName.equals(nameInput.getText().toString().trim()) || preparedBanner != null || badge.changed();
         saveProfileButton.setEnabled(editable && !preparing && dirty);
         saveProfileButton.setAlpha(saveProfileButton.isEnabled() || saving ? 1f : .60f);
     }
@@ -229,6 +242,9 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if (restaurant == null) restaurant = result;
         savedName = s(restaurant, "name", "restaurant_name", "merchant_name", "store_name");
         savedBanner = normalizeImageUrl(s(restaurant, "banner", "banner_url", "image", "photo", "foto", "cover", "cover_image", "restaurant_banner"));
+        originalBanner = normalizeImageUrl(restaurant.optString("original_photo", ""));
+        badge.load(restaurant.optString("photo_badge", ""), restoredBadge);
+        restoredBadge = null;
         if (nameInput.length() == 0) nameInput.setText(savedName);
         bannerTitle.setText(nameInput.length() == 0 ? "Profil toko" : nameInput.getText());
         TransivaCluster.Item area = TransivaCluster.fromServer(result.optJSONObject("cluster"));
@@ -265,7 +281,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         message("");
         bannerStatus.setText("Menyiapkan foto…");
         bannerStatus.setTextColor(MUTED);
-        Glide.with(this).load(source).fitCenter().into(bannerImage);
+        showBannerPreview();
         updateControls();
         if (!MerchantTaskExecutor.execute(() -> {
             try {
@@ -301,11 +317,17 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         boolean active = !savedBanner.isEmpty();
         bannerStatus.setText(active ? "●  Banner aktif" : "Belum ada banner");
         bannerStatus.setTextColor(active ? (ui.dark() ? 0xFF76E2B5 : 0xFF13734F) : MUTED);
-        if (active) Glide.with(this).load(savedBanner).fitCenter().thumbnail(0.25f).into(bannerImage);
-        else {
-            Glide.with(this).clear(bannerImage);
-            bannerImage.setImageDrawable(null);
-        }
+        showBannerPreview();
+    }
+
+    private void showBannerPreview() {
+        boolean draft = draftBanner != null || badge.changed();
+        Object source = draftBanner != null ? draftBanner
+                : draft && !originalBanner.isEmpty() ? originalBanner : savedBanner;
+        boolean hasPhoto = draftBanner != null || !savedBanner.isEmpty();
+        if (!hasPhoto) source = null;
+        Glide.with(this).load(source).fitCenter().into(bannerImage);
+        badge.showDraft(draft && hasPhoto);
     }
 
     private String normalizeImageUrl(String url) {
@@ -323,6 +345,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         }
         if (!loaded || saving || preparing) return;
         PreparedImage upload = preparedBanner;
+        String selection = badge.changed() || upload != null ? badge.value() : null;
         saving = true;
         message("");
         saveProfileButton.setText("Menyimpan…");
@@ -330,6 +353,7 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if (!MerchantNetworkExecutor.executeWrite("restaurant-profile-save:" + branchId(), () -> {
             try {
                 JSONObject fields = new JSONObject().put("name", name);
+                if (selection != null) fields.put("photo_badge", selection);
                 JSONObject response = new JSONObject(postFormPrepared(BASE + "update_restaurant_profile.php", fields, upload, "banner"));
                 runOnUiThread(() -> saveCompleted(name, response));
             } catch (Exception error) {
@@ -345,10 +369,13 @@ public class MerchantRestaurantProfileActivity extends MerchantBaseActivity {
         if (response != null && response.optBoolean("success")) {
             savedName = name;
             savedBanner = normalizeImageUrl(response.optString("banner", savedBanner));
+            originalBanner = normalizeImageUrl(response.optString("original_photo", ""));
+            badge.load(response.optString("photo_badge", ""), null);
             preparedBanner = null;
             draftBanner = null;
             nameInput.setText(name);
             showSavedBanner();
+            setResult(RESULT_OK);
             toast("Profil disimpan.");
         } else message(response == null ? "Profil belum tersimpan. Coba lagi."
                 : response.optString("message", "Profil belum tersimpan."));
