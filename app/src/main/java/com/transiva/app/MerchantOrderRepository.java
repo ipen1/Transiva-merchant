@@ -4,7 +4,7 @@ import java.util.UUID;
 final class MerchantOrderRepository {
  interface UpdateCallback {void onResult(boolean success,String message,boolean networkError,JSONObject receipt);}
  private MerchantOrderRepository(){}
- static void updateStatus(MerchantOrdersActivity a,String id,String displayId,int outletId,String status,String rejectReason,int cookMinutes,boolean restoreStock,UpdateCallback callback){
+ static void updateStatus(MerchantBaseActivity a,String id,String displayId,int outletId,String status,String rejectReason,int cookMinutes,boolean restoreStock,UpdateCallback callback){
   boolean accepted=MerchantNetworkExecutor.executeWrite("order-status:"+id+":"+status,()->{
    try{
     String requestId=UUID.randomUUID().toString();JSONObject payload=new JSONObject();payload.put("id",id);payload.put("order_id",displayId);payload.put("status",status);if(outletId>0)payload.put("restaurant_id",outletId);payload.put("idempotency_key",requestId);

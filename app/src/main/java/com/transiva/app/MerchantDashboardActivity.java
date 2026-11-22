@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.Gravity;
 import android.widget.*;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout ordersTile;
@@ -27,9 +28,19 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private boolean storeUpdating;
     private Runnable autoTask;
     private boolean realtimeRegistered = false;
+    private LinearLayout incoming;
+    private JSONArray pendingOrders=new JSONArray();
+    private boolean incomingVisible, incomingReading, incomingQueued, incomingUpdating, incomingStale=true, incomingMore;
+    private final Runnable incomingPoll=new Runnable() {
+        @Override public void run() {
+            loadIncoming();
+            if (incomingVisible) handler.postDelayed(this,WaveLoadGuard.jitter(15000L));
+        }
+    };
     private final BroadcastReceiver realtimeReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
             loadAll();
+            loadIncoming();
         }
     };
 
@@ -45,11 +56,17 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             realtimeRegistered = true;
         }
         startAuto();
+        incomingVisible=true;
+        incomingPoll.run();
     }
 
     @Override protected void onPause(){
         super.onPause();
         stopAuto();
+        incomingVisible=false;
+        handler.removeCallbacks(incomingPoll);
+        incomingStale=true;
+        renderIncoming();
         if(realtimeRegistered){
             try { unregisterReceiver(realtimeReceiver); } catch(Exception ignored){}
             realtimeRegistered = false;
@@ -80,6 +97,9 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         header.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
         root.addView(header);
 
+        incoming=column();
+        incoming.setVisibility(View.GONE);
+        addBlock(root,incoming,8);
         addBlock(root, storeCard(), 10);
         addBlock(root, statistics(), 10);
         addBlock(root, branchActions(), 10);
@@ -345,6 +365,108 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         orderTileTitle.setTextColor(active ? ui.accent() : TEXT);
         orderTileSub.setText(active ? "Perlu respons" : "Belum ada yang baru");
         orderBadgeText.setContentDescription(active ? count + " pesanan baru" : null);
+    }
+
+    private void loadIncoming() {
+        String token=sessionManager.getToken();
+        if (!incomingVisible || token==null || token.isEmpty()) return;
+        if (incomingReading || incomingUpdating) {
+            incomingQueued=true;
+            return;
+        }
+        incomingReading=true;
+        java.util.concurrent.Future<?> request=MerchantNetworkExecutor.executeRead(this,"incoming-orders",()->{
+            long sent=android.os.SystemClock.elapsedRealtime();
+            try {
+                JSONObject result=new JSONObject(get(BASE+"getMerchantOrders.php?outlets=all&scope=incoming"));
+                long received=android.os.SystemClock.elapsedRealtime();
+                if (!result.optBoolean("success")) throw new IllegalStateException();
+                runOnUiThread(()->{
+                    if (!ownsIncomingResult(token)) return;
+                    MerchantServerClock.sync(result,sent,received);
+                    pendingOrders=new JSONArray();
+                    JSONArray orders=result.optJSONArray("orders");
+                    if (orders!=null) for (int i=0;i<orders.length() && pendingOrders.length()<3;i++) {
+                        JSONObject order=orders.optJSONObject(i);
+                        if (order!=null && "pending".equals(order.optString("status"))) pendingOrders.put(order);
+                    }
+                    incomingStale=result.optBoolean("stale");
+                    incomingMore=result.optBoolean("has_more");
+                    completeIncomingRead();
+                });
+            } catch (Exception error) {
+                runOnUiThread(()->{
+                    if (!ownsIncomingResult(token)) return;
+                    incomingStale=true;
+                    completeIncomingRead();
+                });
+            }
+        });
+        if (request==null) {
+            incomingStale=true;
+            completeIncomingRead();
+        }
+    }
+
+    private boolean ownsIncomingResult(String token) {
+        return !isFinishing() && !isDestroyed() && token.equals(sessionManager.getToken());
+    }
+
+    private void completeIncomingRead() {
+        incomingReading=false;
+        if (!incomingVisible) { incomingStale=true; return; }
+        renderIncoming();
+        if (incomingQueued) {
+            incomingQueued=false;
+            handler.post(this::loadIncoming);
+        }
+    }
+
+    private void renderIncoming() {
+        if (incoming==null) return;
+        incoming.removeAllViews();
+        incoming.setVisibility(pendingOrders.length()==0?View.GONE:View.VISIBLE);
+        if (incomingStale && pendingOrders.length()>0)
+            incoming.addView(tv("Menunggu pembaruan pesanan…",13,MUTED,true));
+        for (int i=0;i<pendingOrders.length();i++) {
+            JSONObject order=pendingOrders.optJSONObject(i);
+            if (order==null) continue;
+            boolean canRespond=incomingVisible && !incomingUpdating && !incomingStale
+                    && MerchantConnectivity.isOnline(this);
+            addBlock(incoming,MerchantIncomingOrderCard.build(this,order,canRespond,
+                    (status,reason)->respondToIncoming(order,status,reason)),i==0?0:8);
+        }
+        if (incomingMore && pendingOrders.length()>0) {
+            Button all=outlineBtn("Lihat semua pesanan");
+            all.setOnClickListener(v->open(MerchantOrdersActivity.class));
+            addBlock(incoming,all,6);
+        }
+    }
+
+    private void respondToIncoming(JSONObject order,String status,String reason) {
+        if (!incomingVisible || incomingStale || incomingUpdating || !MerchantConnectivity.isOnline(this)) return;
+        String id=order.optString("id");
+        String display=order.optString("order_id",id);
+        String token=sessionManager.getToken();
+        if (id.isEmpty() || token==null || token.isEmpty()) return;
+        incomingUpdating=true;
+        renderIncoming();
+        MerchantOrderRepository.updateStatus(this,id,display,order.optInt("restaurant_id"),status,reason,
+                0,false,(success,message,networkError,receipt)->{
+                    if (!ownsIncomingResult(token)) return;
+                    incomingUpdating=false;
+                    incomingStale=true;
+                    if (success) {
+                        for (int i=0;i<pendingOrders.length();i++) {
+                            JSONObject row=pendingOrders.optJSONObject(i);
+                            if (row!=null && id.equals(row.optString("id"))) { pendingOrders.remove(i); break; }
+                        }
+                        MerchantRealtime.publish(this,"update",display);
+                        if (incomingVisible) toast(message);
+                    } else if (incomingVisible) alert(networkError?"Memeriksa status":"Pesanan",message);
+                    renderIncoming();
+                    loadIncoming();
+                });
     }
 
     private void startAuto(){

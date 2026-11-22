@@ -59,7 +59,7 @@ final class MerchantOrderFinanceView {
         LinearLayout card=new LinearLayout(a);card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(a,10),0,dp(a,10),0);
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(a,8),0,dp(a,6));card.setLayoutParams(lp);
-        card.setBackground(a.round(Color.parseColor(dark?"#17334E":"#EDF5FF"),dp(a,12)));
+        card.setBackground(a.round(Color.parseColor(dark?"#173E36":"#DCF7EA"),dp(a,12)));
         LinearLayout summary=new LinearLayout(a);
         summary.setGravity(Gravity.CENTER_VERTICAL);
         summary.setMinimumHeight(dp(a,48));

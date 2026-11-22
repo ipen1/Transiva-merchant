@@ -116,17 +116,24 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void build() {
         root = new LinearLayout(this);
         setContentView(page(root));
+        LinearLayout banner=new LinearLayout(this);
+        banner.setOrientation(LinearLayout.VERTICAL);
+        banner.setPadding(dp(12),dp(8),dp(10),dp(8));
+        android.graphics.drawable.GradientDrawable blue=new android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,new int[]{0xFF092D73,0xFF086FD9});
+        blue.setCornerRadius(dp(17));
+        banner.setBackground(blue);
         LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(title("Aktivitas Semua Cabang"),new LinearLayout.LayoutParams(0,-2,1));
+        header.addView(tv("Aktivitas Semua Cabang",22,Color.WHITE,true),new LinearLayout.LayoutParams(0,-2,1));
         Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui pesanan");refresh.setPadding(0,0,0,0);refresh.setElevation(0);
-        refresh.setOnClickListener(v->load(false));header.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));root.addView(header);
-
-        realtimeStatus = tv("● Menghubungkan ke server...", 12, Color.parseColor("#B54708"), true);
-        realtimeStatus.setPadding(dp(2), dp(3), dp(2), dp(5));
-        realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
-        LinearLayout.LayoutParams statusLp = new LinearLayout.LayoutParams(-1, -2);
-        statusLp.setMargins(0, 0, 0, dp(5));
-        root.addView(realtimeStatus, statusLp);
+        refresh.setOnClickListener(v->load(false));
+        header.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));
+        banner.addView(header);
+        realtimeStatus=tv("● Menghubungkan ke server…",13,Color.WHITE,true);
+        banner.addView(realtimeStatus);
+        LinearLayout.LayoutParams statusLp=new LinearLayout.LayoutParams(-1,-2);
+        statusLp.bottomMargin=dp(8);
+        root.addView(banner,statusLp);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setPadding(dp(4), dp(4), dp(4), dp(4));
@@ -229,7 +236,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private void setConnectionState(boolean connected, String message) {
         if (realtimeStatus == null) return;
         realtimeStatus.setText(connected ? "● Terhubung • pesanan tersinkron" : message);
-        realtimeStatus.setTextColor(Color.parseColor(MerchantAppSettings.isDarkMode(this) ? (connected?"#70E0AE":"#FFB4AB") : (connected ? "#16803A" : "#D92D20")));
+        realtimeStatus.setTextColor(connected?0xFF9DF4CF:0xFFFFDA94);
         realtimeStatus.setBackgroundColor(Color.TRANSPARENT);
     }
 
@@ -280,7 +287,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             setConnectionState(false, "● Offline • menunggu koneksi kembali");
         } else {
             realtimeStatus.setText("● Sinkronisasi...");
-            realtimeStatus.setTextColor(Color.parseColor("#B54708"));
+            realtimeStatus.setTextColor(0xFFFFDA94);
         }
 
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "orders:"+requestGeneration, () -> {
@@ -491,7 +498,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         box.setPadding(dp(11), dp(8), dp(11), dp(8));
 
         String outletName = o.optString("restaurant_name");
-        if (!outletName.isEmpty()) box.addView(tv(outletName, 12, BLUE, true));
+        if (!outletName.isEmpty()) box.addView(tv(outletName, 15, BLUE, true));
         String displayId = s(o, "order_id", "id");
         String actionId = s(o, "id", "order_numeric_id", "order_db_id", "order_id");
         String status = effectiveStatus(o);
@@ -503,7 +510,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,dp(10));box.setLayoutParams(lp);
         LinearLayout header=row();
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView heading=tv(pending?"Pesanan baru":statusLabel(status),16,NAVY,true);
+        TextView heading=tv(pending?"Pesanan baru":statusLabel(status),20,NAVY,true);
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         // Keep the full identifier in the disclosure and every API action.
         String shortId=displayId.lastIndexOf('-')>=0?displayId.substring(displayId.lastIndexOf('-')+1):(displayId.length()>8?displayId.substring(displayId.length()-8):displayId);
@@ -512,14 +519,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         ref.setBackground(round(Color.parseColor(dark?"#1B334A":"#EDF5FF"),dp(8)));
         header.addView(ref);box.addView(header);
         if(pending){
-            TextView prompt=tv("Periksa pesanan, lalu pilih Terima atau Tolak.",12,MUTED,false);
-            prompt.setPadding(0,dp(5),0,dp(3));box.addView(prompt);
-            String age=orderAge(o);
-            if(!age.isEmpty())box.addView(tv(age,11,MUTED,false));
-            long created=o.optLong("merchant_response_epoch",0)*1000L;
-            if (created<=0) created=MerchantServerClock.createdAt(o);
-            MerchantCountdownView responseTimer=new MerchantCountdownView(this,created>0?created+5*60000L:0,5*60000L,"Konfirmasi","Segera konfirmasi pesanan");
-            box.addView(responseTimer);
+            MerchantIncomingOrderCard.addTimer(this,box,o);
         }
         String customer=s(o,"customer_name","customer","name"),phone=s(o,"customer_phone","phone");
         String address=s(o,"delivery_address","destination_address","address"),driver=s(o,"driver","driver_name");
@@ -580,7 +580,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void addItems(LinearLayout box, JSONObject order) {
         JSONArray items = order.optJSONArray("items");
-        TextView itemHeading=tv("Yang dipesan",17,TEXT,true);itemHeading.setPadding(0,dp(4),0,dp(2));box.addView(itemHeading);
+
         if (items == null || items.length() == 0) {
             box.addView(tv("Rincian menu belum tersedia. Coba perbarui pesanan.", 13, Color.parseColor("#B54708"), false));
             return;
@@ -601,8 +601,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             Object storedNote = it.opt("note");
             String note = storedNote instanceof String ? (String) storedNote : s(it, "notes", "item_note", "catatan");
             TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),23,TEXT,true);
-            itemName.setPadding(0,dp(12),0,dp(6));
-            box.addView(itemName);
+            MerchantIncomingOrderCard.addTinted(this,box,itemName,0xFFE8ECFF,0xFF263B62);
             JSONArray selected=it.optJSONArray("selected_options");
             boolean displayed=false;
             if (selected!=null) for (int j=0;j<selected.length();j++) {
@@ -630,12 +629,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void addKitchenChoice(LinearLayout box,String value) {
         TextView choice=tv(value,20,TEXT,true);
-        choice.setPadding(dp(12),dp(8),dp(12),dp(8));
-        choice.setBackground(round(Color.parseColor(MerchantAppSettings.isDarkMode(this)
-                ? "#23364A" : "#E8F2FF"),dp(10)));
-        LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);
-        space.bottomMargin=dp(4);
-        box.addView(choice,space);
+        choice.setTextColor(MerchantAppSettings.isDarkMode(this)?0xFFFFD697:0xFF693900);
+        MerchantIncomingOrderCard.addTinted(this,box,choice,0xFFFFEFCB,0xFF493321);
     }
 
     private String kitchenActionStatus(JSONObject order,String global){
@@ -699,7 +694,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if ("pending".equals(st)) {
             LinearLayout a = actionRow();
             Button accept = btn(updating ? "Memproses..." : "Terima pesanan");
-            Button reject = outlineBtn("Tolak");
+            Button reject = MerchantIncomingOrderCard.rejectButton(this);
             accept.setEnabled(!updating);
             reject.setEnabled(!updating);
             a.addView(accept, actionLp());

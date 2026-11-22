@@ -11,19 +11,18 @@ import org.json.JSONObject;
 public final class MerchantDriverCommunication {
     private MerchantDriverCommunication() {}
 
-    public static void attach(MerchantOrdersActivity a, LinearLayout box, JSONObject order,
+    public static void attach(MerchantBaseActivity a, LinearLayout box, JSONObject order,
                               String actionId, String displayId, String driverName) {
-        TextView caption = a.tv("Driver · " + driverName, 12, a.MUTED, true);
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(-1, -2); cp.setMargins(0, a.dp(6), 0, a.dp(4));
-        box.addView(caption, cp);
-
-        LinearLayout row = a.row();
-        Button chat = a.btn("Pesan");
-        Button call = a.outlineBtn("Panggil");
-        row.addView(chat, new LinearLayout.LayoutParams(0, a.dp(48), 1));
-        LinearLayout.LayoutParams callParams = new LinearLayout.LayoutParams(0, a.dp(48), 1);
-        callParams.setMarginStart(a.dp(6));
-        row.addView(call, callParams);
+        LinearLayout row=a.actionRow();
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(0,a.dp(5),0,0);
+        TextView caption=a.tv("Driver · "+driverName,13,a.TEXT,true);
+        boolean stack=a.stackControls();
+        row.addView(caption,new LinearLayout.LayoutParams(stack?-1:0,-2,stack?0:1));
+        Button chat=a.outlineBtn("Pesan");
+        Button call=a.outlineBtn("Panggil");
+        row.addView(chat,a.actionLp());
+        row.addView(call,a.actionLp());
         box.addView(row);
 
         chat.setOnClickListener(v -> {
