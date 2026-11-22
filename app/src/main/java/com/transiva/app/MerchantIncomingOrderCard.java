@@ -16,7 +16,7 @@ final class MerchantIncomingOrderCard {
 
     private MerchantIncomingOrderCard() {}
 
-    static LinearLayout build(MerchantBaseActivity a,JSONObject order,boolean enabled,Decision decision) {
+    static LinearLayout build(MerchantBaseActivity a,JSONObject order,boolean enabled,Decision decision,Runnable expiredRefresh) {
         LinearLayout card=new LinearLayout(a);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(a.dp(12),a.dp(10),a.dp(12),a.dp(12));
@@ -33,7 +33,7 @@ final class MerchantIncomingOrderCard {
         outlet.addView(number,new LinearLayout.LayoutParams(-2,-2));
         card.addView(outlet);
         card.addView(a.tv("Pesanan baru",21,a.NAVY,true));
-        addTimer(a,card,order);
+        MerchantCountdownView timer=addTimer(a,card,order);
         String customer=order.optString("customer_name",order.optString("customer_username"));
         if (!customer.isEmpty()) card.addView(a.tv("Untuk "+customer,14,a.TEXT,true));
         JSONArray items=order.optJSONArray("items");
@@ -74,8 +74,13 @@ final class MerchantIncomingOrderCard {
         LinearLayout buttons=a.actionRow();
         Button accept=a.btn("✓  Terima pesanan");
         Button reject=rejectButton(a);
-        accept.setEnabled(enabled);
-        reject.setEnabled(enabled);
+        accept.setEnabled(enabled && !expired(order));
+        reject.setEnabled(enabled && !expired(order));
+        timer.onComplete(()->{
+            accept.setEnabled(false);
+            reject.setEnabled(false);
+            expiredRefresh.run();
+        });
         accept.setOnClickListener(v->decision.submit("merchant_accepted",""));
         reject.setOnClickListener(v->showReject(a,reason->decision.submit("merchant_rejected",reason)));
         buttons.addView(accept,a.actionLp());
@@ -122,13 +127,23 @@ final class MerchantIncomingOrderCard {
                 }).setNegativeButton("Kembali",null).show();
     }
 
-    static void addTimer(MerchantBaseActivity a,LinearLayout box,JSONObject order) {
+    private static long deadline(JSONObject order) {
         long created=order.optLong("merchant_response_epoch")*1000L;
         if (created<=0) created=MerchantServerClock.createdAt(order);
-        MerchantCountdownView timer=new MerchantCountdownView(a,created>0?created+300000L:0,300000L,
+        return created>0?created+300000L:0;
+    }
+
+    static boolean expired(JSONObject order) {
+        long until=deadline(order);
+        return until>0 && MerchantServerClock.now()>=until;
+    }
+
+    static MerchantCountdownView addTimer(MerchantBaseActivity a,LinearLayout box,JSONObject order) {
+        MerchantCountdownView timer=new MerchantCountdownView(a,deadline(order),300000L,
                 "Sisa konfirmasi","Waktu konfirmasi habis");
         timer.setTextSize(15);
         addTinted(a,box,timer,0xFFFFEDC3,0xFF423220);
+        return timer;
     }
 
     static void addTinted(MerchantBaseActivity a,LinearLayout box,TextView value,int light,int dark) {

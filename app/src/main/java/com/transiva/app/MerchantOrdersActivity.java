@@ -34,6 +34,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     private String screenAccountKey="";
     private boolean firstLoad = true;
     private boolean updating = false;
+    private final java.util.Set<String> expiredConfirmations=new java.util.HashSet<>();
     private boolean loading = false;
     private long readGeneration;
     private java.util.concurrent.Future<?> activeRead;
@@ -518,9 +519,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         ref.setPadding(dp(6),dp(3),dp(6),dp(3));
         ref.setBackground(round(Color.parseColor(dark?"#1B334A":"#EDF5FF"),dp(8)));
         header.addView(ref);box.addView(header);
-        if(pending){
-            MerchantIncomingOrderCard.addTimer(this,box,o);
-        }
+        MerchantCountdownView confirmation=pending?MerchantIncomingOrderCard.addTimer(this,box,o):null;
         String customer=s(o,"customer_name","customer","name"),phone=s(o,"customer_phone","phone");
         String address=s(o,"delivery_address","destination_address","address"),driver=s(o,"driver","driver_name");
         Object savedNote = o.opt("customer_note");
@@ -547,7 +546,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         // Transaction buttons stay above secondary information and never depend on disclosure state.
         if(!historyMode){
             addCancellationActions(box,o,actionId,displayId);
-            addActions(box,o,actionId,displayId,kitchenActionStatus(o,status));
+            addActions(box,o,actionId,displayId,kitchenActionStatus(o,status),confirmation);
             if(!driver.isEmpty())addDriverChat(box,o,actionId,displayId,driver);
         }
         LinearLayout info=new LinearLayout(this);info.setOrientation(LinearLayout.VERTICAL);
@@ -689,14 +688,20 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
                 .show();
     }
 
-    private void addActions(LinearLayout box, JSONObject order, String actionId, String displayId, String status) {
+    private void addActions(LinearLayout box, JSONObject order, String actionId, String displayId, String status, MerchantCountdownView confirmation) {
         String st = status == null ? "" : status.trim().toLowerCase(Locale.US);
         if ("pending".equals(st)) {
             LinearLayout a = actionRow();
             Button accept = btn(updating ? "Memproses..." : "Terima pesanan");
             Button reject = MerchantIncomingOrderCard.rejectButton(this);
-            accept.setEnabled(!updating);
-            reject.setEnabled(!updating);
+            boolean canRespond=!updating && !degradedOffline && !MerchantIncomingOrderCard.expired(order);
+            accept.setEnabled(canRespond);
+            reject.setEnabled(canRespond);
+            if (confirmation!=null) confirmation.onComplete(()->{
+                accept.setEnabled(false);
+                reject.setEnabled(false);
+                if (expiredConfirmations.add(displayId)) load(false);
+            });
             a.addView(accept, actionLp());
             a.addView(reject, actionLp());
             box.addView(a);
@@ -817,6 +822,13 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if (id == null || id.trim().isEmpty()) {
             alert("Data tidak lengkap", "ID pesanan tidak ditemukan.");
             return;
+        }
+        if ("merchant_accepted".equals(status) || "merchant_rejected".equals(status)) {
+            for (int i=0;i<cached.length();i++) {
+                JSONObject row=cached.optJSONObject(i);
+                if (row!=null && id.equals(s(row,"id","order_numeric_id","order_db_id","order_id"))
+                        && MerchantIncomingOrderCard.expired(row)) { load(false); return; }
+            }
         }
         invalidateRead();
         updating = true;

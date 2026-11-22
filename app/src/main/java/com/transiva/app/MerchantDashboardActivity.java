@@ -29,6 +29,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private Runnable autoTask;
     private boolean realtimeRegistered = false;
     private LinearLayout incoming;
+    private final java.util.Set<String> expiredIncoming=new java.util.HashSet<>();
+    private boolean incomingChecked;
     private JSONArray pendingOrders=new JSONArray();
     private boolean incomingVisible, incomingReading, incomingQueued, incomingUpdating, incomingStale=true, incomingMore;
     private final Runnable incomingPoll=new Runnable() {
@@ -382,7 +384,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                 long received=android.os.SystemClock.elapsedRealtime();
                 if (!result.optBoolean("success")) throw new IllegalStateException();
                 runOnUiThread(()->{
-                    if (!ownsIncomingResult(token)) return;
+                    if (!ownsIncomingResult(token)) { incomingReading=false; return; }
+                    incomingChecked=true;
                     MerchantServerClock.sync(result,sent,received);
                     pendingOrders=new JSONArray();
                     JSONArray orders=result.optJSONArray("orders");
@@ -396,13 +399,15 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
                 });
             } catch (Exception error) {
                 runOnUiThread(()->{
-                    if (!ownsIncomingResult(token)) return;
+                    if (!ownsIncomingResult(token)) { incomingReading=false; return; }
+                    incomingChecked=true;
                     incomingStale=true;
                     completeIncomingRead();
                 });
             }
         });
         if (request==null) {
+            incomingChecked=true;
             incomingStale=true;
             completeIncomingRead();
         }
@@ -425,16 +430,25 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private void renderIncoming() {
         if (incoming==null) return;
         incoming.removeAllViews();
-        incoming.setVisibility(pendingOrders.length()==0?View.GONE:View.VISIBLE);
-        if (incomingStale && pendingOrders.length()>0)
-            incoming.addView(tv("Menunggu pembaruan pesanan…",13,MUTED,true));
+        incoming.setVisibility(pendingOrders.length()>0 || (incomingChecked && incomingStale)?View.VISIBLE:View.GONE);
+        if (incomingChecked && incomingStale) {
+            TextView offline=tv("Pesanan belum bisa diperbarui",15,NAVY,true);
+            incoming.addView(offline);
+            Button retry=outlineBtn("Coba lagi");
+            retry.setEnabled(!incomingReading);
+            retry.setOnClickListener(v->loadIncoming());
+            incoming.addView(retry);
+        }
         for (int i=0;i<pendingOrders.length();i++) {
             JSONObject order=pendingOrders.optJSONObject(i);
             if (order==null) continue;
             boolean canRespond=incomingVisible && !incomingUpdating && !incomingStale
                     && MerchantConnectivity.isOnline(this);
             addBlock(incoming,MerchantIncomingOrderCard.build(this,order,canRespond,
-                    (status,reason)->respondToIncoming(order,status,reason)),i==0?0:8);
+                    (status,reason)->respondToIncoming(order,status,reason),
+                    ()->{
+                        if (expiredIncoming.add(order.optString("order_id",order.optString("id")))) loadIncoming();
+                    }),i==0?0:8);
         }
         if (incomingMore && pendingOrders.length()>0) {
             Button all=outlineBtn("Lihat semua pesanan");
@@ -445,6 +459,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
 
     private void respondToIncoming(JSONObject order,String status,String reason) {
         if (!incomingVisible || incomingStale || incomingUpdating || !MerchantConnectivity.isOnline(this)) return;
+        if (MerchantIncomingOrderCard.expired(order)) { loadIncoming(); return; }
         String id=order.optString("id");
         String display=order.optString("order_id",id);
         String token=sessionManager.getToken();
