@@ -516,7 +516,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             prompt.setPadding(0,dp(5),0,dp(3));box.addView(prompt);
             String age=orderAge(o);
             if(!age.isEmpty())box.addView(tv(age,11,MUTED,false));
-            long created=MerchantServerClock.createdAt(o);
+            long created=o.optLong("merchant_response_epoch",0)*1000L;
+            if (created<=0) created=MerchantServerClock.createdAt(o);
             MerchantCountdownView responseTimer=new MerchantCountdownView(this,created>0?created+5*60000L:0,5*60000L,"Konfirmasi","Segera konfirmasi pesanan");
             box.addView(responseTimer);
         }
@@ -579,7 +580,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private void addItems(LinearLayout box, JSONObject order) {
         JSONArray items = order.optJSONArray("items");
-        TextView itemHeading=tv("Yang dipesan",12,MUTED,true);itemHeading.setPadding(0,dp(4),0,dp(2));box.addView(itemHeading);
+        TextView itemHeading=tv("Yang dipesan",17,TEXT,true);itemHeading.setPadding(0,dp(4),0,dp(2));box.addView(itemHeading);
         if (items == null || items.length() == 0) {
             box.addView(tv("Rincian menu belum tersedia. Coba perbarui pesanan.", 13, Color.parseColor("#B54708"), false));
             return;
@@ -597,22 +598,44 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             long grossupUnit = Math.max(0, it.optLong("grossup_fee", Math.max(0, unit - optionTotal - merchantBase)));
             double discountPct = Math.max(0d, it.optDouble("discount_percent", 0d));
             long merchantUnit = Math.max(0, merchantBase + optionTotal);
-            String variant = s(it, "variant", "variant_name", "option", "options");
             Object storedNote = it.opt("note");
             String note = storedNote instanceof String ? (String) storedNote : s(it, "notes", "item_note", "catatan");
-            TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),15,TEXT,true);itemName.setPadding(0,dp(2),0,dp(2));box.addView(itemName);
-            if (discountPct > 0 && originalBase > merchantBase) {
-                box.addView(tv("   Diskon merchant " + (discountPct == Math.rint(discountPct) ? String.valueOf((int) discountPct) : String.valueOf(discountPct)) + "% • Harga bersih dasar " + rupiah(merchantBase), 12, Color.parseColor("#137333"), true));
+            TextView itemName=tv(qty+" × "+(name.isEmpty()?"Menu":name),23,TEXT,true);
+            itemName.setPadding(0,dp(12),0,dp(6));
+            box.addView(itemName);
+            JSONArray selected=it.optJSONArray("selected_options");
+            boolean displayed=false;
+            if (selected!=null) for (int j=0;j<selected.length();j++) {
+                JSONObject option=selected.optJSONObject(j);
+                if (option==null || option.optString("name").isEmpty()) continue;
+                String type=option.optString("type");
+                String label=type.contains("topping")?"Topping":s(option,"label");
+                addKitchenChoice(box,(label.isEmpty()?"Pilihan":label)+" · "+option.optString("name"));
+                displayed=true;
             }
-            if (!variant.isEmpty()) box.addView(tv("   Pilihan: " + variant, 12, MUTED, false));
+            String variant=s(it,"variant","variant_name","option","options");
+            if (!displayed && !variant.isEmpty()) addKitchenChoice(box,"Pilihan · "+variant);
+            if (discountPct > 0 && originalBase > merchantBase) {
+                box.addView(tv("Diskon merchant " + (discountPct == Math.rint(discountPct) ? String.valueOf((int) discountPct) : String.valueOf(discountPct)) + "% • Harga bersih dasar " + rupiah(merchantBase), 13, TEXT, true));
+            }
             if (!note.isEmpty()) {
-                TextView instruction = tv("Catatan menu: " + note, 12, TEXT, false);
+                TextView instruction = tv("Catatan menu: " + note, 17, TEXT, false);
                 instruction.setPadding(dp(10), dp(6), dp(10), dp(6));
                 instruction.setBackground(round(Color.parseColor(MerchantAppSettings.isDarkMode(this)
                         ? "#23364A" : "#EDF5FF"), dp(8)));
                 box.addView(instruction);
             }
         }
+    }
+
+    private void addKitchenChoice(LinearLayout box,String value) {
+        TextView choice=tv(value,20,TEXT,true);
+        choice.setPadding(dp(12),dp(8),dp(12),dp(8));
+        choice.setBackground(round(Color.parseColor(MerchantAppSettings.isDarkMode(this)
+                ? "#23364A" : "#E8F2FF"),dp(10)));
+        LinearLayout.LayoutParams space=new LinearLayout.LayoutParams(-1,-2);
+        space.bottomMargin=dp(4);
+        box.addView(choice,space);
     }
 
     private String kitchenActionStatus(JSONObject order,String global){
@@ -623,6 +646,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     }
 
     private void addCancellationActions(LinearLayout box, JSONObject order, String id, String displayId) {
+        if ("pending".equals(order.optString("status"))) return;
         String global = order.optString("global_status", order.optString("status"));
         if (!order.isNull("picked_up_at") && !order.optString("picked_up_at").isEmpty()) return;
         switch (global) {
@@ -681,7 +705,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             a.addView(accept, actionLp());
             a.addView(reject, actionLp());
             box.addView(a);
-            accept.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showCookTime(actionId, displayId); });
+            accept.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) update(actionId, displayId, "merchant_accepted", "", 0); });
             reject.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) showRejectReasons(actionId, displayId); });
         } else if ("merchant_accepted".equals(st)) {
             // Setelah Terima tidak ada lagi tombol Terima/Tolak maupun Mulai Siapkan.
@@ -693,17 +717,6 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             r.setOnClickListener(v -> { if(degradedOffline){toast("Offline: aksi transaksi dinonaktifkan sampai koneksi kembali.");return;} if (!updating) update(actionId, displayId, "ready", "", 0); });
             box.addView(r);
         }
-    }
-
-    private void showCookTime(String id, String displayId) {
-        if (updating) return;
-        final String[] labels = {"10 menit", "15 menit", "20 menit", "30 menit", "45 menit"};
-        final int[] mins = {10, 15, 20, 30, 45};
-        PremiumDialogs.builder(this)
-                .setTitle("Berapa lama menyiapkan pesanan?")
-                .setItems(labels, (d, w) -> update(id, displayId, "merchant_accepted", "", mins[w]))
-                .setNegativeButton("Batal", null)
-                .show();
     }
 
     private void showRejectReasons(String id, String displayId) {
@@ -751,6 +764,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         for(String key:new String[]{"global_status","status","driver_status","order_status","trip_status"}){
             String value=o.optString(key,"").trim().toLowerCase(Locale.US);if(MerchantOrderUiState.terminal(value))return value;
         }
+        if ("pending".equals(o.optString("status")) && o.optLong("merchant_response_epoch")>0) return "pending";
         String[] keys = {"global_status", "driver_status", "order_status", "trip_status", "status"};
         String best = "pending";
         int bestRank = 0;
