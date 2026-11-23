@@ -66,6 +66,8 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         screenAccountKey=currentAccountCacheName();
+        outletFilter=getIntent().getIntExtra("pos_outlet_filter",0);
+        if(b!=null)outletFilter=b.getInt("outlet_filter",outletFilter);
         focusOrderId = getIntent().getStringExtra("order_id");
         if (focusOrderId == null) focusOrderId = "";
         if(b!=null && focusOrderId.isEmpty()){historyMode=b.getBoolean("history",false);focusOrderId=b.getString("focus_order",focusOrderId);}
@@ -73,6 +75,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         if(b!=null)periodSpinner.setSelection(b.getInt("period",0));
     }
     @Override protected void onSaveInstanceState(Bundle state){
+        state.putInt("outlet_filter",outletFilter);
         state.putBoolean("history",historyMode);state.putString("focus_order",focusOrderId);
         if(periodSpinner!=null)state.putInt("period",periodSpinner.getSelectedItemPosition());
         super.onSaveInstanceState(state);

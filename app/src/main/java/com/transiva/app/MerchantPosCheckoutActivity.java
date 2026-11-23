@@ -37,13 +37,20 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         form=column();LinearLayout footer=column();footer.setPadding(dp(12),dp(6),dp(12),dp(8));
         footer.setBackground(round(surface(),dp(10)));
         totalValue=amountRow(footer,"Total pembayaran",true);
-        Button save=btn("Simpan transaksi");footer.addView(save);
+        Button save=btn("Simpan transaksi");save.setElevation(0);save.setBackground(round(0xff0756c7,dp(10)));footer.addView(save);
         setContentView(page(form,footer));
         LinearLayout top=new LinearLayout(this);top.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        Button back=outlineBtn("‹");back.setContentDescription("Kembali ke transaksi");back.setOnClickListener(v->finish());
+        Button back=outlineBtn("‹");back.setContentDescription("Kembali ke transaksi");back.setElevation(0);back.setBackground(round(surface(),dp(8)));back.setOnClickListener(v->finish());
         top.addView(back,new LinearLayout.LayoutParams(dp(48),-2));
         LinearLayout header=column();header.setPadding(dp(9),0,0,0);header.addView(title("Checkout"));header.addView(sub(data.optString("outlet_name")));
         top.addView(header,new LinearLayout.LayoutParams(0,-2,1));form.addView(top);
+        Button incoming=outlineBtn("Pesanan masuk");incoming.setOnClickListener(v->{
+            String outlet=data.optString("outlet");
+            try{
+                startActivity(new Intent(this,MerchantOrdersActivity.class)
+                    .putExtra(MerchantBaseActivity.EXTRA_BRANCH,outlet).putExtra("pos_outlet_filter",Integer.parseInt(outlet)));
+            }catch(NumberFormatException ignored){toast("Outlet tidak valid.");}
+        });form.addView(incoming);
         LinearLayout items=card();items.addView(title("Ringkasan belanja"));
         for (int i=0;i<lines.length();i++) {
             JSONObject line=lines.optJSONObject(i);if(line==null)continue;
@@ -124,8 +131,8 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         LinearLayout outer=column();
         LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
         row.setMinimumHeight(dp(45));
-        row.addView(tv(label,13,NAVY,true),new LinearLayout.LayoutParams(0,-2,1));
-        row.addView(field,new LinearLayout.LayoutParams(0,-2,1.1f));
+        row.addView(tv(label,13,NAVY,true),new LinearLayout.LayoutParams(0,-2,0.82f));
+        row.addView(field,new LinearLayout.LayoutParams(0,-2,1.18f));
         outer.addView(row);android.view.View line=new android.view.View(this);
         line.setBackgroundColor(MerchantAppSettings.isDarkMode(this)?0xff3a4a5f:0xffe0e8f1);
         outer.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));return outer;
@@ -138,7 +145,12 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
     }
     private Spinner spinner(LinearLayout host,String label,String[] values){
         Spinner picker=new Spinner(this);picker.setContentDescription(label);picker.setMinimumHeight(dp(44));
-        picker.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values));host.addView(detailRow(label,picker));return picker;
+        picker.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,values){
+            @Override public android.view.View getView(int position,android.view.View recycled,android.view.ViewGroup parent){
+                TextView value=tv(getItem(position),14,NAVY,false);value.setGravity(android.view.Gravity.END|android.view.Gravity.CENTER_VERTICAL);
+                value.setMinLines(1);value.setMaxLines(3);value.setPadding(dp(3),dp(4),dp(4),dp(4));return value;
+            }
+        });host.addView(detailRow(label,picker));return picker;
     }
     private void react(Spinner spinner){
         spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
@@ -152,10 +164,14 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         for(int i=0;i<labels.length;i++){
             final int choice=i;
             Button button=i==paymentMethod?btn(labels[i]):outlineBtn(labels[i]);
+            button.setBackground(stroke(i==paymentMethod?0xff0756c7:surface(),0xffb8cee6,dp(8)));
+            button.setTextColor(i==paymentMethod?Color.WHITE:NAVY);button.setElevation(0);
             button.setPadding(0,0,0,0);button.setMinWidth(0);button.setSelected(i==paymentMethod);
-            button.setOnClickListener(v->{paymentMethod=choice;updateMethod();refresh();});
+            button.setOnClickListener(v->{if(paymentMethod!=choice){paymentMethod=choice;updateMethod();refresh();}});
             methods.addView(button,new LinearLayout.LayoutParams(0,-2,1));
         }
+        if(cash.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)cash.getParent()).removeView(cash);
+        if(reference.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)reference.getParent()).removeView(reference);
         payment.removeAllViews();change=null;
         if(paymentMethod==0){
             payment.addView(sub("Uang diterima"));
@@ -164,7 +180,8 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
             Button exact=outlineBtn("Uang pas");exact.setOnClickListener(v->{
                 try{cash.setText(Long.toString(quote().optLong("total")));}catch(Exception error){toast("Periksa rincian transaksi.");}
             });
-            row.addView(exact);payment.addView(row);
+            exact.setMinimumWidth(0);exact.setMinWidth(0);
+            row.addView(exact,new LinearLayout.LayoutParams(dp(91),-2));payment.addView(row);
             LinearLayout changeCard=column();changeCard.setPadding(dp(7),dp(2),dp(7),dp(2));
             changeCard.setBackground(round(MerchantAppSettings.isDarkMode(this)?0xff1b3731:0xffe4f5eb,dp(8)));
             change=amountRow(changeCard,"Kembalian",false);payment.addView(changeCard);
@@ -195,7 +212,7 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
             productDiscount+=reduction;
             tax+=Math.round((amount-reduction)*(1-rate/100)*line.optDouble("tax",0)/100);
             line.remove("productPercent");line.remove("photo");line.remove("image");
-            line.put("productDiscount",reduction);
+            line.put("productDiscount",reduction).put("useProductDiscount",option!=null&&option.isChecked());
             finalLines.put(line);
         }
         long discount=productDiscount+Math.round((subtotal-productDiscount)*rate/100);
@@ -239,6 +256,8 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
                 .put("method",mode).put("customer",buyer.optString("id")).put("customerName",buyer.optString("name","Pelanggan umum"))
                 .put("staff",isStaff()?username():chosen("staff",operator,true).optString("name","Pemilik outlet"))
                 .put("staffKey",isStaff()?"login:"+username():operator.getSelectedItemPosition()==0?"owner":"staff:"+chosen("staff",operator,true).optString("id"))
+                .put("typeId",chosen("types",type,false).optString("id"))
+                .put("promoId",chosen("discounts",promo,true).optString("id"))
                 .put("type",chosen("types",type,false).optString("name")).put("outlet",data.optString("outlet_name"))
                 .put("cash",paid).put("reference","qris".equals(mode)?ref:"");
             setResult(RESULT_OK,new Intent().putExtra(SALE,sale.toString()).putExtra("outlet",data.optString("outlet"))

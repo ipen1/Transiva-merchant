@@ -189,7 +189,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                         } else render();
                         return;
                     }
-                    book=sent.optJSONObject("book");
+                    JSONObject authoritative=result.optJSONObject("book");
+                    book=authoritative==null?sent.optJSONObject("book"):normalize(authoritative);
                     revision=result.optInt("revision");
                     pending=null;
                     Runnable done=afterSave;
@@ -874,6 +875,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         });
     }
     private void products() {
+        place(content,action("Scan barcode produk",R.drawable.ic_merchant_search,this::scan,true),8);
         LinearLayout merchant=card(), header=horizontal(), info=vertical();
         info.addView(text("Menu Merchant",17,INK,true));place(info,text("Sinkron dari Merchant",12,0xff43526a,false),3);
         weight(header,info,0);
@@ -926,7 +928,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         }
     }
     private LinearLayout productLine(JSONObject product,boolean linked,boolean manage) {
-        LinearLayout line=horizontal();line.setGravity(Gravity.TOP);
+        LinearLayout line=horizontal();line.setGravity(Gravity.CENTER_VERTICAL);
         ImageView image=icon(linked?R.drawable.ic_merchant_bag:R.drawable.ic_merchant_package,ACCENT);
         image.setBackground(round(0xffe8f3ff,dp(8)));image.setClipToOutline(true);image.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         int size=manage?60:51;
@@ -1339,6 +1341,15 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         MerchantPosScanActivity.launch(this);
     }
     private void scanResult(String value,boolean notify) {
+        if ("products".equals(screen)&&book!=null&&!busy&&pending==null){
+            String code=value.trim();
+            if(code.isEmpty()||code.length()>80){toast("Barcode tidak valid.");return;}
+            JSONObject existing=find(array(book,"products"),"barcode",code);
+            if(existing!=null)openProduct(existing);
+            else try{openProduct(new JSONObject().put("barcode",code));}
+            catch(org.json.JSONException failure){toast("Barcode belum dapat diisi.");}
+            return;
+        }
         if (!"sale".equals(screen)||book==null||busy||pending!=null) return;
         for (JSONObject product:productsList()) if (!value.isEmpty()&&value.equals(product.optString("barcode"))) {
             add(product.optString("id"),1);return;

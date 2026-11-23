@@ -75,7 +75,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
                             .addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),PHOTO);
                     else if(which==1) camera(); else {photo="";showPhoto();}
                 }).show());
-        photoActions.addView(pick);photos.addView(photoActions,new LinearLayout.LayoutParams(0,-2,1));form.addView(photos);
+        pick.setElevation(0);photoActions.addView(pick);photos.addView(photoActions,new LinearLayout.LayoutParams(0,-2,1));form.addView(photos);
         LinearLayout details=column();details.setPadding(dp(11),dp(8),dp(11),dp(8));
         details.setBackground(round(MerchantAppSettings.isDarkMode(this)?0xff17263a:android.graphics.Color.WHITE,dp(12)));
         LinearLayout.LayoutParams detailParams=new LinearLayout.LayoutParams(-1,-2);detailParams.topMargin=dp(9);form.addView(details,detailParams);
@@ -84,7 +84,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         LinearLayout barcodeRow=new LinearLayout(this);barcodeRow.setGravity(Gravity.CENTER_VERTICAL);
         barcode=entry("Barcode",original.optString("barcode"),InputType.TYPE_CLASS_TEXT,80);
         barcodeRow.addView(barcode,new LinearLayout.LayoutParams(0,-2,1));
-        Button scan=outlineBtn("Scan");scan.setOnClickListener(v->MerchantPosScanActivity.launch(this));barcodeRow.addView(scan);details.addView(barcodeRow);
+        Button scan=outlineBtn("Scan");scan.setOnClickListener(v->MerchantPosScanActivity.launch(this));barcodeRow.addView(scan,new LinearLayout.LayoutParams(dp(80),-2));details.addView(barcodeRow);
         price=field(details,"Harga jual (Rp)",original.optString("price"),InputType.TYPE_CLASS_NUMBER,10);
         LinearLayout amounts=new LinearLayout(this), stockColumn=column(), taxColumn=column();
         amounts.addView(stockColumn,new LinearLayout.LayoutParams(0,-2,1));
@@ -247,33 +247,31 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         catch(IllegalArgumentException error) {return null;}
     }
     private String readPhoto(Uri uri) throws IOException {
-        BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;
-        try (InputStream in=getContentResolver().openInputStream(uri)){BitmapFactory.decodeStream(in,null,bounds);}
-        if (bounds.outWidth<1||bounds.outHeight<1||bounds.outWidth>20000||bounds.outHeight>20000) throw new IOException();
-        BitmapFactory.Options options=new BitmapFactory.Options();
-        options.inSampleSize=1;
-        while (Math.max(bounds.outWidth,bounds.outHeight)/options.inSampleSize>720) options.inSampleSize*=2;
-        Bitmap bitmap;
-        try(InputStream in=getContentResolver().openInputStream(uri)){bitmap=BitmapFactory.decodeStream(in,null,options);}
-        if (bitmap==null) throw new IOException();
-        int rotation=0;boolean flipped=false;
-        try(InputStream in=getContentResolver().openInputStream(uri)) {
-            if (in!=null) {ExifInterface exif=new ExifInterface(in);rotation=exif.getRotationDegrees();flipped=exif.isFlipped();}
-        }catch(IOException ignored){}
-        try{return encodeThumbnail(bitmap,rotation,flipped);}
-        finally{bitmap.recycle();}
+        PreparedImage resized;
+        try {resized=prepareAiResizeToWebp(uri,"pos_photo",352,0,26000);}
+        catch(Exception error){throw new IOException("Optimasi foto gagal.",error);}
+        if(resized==null)throw new IOException("Foto kosong.");
+        File temporary=resized.transformed&&"file".equals(resized.uri.getScheme())?new File(resized.uri.getPath()):null;
+        try(InputStream input=getContentResolver().openInputStream(resized.uri)){
+            Bitmap image=BitmapFactory.decodeStream(input);
+            if(image==null)throw new IOException("Foto tidak dapat dibaca.");
+            try{return encodeThumbnail(image,0,false);}finally{image.recycle();}
+        }finally{if(temporary!=null)temporary.delete();}
     }
     private String encodeThumbnail(Bitmap bitmap,int rotation,boolean flipped)throws IOException{
         int side=Math.min(bitmap.getWidth(),bitmap.getHeight());
         Matrix transform=new Matrix();
         float ratio=176f/side;transform.setScale(flipped?-ratio:ratio,ratio);transform.postRotate(rotation);
         Bitmap thumbnail=Bitmap.createBitmap(bitmap,(bitmap.getWidth()-side)/2,(bitmap.getHeight()-side)/2,side,side,transform,true);
+        Bitmap opaque=Bitmap.createBitmap(thumbnail.getWidth(),thumbnail.getHeight(),Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas canvas=new android.graphics.Canvas(opaque);canvas.drawColor(android.graphics.Color.WHITE);
+        canvas.drawBitmap(thumbnail,0,0,null);
         try(ByteArrayOutputStream out=new ByteArrayOutputStream()){
             for(int quality=83;quality>=23;quality-=10){
-                out.reset();thumbnail.compress(Bitmap.CompressFormat.JPEG,quality,out);
+                out.reset();opaque.compress(Bitmap.CompressFormat.JPEG,quality,out);
                 if(out.size()<=12288) return PREFIX+android.util.Base64.encodeToString(out.toByteArray(),android.util.Base64.NO_WRAP);
             }
             throw new IOException();
-        }finally{if(thumbnail!=bitmap)thumbnail.recycle();}
+        }finally{opaque.recycle();if(thumbnail!=bitmap)thumbnail.recycle();}
     }
 }
