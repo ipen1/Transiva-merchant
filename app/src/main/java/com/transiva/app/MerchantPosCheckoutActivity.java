@@ -95,6 +95,7 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         subtotalValue=amountRow(breakdown,"Subtotal",false);discountValue=amountRow(breakdown,"Diskon",false);
         taxValue=amountRow(breakdown,"Pajak",false);pointsValue=amountRow(breakdown,"Tukar poin",false);addCard(breakdown);
         cash=input("Rp 0",InputType.TYPE_CLASS_NUMBER);
+        MerchantRupiahInput.attach(cash);
         reference=input("Referensi QRIS",InputType.TYPE_CLASS_TEXT);
         if (state!=null) {
             type.setSelection(state.getInt("type"));customer.setSelection(state.getInt("customer"));promo.setSelection(state.getInt("promo"));
@@ -234,7 +235,7 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
             }
             if(change!=null){
                 String input=cash.getText().toString().trim();
-                long received=input.isEmpty()?0:Long.parseLong(input);
+                long received=input.isEmpty()?0:MerchantRupiahInput.parse(input);
                 change.setText(input.isEmpty()?"—":received<total?"Kurang "+money(total-received):money(received-total));
                 change.setTextColor(received>=total?0xff19834e:0xffb54b33);
             }
@@ -247,7 +248,7 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
             long paid=0,total=sale.optLong("total");
             String ref=reference.getText().toString().trim();
             if("cash".equals(mode)){
-                String entered=cash.getText().toString().trim();paid=entered.isEmpty()?0:Long.parseLong(entered);
+                String entered=cash.getText().toString().trim();paid=entered.isEmpty()?0:MerchantRupiahInput.parse(entered);
                 if(paid<total||paid>100000000000L)throw new IllegalArgumentException("Periksa jumlah uang diterima.");
             }
             if("qris".equals(mode)&&(ref.isEmpty()||ref.length()>120))throw new IllegalArgumentException("Isi referensi QRIS yang sudah dikonfirmasi.");

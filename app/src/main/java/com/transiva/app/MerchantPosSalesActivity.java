@@ -13,7 +13,7 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-public final class MerchantPosSalesActivity extends MerchantBaseActivity {
+public final class MerchantPosSalesActivity extends MerchantBaseActivity implements MerchantPosAccess.Grantee {
     private static final int EXPORT=851;
     private static final String[] COLUMNS={"tanggal","id","kasir","kasir_id","metode","subtotal","diskon","pajak","poin_rp","total","modal","laba_kotor","sisa_kasbon"};
     private final ExecutorService work=Executors.newSingleThreadExecutor();
@@ -22,11 +22,18 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity {
     private String outlet, filterKey, filterName, method="all", export="";
     private int days=1, shown=40;
     private JSONObject book,plan;
+    private String grant="";
+    private final android.os.Handler expiryHandler=new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable expiry=()->{if(alive()){book=null;load();}};
+
+    @Override public String posGrant(){return grant;}
     private LinearLayout body;
 
     @Override protected void onCreate(Bundle state){
         super.onCreate(state);
         if(sessionManager.getToken().isEmpty()){finish();return;}
+        grant=getIntent().getStringExtra("pos_grant");
+        if(MerchantPosAccess.valid(grant))expiryHandler.postDelayed(expiry,Long.parseLong(grant.substring(0,10))*1000L-System.currentTimeMillis());
         outlet=getIntent().getStringExtra("outlet");filterKey=getIntent().getStringExtra("staff_key");filterName=getIntent().getStringExtra("staff_name");
         if(outlet==null||!outlet.matches("[0-9]+")||filterKey==null){finish();return;}
         if(state!=null){days=state.getInt("days",1);method=state.getString("method","all");export=state.getString("export","");}
@@ -35,7 +42,7 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity {
     @Override protected void onSaveInstanceState(Bundle state){
         state.putInt("days",days);state.putString("method",method);state.putString("export",export);super.onSaveInstanceState(state);
     }
-    @Override protected void onDestroy(){work.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){expiryHandler.removeCallbacks(expiry);work.shutdown();super.onDestroy();}
     private boolean alive(){return !isFinishing()&&!isDestroyed();}
     private void load(){
         layout();body.addView(sub("Memuat penjualan outlet…"));
@@ -43,7 +50,14 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity {
             try{
                 JSONObject result=new JSONObject(get(BASE+"merchant_pos.php?outlet="+outlet));
                 if(!result.optBoolean("success"))throw new java.io.IOException(result.optString("message"));
-                runOnUiThread(()->{if(alive()){book=result.optJSONObject("book");plan=result.optJSONObject("plan");draw();}});
+                JSONArray locks=result.optJSONArray("locked_menus");
+                if(!result.optBoolean("pin_unlocked",true)&&locks!=null)
+                    for(int i=0;i<locks.length();i++)if("finance".equals(locks.optString(i)))
+                        throw new java.io.IOException("Laporan terkunci. Kembali ke Kasir dan masukkan PIN Pemilik.");
+                runOnUiThread(()->{if(alive()){
+                    try{book=result.optJSONObject("book");plan=result.optJSONObject("plan");draw();}
+                    catch(RuntimeException renderError){layout();body.addView(sub("Laporan belum bisa ditampilkan. Coba lagi."));Button retry=outlineBtn("Muat ulang");retry.setOnClickListener(v->load());body.addView(retry);}
+                }});
             }catch(Exception error){runOnUiThread(()->{if(alive()){
                 layout();body.addView(sub(error instanceof java.io.IOException?error.getMessage():"Laporan belum bisa dimuat."));
                 Button retry=outlineBtn("Coba lagi");retry.setOnClickListener(v->load());body.addView(retry);
@@ -51,7 +65,10 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity {
         });
     }
     private void layout(){
-        body=new LinearLayout(this);setContentView(page(body,new android.view.View(this)));
+        body=new LinearLayout(this);
+        android.view.View hiddenFooter=new android.view.View(this);
+        hiddenFooter.setLayoutParams(new LinearLayout.LayoutParams(-1,0));
+        setContentView(page(body,hiddenFooter));
         Button back=outlineBtn("‹ Pegawai");back.setOnClickListener(v->finish());body.addView(back);
         body.addView(title("Penjualan kasir"));body.addView(sub(filterName));
     }

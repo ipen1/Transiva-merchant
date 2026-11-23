@@ -28,7 +28,7 @@ import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 
-public final class MerchantPosActivity extends MerchantBaseActivity {
+public final class MerchantPosActivity extends MerchantBaseActivity implements MerchantPosAccess.Grantee {
     private static final int INK=0xff0b1530, ACCENT=0xff0756c7, PAGE=0xfff2f6fc, LINE=0xffd6dfeb;
     private static final int IMPORT=718, EXPORT=719, QR=720, PRODUCT_EDITOR=721, CHECKOUT=722, LIMIT=300000;
     private static final String[] BOOK_LISTS={"products","sales","people","staff","attendance","materials","expenses","payments","surveys","discounts","types"};
@@ -47,6 +47,30 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private int revision, historyLimit=50, catalogLimit=50;
     private boolean busy;
     private View checkoutBar;
+    private volatile String grant="";
+    private final android.os.Handler grantTimer=new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable expirePin=()->{
+        grant="";
+        if(book!=null&&!busy&&pending==null&&alive()){
+            if(requiresPin(screen))screen="home";
+            if(!"sale".equals(screen))load(false);
+            else if(this.lockedMenus.contains("finance")){
+                book.remove("cashOpening");
+                put(book,"sales",new JSONArray());put(book,"payments",new JSONArray());put(book,"expenses",new JSONArray());
+            }
+        }
+    };
+    private String deferredMenu="", deferredSalesKey, deferredSalesName;
+    private final Set<String> lockedMenus=new HashSet<>();
+    private boolean pinConfigured;
+    private JSONObject recentReceipt;
+    @Override public String posGrant(){return grant;}
+    private com.journeyapps.barcodescanner.DecoratedBarcodeView cameraScanner;
+    private android.media.ToneGenerator scanTone;
+    private String scanMode="", lastCameraCode="";
+    private long lastCameraTime;
+    private boolean foreground;
+    private final StringBuilder externalCode=new StringBuilder();
     private String saleFilter="Semua";
     private boolean csvExpanded;
     private Intent deferredProduct, deferredCheckout;
@@ -98,7 +122,13 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         super.onConfigurationChanged(configuration);
         if (shell!=null) shell.post(()->{if (alive()) render();});
     }
-    @Override protected void onDestroy() { printers.close(); worker.shutdown(); super.onDestroy(); }
+    @Override protected void onResume(){super.onResume();foreground=true;if(cameraScanner!=null)cameraScanner.resume();}
+    @Override protected void onPause(){foreground=false;if(cameraScanner!=null)cameraScanner.pause();externalCode.setLength(0);super.onPause();}
+    @Override protected void onDestroy() {
+        if(cameraScanner!=null)cameraScanner.pause();
+        if(scanTone!=null)scanTone.release();
+        grantTimer.removeCallbacks(expirePin);printers.close();worker.shutdown();super.onDestroy();
+    }
     private boolean alive() { return !isDestroyed() && !isFinishing(); }
 
     private void load(boolean refreshOutlets) {
@@ -121,6 +151,11 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                 runOnUiThread(()->{
                     if (!alive()) return;
                     branches=updated;
+                    lockedMenus.clear();
+                    JSONArray menuLocks=result.optJSONArray("locked_menus");
+                    if(menuLocks!=null)for(int i=0;i<menuLocks.length();i++)lockedMenus.add(menuLocks.optString(i));
+                    pinConfigured=result.optBoolean("pin_configured");
+                    if(!result.optBoolean("pin_unlocked",true))grant="";
                     if (!outlet.isEmpty()&&!outlet.equals(selected)) cart.clear();
                     outlet=selected;
                     book=normalize(result.optJSONObject("book"));
@@ -129,7 +164,16 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                     revision=result.optInt("revision");
                     busy=false;
                     cart.entrySet().removeIf(entry->!canSell(product(book,entry.getKey()),entry.getValue()));
+                    if(requiresPin(screen))screen="home";
+                    if(!deferredMenu.isEmpty()){
+                        if(!requiresPin(deferredMenu))screen=deferredMenu;
+                        deferredMenu="";
+                    }
                     render();
+                    if(deferredSalesKey!=null){
+                        String key=deferredSalesKey,name=deferredSalesName;deferredSalesKey=null;
+                        if(!requiresPin("sales"))openSales(key,name);
+                    }
                     Intent nextProduct=deferredProduct;deferredProduct=null;
                     if (nextProduct!=null) receiveProduct(nextProduct);
                     Intent nextCheckout=deferredCheckout;deferredCheckout=null;
@@ -184,11 +228,13 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                         if (code.isEmpty() && result.optString("message").contains("belum dapat terhubung")) { render(); return; }
                         pending=null; afterSave=null;
                         toast(result.optString("message","Data ditolak server."));
+                        if ("POS_PIN_REQUIRED".equals(code)){grant="";load(false);return;}
                         if ("POS_CONFLICT".equals(code)||"POS_CATALOG_CHANGED".equals(code)||"PREMIUM_REQUIRED".equals(code)) {
                             cart.clear(); load(false);
                         } else render();
                         return;
                     }
+                    recentReceipt=result.optJSONObject("receipt");
                     JSONObject authoritative=result.optJSONObject("book");
                     book=authoritative==null?sent.optJSONObject("book"):normalize(authoritative);
                     revision=result.optInt("revision");
@@ -313,11 +359,15 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
     private void go(String next) {
         if (busy || pending!=null || book==null) return;
-        closeDrawer();screen=next;
+        closeDrawer();
+        if(requiresPin(next)){unlock(()->{deferredMenu=next;load(false);});return;}
+        screen=next;
         if ("sale".equals(next) && cart.isEmpty()) load(false); else render();
     }
     private void render() {
+        if(cameraScanner!=null){cameraScanner.pause();cameraScanner=null;}
         shell.removeAllViews();overlay=null;checkoutBar=null;saleResults=null;
+        if(!"sale".equals(screen))scanMode="";
         body=vertical();
         int max=dp(600);
         FrameLayout.LayoutParams frame=new FrameLayout.LayoutParams(Math.min(shell.getWidth()>0?shell.getWidth()-shell.getPaddingLeft()-shell.getPaddingRight():dp(screenWidthDp()),max),-1,Gravity.CENTER_HORIZONTAL);
@@ -361,7 +411,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             tab.addView(marker,new LinearLayout.LayoutParams(dp(72),dp(2)));
             ImageView glyph=icon(glyph(key),selected?ACCENT:INK);
             LinearLayout.LayoutParams iconLayout=new LinearLayout.LayoutParams(dp(19),dp(19));iconLayout.topMargin=dp(5);tab.addView(glyph,iconLayout);
-            place(tab,center(text("history".equals(key)?"Riwayat":titleOf(key),12,selected?ACCENT:INK,selected)),3);
+            place(tab,center(text("history".equals(key)?menuLabelFor(key,"Riwayat"):titleOf(key),12,selected?ACCENT:INK,selected)),3);
             tab.setOnClickListener(v->go(key));tab.setFocusable(true);tab.setSelected(selected);
             weight(dock,tab,0);
         }
@@ -388,11 +438,12 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             TextView caption=text(section[0].toUpperCase(new Locale("id","ID")),11,0xff52617a,true);pad(caption,6,6);links.addView(caption);
             for (int i=1;i<section.length;i++) {
                 String key=section[i];boolean active=screen.equals(key);
-                View entry=action(titleOf(key),glyph(key),()->go(key),active?0xffdceaff:Color.WHITE,active?ACCENT:INK,
+                View entry=action(menuLabel(key),glyph(key),()->go(key),active?0xffdceaff:Color.WHITE,active?ACCENT:INK,
                         active?0xffdceaff:Color.WHITE,44);
                 entry.setSelected(active);links.addView(entry);
             }
         }
+        if(!isStaff()) place(links,action("🔒 Atur kunci menu Kasir",0,()->{closeDrawer();configureLocks();},false),8);
         body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         close.requestFocus();
     }
@@ -407,7 +458,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         new AlertDialog.Builder(this).setTitle("Pilih outlet").setItems(names,(dialog,index)->{
             String selected=available.get(index).optString("id");
             if (selected.equals(outlet)) return;
-            Runnable switchOutlet=()->{cart.clear();outlet=selected;screen="home";query="";load(false);};
+            Runnable switchOutlet=()->{cart.clear();grant="";recentReceipt=null;outlet=selected;screen="home";query="";load(false);};
             if (cart.isEmpty()) switchOutlet.run();
             else confirm("Pindah outlet?","Keranjang saat ini akan dikosongkan.",switchOutlet);
         }).show();
@@ -472,11 +523,12 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private void home() {
         String now=day(System.currentTimeMillis());
         JSONArray sales=reportSales();
+        boolean hiddenFinance=requiresPin("report");
         LinearLayout hero=vertical();pad(hero,14,11);
         GradientDrawable blue=new GradientDrawable(GradientDrawable.Orientation.BL_TR,new int[]{0xff061d50,0xff063a9d,0xff0873ec});
         blue.setCornerRadius(dp(12));hero.setBackground(blue);
         hero.addView(text("Penjualan hari ini",15,Color.WHITE,true));
-        place(hero,text(rup(sum(sales,"total",now)),32,Color.WHITE,true),4);
+        place(hero,text(hiddenFinance?"🔒":rup(sum(sales,"total",now)),32,Color.WHITE,true),4);
         View start=action("Mulai transaksi",glyph("sale"),()->go("sale"),Color.WHITE,ACCENT,Color.WHITE,44);
         ((LinearLayout)start).setGravity(Gravity.CENTER);
         ((LinearLayout)start).getChildAt(1).setLayoutParams(new LinearLayout.LayoutParams(-2,-2));
@@ -486,8 +538,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         for (JSONObject sale:rows(array(book,"sales"))) debt+=due(sale,book);
         for (JSONObject product:productsList()) if (!product.isNull("stock") && product.optLong("stock")<=5) low++;
         LinearLayout stats=horizontal();
-        weight(stats,metric("Penjualan bulan ini",rup(sum(sales,"total",now.substring(0,7))),glyph("cash")),0);
-        weight(stats,metric("Kasbon belum lunas",rup(debt),glyph("sale")),7);
+        weight(stats,metric("Penjualan bulan ini",hiddenFinance?"Terkunci":rup(sum(sales,"total",now.substring(0,7))),glyph("cash")),0);
+        weight(stats,metric("Kasbon belum lunas",hiddenFinance?"Terkunci":rup(debt),glyph("sale")),7);
         place(content,stats,9);
         LinearLayout stock=(LinearLayout)action("Stok rendah",glyph("products"),()->go("products"),Color.WHITE,INK,LINE,43);
         stock.getChildAt(1).setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
@@ -500,7 +552,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         }
     }
     private void tile(LinearLayout row,String key,int gap) {
-        View tile=action(titleOf(key),glyph(key),()->go(key),Color.WHITE,INK,LINE,44);
+        View tile=action(menuLabel(key),glyph(key),()->go(key),Color.WHITE,INK,LINE,44);
         ((ImageView)((LinearLayout)tile).getChildAt(0)).setImageTintList(ColorStateList.valueOf(ACCENT));
         weight(row,tile,gap);
     }
@@ -531,12 +583,13 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if (delta>0 && !canSell(product(book,id),amount)) {toast("Stok tidak mencukupi atau menu nonaktif.");return;}
         if (amount<=0) cart.remove(id); else cart.put(id,amount);
         if (saleResults==null || checkoutBar==null) {render();return;}
-        fillSale(saleResults);
+        if(scanMode.isEmpty())fillSale(saleResults);else fillScanned(saleResults);
         int footerPosition=body.indexOfChild(checkoutBar);
         body.removeView(checkoutBar);checkoutBar=checkoutPanel();body.addView(checkoutBar,footerPosition);
         ViewCompat.requestApplyInsets(shell);
     }
     private void sale() {
+        if(!scanMode.isEmpty()){scanSale();return;}
         LinearLayout controls=horizontal();
         EditText search=input("Cari menu atau barcode",InputType.TYPE_CLASS_TEXT);
         search.setSingleLine(true);search.setText(query);weight(controls,search,0);
@@ -655,7 +708,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
     private EditText field(LinearLayout parent,String label,String value,int type) {
         TextView caption=text(label,13,INK,true);place(parent,caption,8);
-        EditText entry=input(label,type);entry.setText(value);entry.setSingleLine(true);entry.setSaveEnabled(false);parent.addView(entry);return entry;
+        EditText entry=input(label,type);entry.setText(value);entry.setSingleLine(true);entry.setSaveEnabled(false);
+        if ((type&InputType.TYPE_MASK_CLASS)==InputType.TYPE_CLASS_NUMBER&&label.contains("(Rp)"))MerchantRupiahInput.attach(entry);
+        parent.addView(entry);return entry;
     }
     private String entered(EditText field) { return field.getText().toString().trim(); }
     private String required(EditText field) {
@@ -664,7 +719,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         return value;
     }
     private long integer(EditText field,long minimum,long maximum) {
-        try {long value=Long.parseLong(entered(field));if (value>=minimum && value<=maximum) return value;}
+        try {long value=MerchantRupiahInput.parse(entered(field));if (value>=minimum && value<=maximum) return value;}
         catch(NumberFormatException ignored){}
         throw new IllegalArgumentException("Isi jumlah "+minimum+" sampai "+maximum+".");
     }
@@ -796,8 +851,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         return lines;
     }
     private void receipt() {
-        JSONObject sale=find(array(book,"sales"),"id",receipt);
-        if (sale==null) return;
+        JSONObject saved=find(array(book,"sales"),"id",receipt);
+        if(saved==null&&recentReceipt!=null&&receipt.equals(recentReceipt.optString("id")))saved=recentReceipt;
+        if(saved==null){place(content,text("Buka riwayat setelah memasukkan PIN.",13,INK,false),8);return;}
+        final JSONObject sale=saved;
         LinearLayout paper=card(), hero=horizontal(), summary=vertical();
         hero.setBackground(round(0xffe7f1ff,dp(10)));pad(hero,12,10);
         summary.addView(text("Total pembayaran",13,0xff43526a,false));
@@ -844,7 +901,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         else if(!sale.optString("reference").isEmpty()) receiptRow(paper,"Ref. QRIS",sale.optString("reference"),false);
         place(content,paper,8);
         place(content,action("Cetak struk",glyph("sale"),()->printers.choose(receiptLines(sale)),true),8);
-        if (due(sale,book)>0) place(content,action("Catat pembayaran kasbon",0,()->payDebt(sale),false),7);
+        if (due(sale,book)>0) place(content,action(menuLabelFor("cash","Catat pembayaran kasbon"),0,()->{
+            if(requiresPin("cash"))go("cash");else payDebt(sale);
+        },false),7);
     }
     private void receiptRow(LinearLayout target,String label,String value,boolean bold){
         LinearLayout row=horizontal();
@@ -855,6 +914,11 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] result){
         super.onRequestPermissionsResult(request,permissions,result);
+        if(request==731){
+            if(result.length>0&&result[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&"sale".equals(screen)){
+                scanMode="camera";lastCameraCode="";render();
+            }else toast("Izinkan kamera atau gunakan scanner eksternal.");
+        }
         if(request==MerchantPosPrinters.BLUETOOTH_PERMISSION)
             printers.permission(result.length>0&&result[0]==android.content.pm.PackageManager.PERMISSION_GRANTED);
     }
@@ -1203,6 +1267,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         place(content,action("Segarkan outlet",0,()->load(true),false),7);
     }
     private void plan() {
+        if(!isStaff())place(content,action("🔒 Atur kunci menu Kasir",0,this::configureLocks,false),8);
         String until=plan==null?"":plan.optString("ends_on");
         item(content,"Premium Merchant",until.isEmpty()?"Hubungi pengelola Transiva untuk informasi paket.":"Aktif sampai "+until,null);
     }
@@ -1230,7 +1295,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         weight(heading,description,0);
         heading.addView(action("Tambah",R.drawable.ic_merchant_plus,()->editEntity("staff",null),true));
         place(content,heading,13);
-        place(content,action("Lihat penjualan kasir",glyph("report"),()->openSales("","Semua kasir"),true),8);
+        place(content,action(menuLabelFor("sales","Lihat penjualan kasir"),glyph("report"),()->openSales("","Semua kasir"),true),8);
         LinearLayout group=card();
         if (people.isEmpty()) group.addView(text("Belum ada pegawai.",13,INK,false));
         for (JSONObject person:people) {
@@ -1239,17 +1304,68 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             String subtitle=phone.isEmpty()?role:role.isEmpty()?phone:role+"\n"+phone;
             place(group,personRow(label(person,"Pegawai"),subtitle,0xff43526a,
                     action("Edit",0,()->editEntity("staff",person),Color.WHITE,ACCENT,ACCENT,44)),4);
-            place(group,action("Lihat penjualan "+label(person,"pegawai"),glyph("report"),
+            place(group,action(menuLabelFor("sales","Lihat penjualan "+label(person,"pegawai")),glyph("report"),
                     ()->openSales("staff:"+person.optString("id"),label(person,"Pegawai")),false),4);
         }
         place(content,group,10);
         String identity=isStaff()?username():"Pemilik outlet";
-        place(content,action("Penjualan saya",glyph("report"),()->openSales(isStaff()?"login:"+username():"owner",identity),false),8);
+        place(content,action(menuLabelFor("sales","Penjualan saya"),glyph("report"),()->openSales(isStaff()?"login:"+username():"owner",identity),false),8);
         place(content,action("Buka absensi",glyph("attendance"),()->go("attendance"),Color.WHITE,ACCENT,LINE,44),10);
     }
     private void openSales(String key,String staffName){
+        if(requiresPin("sales")){unlock(()->{deferredSalesKey=key;deferredSalesName=staffName;load(false);});return;}
         startActivity(new Intent(this,MerchantPosSalesActivity.class)
-                .putExtra("outlet",outlet).putExtra("staff_key",key).putExtra("staff_name",staffName));
+                .putExtra("outlet",outlet).putExtra("staff_key",key).putExtra("staff_name",staffName).putExtra("pos_grant",grant));
+    }
+    private boolean requiresPin(String screen){
+        return lockedMenus.contains(MerchantPosAccess.category(screen))&&!MerchantPosAccess.valid(grant);
+    }
+    private String menuLabel(String key){return menuLabelFor(key,titleOf(key));}
+    private String menuLabelFor(String key,String label){
+        return requiresPin(key)?"🔒 "+label:label;
+    }
+    private void unlock(Runnable complete){
+        LinearLayout form=formBody();
+        EditText pin=field(form,"PIN Pemilik","",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        ask("Buka menu Kasir",form,"Buka",()->{
+            String value=entered(pin);
+            if(!value.matches("[0-9]{6}"))throw new IllegalArgumentException("Masukkan PIN 6 angka.");
+            JSONObject input=new JSONObject().put("pin",value);
+            access("unlock",input,result->{
+                grant=result.optString("grant");
+                if(!MerchantPosAccess.valid(grant)){toast("PIN perlu diverifikasi ulang.");return;}
+                grantTimer.removeCallbacks(expirePin);
+                grantTimer.postDelayed(expirePin,Long.parseLong(grant.substring(0,10))*1000L-System.currentTimeMillis());
+                complete.run();
+            });
+        });
+    }
+    private void configureLocks(){
+        if(isStaff())return;
+        LinearLayout fields=formBody();
+        EditText current=pinConfigured?field(fields,"PIN menu saat ini","",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD):null;
+        EditText next=field(fields,pinConfigured?"PIN baru (opsional)":"Buat PIN 6 angka","",InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        String[] keys={"finance","products","team","pricing"};
+        String[] labels={"Laporan, riwayat dan rekap kas","Produk, stok dan bahan","Pegawai dan absensi","Diskon dan tipe order"};
+        CheckBox[] checks=new CheckBox[keys.length];
+        for(int i=0;i<keys.length;i++){checks[i]=new CheckBox(this);checks[i].setText(labels[i]);checks[i].setChecked(lockedMenus.contains(keys[i]));fields.addView(checks[i]);}
+        ask("Kunci menu outlet",fields,"Simpan",()->{
+            String value=entered(next);
+            if((current==null||!value.isEmpty())&&!value.matches("[0-9]{6}"))throw new IllegalArgumentException("PIN harus 6 angka.");
+            JSONArray locks=new JSONArray();for(int i=0;i<keys.length;i++)if(checks[i].isChecked())locks.put(keys[i]);
+            access("configure",new JSONObject().put("pin",current==null?"":entered(current)).put("newPin",value).put("locks",locks),result->{grant="";load(false);});
+        });
+    }
+    private void access(String action,JSONObject payload,java.util.function.Consumer<JSONObject> complete){
+        if(busy||pending!=null)return;
+        String selected=outlet;
+        busy=true;
+        worker.execute(()->{
+            try{
+                JSONObject response=checked(postJson(endpoint(selected)+"&access="+action,payload));
+                runOnUiThread(()->{if(alive()){busy=false;if(outlet.equals(selected))complete.accept(response);}});
+            }catch(Exception error){runOnUiThread(()->{if(alive()){busy=false;toast(message(error,"PIN belum dapat diperiksa."));}});}
+        });
     }
     private void attendance() {
         List<JSONObject> team=rows(array(book,"staff"));
@@ -1338,7 +1454,90 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
 
     private void scan() {
-        MerchantPosScanActivity.launch(this);
+        if(!"sale".equals(screen)){MerchantPosScanActivity.launch(this);return;}
+        new AlertDialog.Builder(this).setTitle("Pilih scanner").setItems(new String[]{"Kamera perangkat ini","Scanner eksternal · USB / Bluetooth HID"},(dialog,which)->{
+            if(which==0&&checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+                requestPermissions(new String[]{android.Manifest.permission.CAMERA},731);return;
+            }
+            scanMode=which==0?"camera":"external";lastCameraCode="";externalCode.setLength(0);render();
+        }).show();
+    }
+    private void scanSale(){
+        LinearLayout panel=card(), row=horizontal(), details=vertical();
+        details.addView(text("camera".equals(scanMode)?"Scan dengan kamera":"Scanner eksternal",16,INK,true));
+        place(details,text("camera".equals(scanMode)?"Arahkan kamera ke barcode.":"Gunakan scanner USB OTG atau Bluetooth yang terhubung sebagai keyboard.",12,INK,false),4);
+        place(details,action("Ganti mode",0,this::scan,false),5);
+        place(details,action("Kembali ke katalog",0,()->{scanMode="";render();},false),5);
+        if("external".equals(scanMode))place(details,action("Pengaturan Bluetooth",0,()->{
+            try{startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS));}
+            catch(android.content.ActivityNotFoundException error){toast("Buka Pengaturan Bluetooth Android.");}
+        },false),5);
+        weight(row,details,0);
+        if("camera".equals(scanMode)){
+            if(checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
+                scanMode="";sale();return;
+            }
+            cameraScanner=new com.journeyapps.barcodescanner.DecoratedBarcodeView(this);
+            cameraScanner.setStatusText("");
+            row.addView(cameraScanner,new LinearLayout.LayoutParams(dp(screenWidthDp()<360?115:153),dp(115)));
+            cameraScanner.decodeContinuous(new com.journeyapps.barcodescanner.BarcodeCallback(){
+                public void barcodeResult(com.journeyapps.barcodescanner.BarcodeResult result){
+                    if(!foreground||busy||pending!=null||!"camera".equals(scanMode))return;
+                    String value=result.getText();
+                    long now=android.os.SystemClock.elapsedRealtime();
+                    if(value==null)return;
+                    boolean held=value.equals(lastCameraCode)&&now-lastCameraTime<950;
+                    lastCameraCode=value;lastCameraTime=now;
+                    if(held)return;
+                    scanResult(value,true);
+                }
+            });
+        }
+        panel.addView(row);
+        place(content,panel,8);
+        if(cameraScanner!=null&&foreground)cameraScanner.resume();
+        place(content,text("Daftar belanja",18,INK,true),10);
+        saleResults=vertical();place(content,saleResults,4);fillScanned(saleResults);
+        checkoutBar=checkoutPanel();
+    }
+    private void fillScanned(LinearLayout list){
+        list.removeAllViews();
+        if(cart.isEmpty())list.addView(text("Belum ada barang. Scan barcode untuk menambahkan.",13,INK,false));
+        for(Map.Entry<String,Integer> entry:cart.entrySet()){
+            String id=entry.getKey();int quantity=entry.getValue();JSONObject product=product(book,id);if(product==null)continue;
+            LinearLayout card=card(), row=productLine(product,id.startsWith("menu:"),false);
+            LinearLayout controls=horizontal();
+            controls.addView(quantityButton("−","Kurangi "+label(product,"produk"),()->add(id,-1),true));
+            TextView count=text(Integer.toString(quantity),14,INK,true);pad(count,4,0);controls.addView(count);
+            controls.addView(quantityButton("+","Tambah "+label(product,"produk"),()->add(id,1),canSell(product,quantity+1)));
+            row.addView(controls);card.addView(row);place(list,card,5);
+        }
+    }
+    @Override public boolean dispatchKeyEvent(android.view.KeyEvent event){
+        if("sale".equals(screen)&&"external".equals(scanMode)&&foreground&&!busy&&pending==null
+                && (event.getSource()&android.view.InputDevice.SOURCE_KEYBOARD)==android.view.InputDevice.SOURCE_KEYBOARD
+                && !(getCurrentFocus() instanceof EditText)){
+            int key=event.getKeyCode();
+            if(key==android.view.KeyEvent.KEYCODE_ENTER||key==android.view.KeyEvent.KEYCODE_NUMPAD_ENTER||key==android.view.KeyEvent.KEYCODE_TAB){
+                if(externalCode.length()==0)return super.dispatchKeyEvent(event);
+                if(event.getAction()==android.view.KeyEvent.ACTION_UP){String value=externalCode.toString();externalCode.setLength(0);scanResult(value,true);}
+                return true;
+            }
+            int code=event.getUnicodeChar();
+            if(code>=33&&code<127){
+                if(event.getAction()==android.view.KeyEvent.ACTION_DOWN&&event.getRepeatCount()==0){
+                    if(externalCode.length()<80)externalCode.append((char)code);else externalCode.setLength(0);
+                }
+                return true;
+            }
+        }
+        return super.dispatchKeyEvent(event);
+    }
+    private void scanSound(){
+        try{
+            if(scanTone==null)scanTone=new android.media.ToneGenerator(android.media.AudioManager.STREAM_MUSIC,55);
+            scanTone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP,85);
+        }catch(RuntimeException ignored){}
     }
     private void scanResult(String value,boolean notify) {
         if ("products".equals(screen)&&book!=null&&!busy&&pending==null){
@@ -1352,7 +1551,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         }
         if (!"sale".equals(screen)||book==null||busy||pending!=null) return;
         for (JSONObject product:productsList()) if (!value.isEmpty()&&value.equals(product.optString("barcode"))) {
-            add(product.optString("id"),1);return;
+            String id=product.optString("id");
+            if(canSell(product,cart.getOrDefault(id,0)+1)&&!scanMode.isEmpty())scanSound();
+            add(id,1);return;
         }
         if (notify) toast("Barcode belum terdaftar.");
     }

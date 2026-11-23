@@ -85,7 +85,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         barcode=entry("Barcode",original.optString("barcode"),InputType.TYPE_CLASS_TEXT,80);
         barcodeRow.addView(barcode,new LinearLayout.LayoutParams(0,-2,1));
         Button scan=outlineBtn("Scan");scan.setOnClickListener(v->MerchantPosScanActivity.launch(this));barcodeRow.addView(scan,new LinearLayout.LayoutParams(dp(80),-2));details.addView(barcodeRow);
-        price=field(details,"Harga jual (Rp)",original.optString("price"),InputType.TYPE_CLASS_NUMBER,10);
+        price=field(details,"Harga jual (Rp)",original.optString("price"),InputType.TYPE_CLASS_NUMBER,14);
         LinearLayout amounts=new LinearLayout(this), stockColumn=column(), taxColumn=column();
         amounts.addView(stockColumn,new LinearLayout.LayoutParams(0,-2,1));
         LinearLayout.LayoutParams right=new LinearLayout.LayoutParams(0,-2,1);right.setMarginStart(dp(8));amounts.addView(taxColumn,right);
@@ -106,7 +106,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         packSize=field(inventory,"Isi per pack/dus (pcs)",original.optString("packSize","1"),InputType.TYPE_CLASS_NUMBER,6);
         purchaseUnit=units(inventory,"Harga modal per");
         stockUnit=units(inventory,"Satuan stok masuk");
-        cost=field(inventory,"Harga modal (Rp, opsional)","",InputType.TYPE_CLASS_NUMBER,10);
+        cost=field(inventory,"Harga modal (Rp, opsional)","",InputType.TYPE_CLASS_NUMBER,14);
         packs=field(inventory,"Jumlah stok masuk","0",InputType.TYPE_CLASS_NUMBER,6);
         stockPreview=sub("");inventory.addView(stockPreview);
         photo=state==null?original.optString("photo"):state.getString("photo","");
@@ -128,6 +128,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
             public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View row,int position,long id){refreshStock();}
         });
+        MerchantRupiahInput.attach(price);MerchantRupiahInput.attach(cost);
         refreshStock();showPhoto();save.setOnClickListener(v->submit());
     }
     private Spinner units(LinearLayout parent,String label){
@@ -193,14 +194,14 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         try {
             String label=value(name);
             if (label.isEmpty()) {name.setError("Nama produk wajib diisi.");return;}
-            long selling=Long.parseLong(value(price)), quantity=Long.parseLong(value(stock));
+            long selling=MerchantRupiahInput.parse(value(price)), quantity=Long.parseLong(value(stock));
             double rate=Double.parseDouble(value(tax).replace(',','.'));
             double promo=value(discount).isEmpty()?0:Double.parseDouble(value(discount).replace(',','.'));
             if (!(promo>=0&&promo<=100)) {discount.setError("Diskon harus 0–100%.");return;}
             if(expiryEnabled.isChecked()&&expiry.isEmpty()){toast("Pilih tanggal kedaluwarsa.");return;}
             if (selling<1||selling>1000000000||quantity<0||quantity>999999||!(rate>=0&&rate<=100)) throw new NumberFormatException();
             long size=count(packSize), incoming=MerchantPosCost.incomingUnits(count(packs),stockUnit.getSelectedItemPosition()==1?size:1);
-            long enteredCost=count(cost);
+            long enteredCost=value(cost).isEmpty()?0:MerchantRupiahInput.parse(value(cost));
             if(size<1||size>999999||incoming<0||quantity+incoming>999999||enteredCost<0||enteredCost>1000000000){
                 toast("Periksa isi pack, stok akhir (maks. 999.999 pcs), dan modal.");return;
             }
