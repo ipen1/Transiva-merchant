@@ -32,6 +32,7 @@
         <activity android:name=".MerchantRegisterActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
         <activity android:name=".MerchantTransAssistantActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
         <activity android:name=".PinActivity" android:exported="false"/>
+        <activity android:name=".MerchantPosActivity" android:configChanges="orientation|screenSize|keyboardHidden" android:exported="false"/>
         <activity android:name=".MerchantDashboardActivity" android:exported="false"/>
         <activity android:name=".MerchantAddMenuActivity" android:exported="false"/>
         <activity android:name=".MerchantMenuListActivity" android:exported="false"/>
