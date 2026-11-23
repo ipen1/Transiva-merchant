@@ -14,16 +14,19 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
     private static final int BLUE=0xff0756c7;
     private JSONObject data;
     private LinearLayout form, payment;
-    private TextView totals;
+    private TextView totalValue,change,subtotalValue,discountValue,taxValue,pointsValue;
+    private LinearLayout methods;
+    private int paymentMethod;
+    private final List<TextView> productReductions=new ArrayList<>();
     private EditText points, cash, reference;
-    private Spinner type, customer, promo, operator, method;
+    private Spinner type, customer, promo, operator;
     private JSONArray lines;
     private final List<CheckBox> productDiscounts=new ArrayList<>();
     private final NumberFormat currency=NumberFormat.getIntegerInstance(new Locale("id","ID"));
 
     @Override protected EditText input(String hint,int type) {
         EditText input=super.input(hint,type);
-        input.setTextColor(0xff0b1530);
+        input.setTextColor(0xff0b1530);input.setElevation(0);input.setBackground(stroke(Color.WHITE,0xffd4e0ed,dp(8)));
         return input;
     }
     @Override protected void onCreate(Bundle state) {
@@ -32,19 +35,39 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         try {data=new JSONObject(getIntent().getStringExtra(DATA));lines=data.getJSONArray("items");}
         catch(Exception error){finish();return;}
         form=column();LinearLayout footer=column();footer.setPadding(dp(12),dp(6),dp(12),dp(8));
+        footer.setBackground(round(surface(),dp(10)));
+        totalValue=amountRow(footer,"Total pembayaran",true);
         Button save=btn("Simpan transaksi");footer.addView(save);
         setContentView(page(form,footer));
-        Button back=outlineBtn("‹  Transaksi");back.setOnClickListener(v->finish());form.addView(back);
-        form.addView(title("Checkout"));form.addView(sub(data.optString("outlet_name")));
+        LinearLayout top=new LinearLayout(this);top.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        Button back=outlineBtn("‹");back.setContentDescription("Kembali ke transaksi");back.setOnClickListener(v->finish());
+        top.addView(back,new LinearLayout.LayoutParams(dp(48),-2));
+        LinearLayout header=column();header.setPadding(dp(9),0,0,0);header.addView(title("Checkout"));header.addView(sub(data.optString("outlet_name")));
+        top.addView(header,new LinearLayout.LayoutParams(0,-2,1));form.addView(top);
         LinearLayout items=card();items.addView(title("Ringkasan belanja"));
         for (int i=0;i<lines.length();i++) {
             JSONObject line=lines.optJSONObject(i);if(line==null)continue;
-            items.addView(sub(line.optInt("qty")+" × "+line.optString("name")+"  ·  "+money(line.optInt("qty")*line.optLong("price"))));
-            CheckBox discount=null;
+            LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            ImageView photo=new ImageView(this);photo.setBackground(round(0xffe4efff,dp(7)));photo.setClipToOutline(true);
+            photo.setImageResource(R.drawable.ic_merchant_package);photo.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+            row.addView(photo,new LinearLayout.LayoutParams(dp(48),dp(48)));
+            byte[] bytes=MerchantPosProductActivity.photoBytes(line.optString("photo"));
+            String url=line.optString("image");
+            Object source=bytes!=null?bytes:url.startsWith("https://transiva.my.id/")?url:null;
+            if(source!=null)com.bumptech.glide.Glide.with(this).load(source).placeholder(R.drawable.ic_merchant_package).centerCrop().into(photo);
+            LinearLayout info=column();info.setPadding(dp(7),0,dp(4),0);
+            info.addView(tv(line.optString("name"),15,NAVY,true));
+            info.addView(sub(line.optInt("qty")+" × "+money(line.optLong("price"))));
+            row.addView(info,new LinearLayout.LayoutParams(0,-2,1));
+            row.addView(tv(money(line.optInt("qty")*line.optLong("price")),14,NAVY,true));items.addView(row);
+            CheckBox discount=null;TextView reduction=null;
             if (line.optDouble("productPercent",0)>0) {
-                discount=new CheckBox(this);discount.setText("Diskon produk "+line.optDouble("productPercent")+"%");discount.setChecked(true);
-                items.addView(discount);
+                discount=new CheckBox(this);discount.setText("Diskon produk "+NumberFormat.getNumberInstance(new Locale("id","ID")).format(line.optDouble("productPercent"))+"%");discount.setChecked(true);
+                LinearLayout discountRow=new LinearLayout(this);discountRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                discountRow.addView(discount,new LinearLayout.LayoutParams(0,-2,1));
+                reduction=tv("",13,NAVY,true);discountRow.addView(reduction);items.addView(discountRow);
             }
+            productReductions.add(reduction);
             productDiscounts.add(discount);
         }
         addCard(items);
@@ -53,30 +76,34 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         customer=spinner(detail,"Pelanggan",names("people","Pelanggan umum"));
         promo=spinner(detail,"Diskon transaksi",names("discounts","Tanpa diskon"));
         if (!isStaff()) operator=spinner(detail,"Petugas",names("staff","Pemilik outlet"));
+        else detail.addView(detailRow("Petugas",tv(username(),14,NAVY,true)));
         points=input("Tukar poin (1 poin = Rp100)",InputType.TYPE_CLASS_NUMBER);
-        points.setText("0");detail.addView(sub("Tukar poin (1 poin = Rp100)"));detail.addView(points);
+        points.setText("0");detail.addView(detailRow("Tukar poin · 1 poin = Rp100",points));
         addCard(detail);
         LinearLayout pay=card();pay.addView(title("Pembayaran"));
-        method=spinner(pay,"Metode bayar",new String[]{"Tunai","QRIS · konfirmasi manual","Kasbon"});
+        methods=new LinearLayout(this);pay.addView(methods);
         payment=column();pay.addView(payment);
-        totals=tv("",15,BLUE,true);pay.addView(totals);
         addCard(pay);
-        cash=input("Uang diterima (Rp)",InputType.TYPE_CLASS_NUMBER);
+        LinearLayout breakdown=card();
+        subtotalValue=amountRow(breakdown,"Subtotal",false);discountValue=amountRow(breakdown,"Diskon",false);
+        taxValue=amountRow(breakdown,"Pajak",false);pointsValue=amountRow(breakdown,"Tukar poin",false);addCard(breakdown);
+        cash=input("Rp 0",InputType.TYPE_CLASS_NUMBER);
         reference=input("Referensi QRIS",InputType.TYPE_CLASS_TEXT);
         if (state!=null) {
             type.setSelection(state.getInt("type"));customer.setSelection(state.getInt("customer"));promo.setSelection(state.getInt("promo"));
-            if (operator!=null) operator.setSelection(state.getInt("operator"));method.setSelection(state.getInt("method"));
+            if (operator!=null) operator.setSelection(state.getInt("operator"));paymentMethod=Math.max(0,Math.min(2,state.getInt("method")));
             points.setText(state.getString("points","0"));cash.setText(state.getString("cash",""));reference.setText(state.getString("ref",""));
             boolean[] enabled=state.getBooleanArray("product_discounts");
             if(enabled!=null) for(int i=0;i<Math.min(enabled.length,productDiscounts.size());i++) if(productDiscounts.get(i)!=null)productDiscounts.get(i).setChecked(enabled[i]);
         }
         for(CheckBox box:productDiscounts) if(box!=null)box.setOnCheckedChangeListener((v,on)->refresh());
-        react(customer,false);react(promo,false);react(method,true);
-        points.addTextChangedListener(new android.text.TextWatcher(){
+        react(customer);react(promo);
+        android.text.TextWatcher watcher=new android.text.TextWatcher(){
             public void beforeTextChanged(CharSequence s,int a,int c,int f){}
             public void onTextChanged(CharSequence s,int a,int b,int c){refresh();}
             public void afterTextChanged(android.text.Editable s){}
-        });
+        };
+        points.addTextChangedListener(watcher);cash.addTextChangedListener(watcher);
         updateMethod();refresh();save.setOnClickListener(v->submit());
     }
     private LinearLayout column(){LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);return row;}
@@ -92,22 +119,56 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
         JSONObject value=data.optJSONArray(key).optJSONObject(view.getSelectedItemPosition()-(firstPlaceholder?1:0));
         return value==null?new JSONObject():value;
     }
-    private Spinner spinner(LinearLayout host,String label,String[] values){
-        host.addView(sub(label));Spinner picker=new Spinner(this);picker.setContentDescription(label);picker.setMinimumHeight(dp(44));
-        picker.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values));host.addView(picker);return picker;
+    private int surface(){return MerchantAppSettings.isDarkMode(this)?0xff17263a:Color.WHITE;}
+    private LinearLayout detailRow(String label,android.view.View field){
+        LinearLayout outer=column();
+        LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(45));
+        row.addView(tv(label,13,NAVY,true),new LinearLayout.LayoutParams(0,-2,1));
+        row.addView(field,new LinearLayout.LayoutParams(0,-2,1.1f));
+        outer.addView(row);android.view.View line=new android.view.View(this);
+        line.setBackgroundColor(MerchantAppSettings.isDarkMode(this)?0xff3a4a5f:0xffe0e8f1);
+        outer.addView(line,new LinearLayout.LayoutParams(-1,dp(1)));return outer;
     }
-    private void react(Spinner spinner,boolean changeMethod){
+    private TextView amountRow(LinearLayout host,String label,boolean strong){
+        LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(3),dp(4),dp(3),dp(4));
+        row.addView(tv(label,strong?16:13,NAVY,strong),new LinearLayout.LayoutParams(0,-2,1));
+        TextView number=tv("",strong?23:14,strong?BLUE:NAVY,strong);row.addView(number);host.addView(row);return number;
+    }
+    private Spinner spinner(LinearLayout host,String label,String[] values){
+        Spinner picker=new Spinner(this);picker.setContentDescription(label);picker.setMinimumHeight(dp(44));
+        picker.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values));host.addView(detailRow(label,picker));return picker;
+    }
+    private void react(Spinner spinner){
         spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
-            public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View view,int position,long id){
-                if(changeMethod)updateMethod();refresh();
-            }
+            public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View view,int position,long id){refresh();}
         });
     }
     private void updateMethod(){
-        payment.removeAllViews();
-        if(method.getSelectedItemPosition()==0){payment.addView(sub("Uang diterima (Rp)"));payment.addView(cash);}
-        else if(method.getSelectedItemPosition()==1){
+        methods.removeAllViews();
+        String[] labels={"Tunai","QRIS","Kasbon"};
+        for(int i=0;i<labels.length;i++){
+            final int choice=i;
+            Button button=i==paymentMethod?btn(labels[i]):outlineBtn(labels[i]);
+            button.setPadding(0,0,0,0);button.setMinWidth(0);button.setSelected(i==paymentMethod);
+            button.setOnClickListener(v->{paymentMethod=choice;updateMethod();refresh();});
+            methods.addView(button,new LinearLayout.LayoutParams(0,-2,1));
+        }
+        payment.removeAllViews();change=null;
+        if(paymentMethod==0){
+            payment.addView(sub("Uang diterima"));
+            LinearLayout row=new LinearLayout(this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            row.addView(cash,new LinearLayout.LayoutParams(0,-2,1));
+            Button exact=outlineBtn("Uang pas");exact.setOnClickListener(v->{
+                try{cash.setText(Long.toString(quote().optLong("total")));}catch(Exception error){toast("Periksa rincian transaksi.");}
+            });
+            row.addView(exact);payment.addView(row);
+            LinearLayout changeCard=column();changeCard.setPadding(dp(7),dp(2),dp(7),dp(2));
+            changeCard.setBackground(round(MerchantAppSettings.isDarkMode(this)?0xff1b3731:0xffe4f5eb,dp(8)));
+            change=amountRow(changeCard,"Kembalian",false);payment.addView(changeCard);
+        } else if(paymentMethod==1){
             String qr=data.optString("qr");
             if(qr.startsWith("data:image/jpeg;base64,"))try {
                 byte[] bytes=android.util.Base64.decode(qr.substring(23),android.util.Base64.DEFAULT);
@@ -133,7 +194,7 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
             long reduction=option!=null&&option.isChecked()?Math.round(amount*line.optDouble("productPercent",0)/100):0;
             productDiscount+=reduction;
             tax+=Math.round((amount-reduction)*(1-rate/100)*line.optDouble("tax",0)/100);
-            line.remove("productPercent");
+            line.remove("productPercent");line.remove("photo");line.remove("image");
             line.put("productDiscount",reduction);
             finalLines.put(line);
         }
@@ -144,15 +205,28 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
                 .put("redeem",count*100).put("total",total);
     }
     private void refresh(){
-        try{JSONObject q=quote();totals.setText("Subtotal  "+money(q.optLong("subtotal"))+
-                "\nDiskon  "+money(q.optLong("discount"))+"   ·   Pajak  "+money(q.optLong("tax"))+
-                "\nTukar poin  "+money(q.optLong("redeem"))+"\nTotal pembayaran  "+money(q.optLong("total")));}
-        catch(Exception invalid){totals.setText("Periksa jumlah poin.");}
+        try{
+            JSONObject q=quote();long total=q.optLong("total");
+            subtotalValue.setText(money(q.optLong("subtotal")));
+            discountValue.setText(q.optLong("discount")==0?money(0):"−"+money(q.optLong("discount")));
+            taxValue.setText(money(q.optLong("tax")));pointsValue.setText(money(q.optLong("redeem")));
+            totalValue.setText(money(total));
+            for(int i=0;i<productReductions.size();i++){
+                TextView label=productReductions.get(i);
+                if(label!=null)label.setText("−"+money(q.optJSONArray("items").optJSONObject(i).optLong("productDiscount")));
+            }
+            if(change!=null){
+                String input=cash.getText().toString().trim();
+                long received=input.isEmpty()?0:Long.parseLong(input);
+                change.setText(input.isEmpty()?"—":received<total?"Kurang "+money(total-received):money(received-total));
+                change.setTextColor(received>=total?0xff19834e:0xffb54b33);
+            }
+        }catch(Exception invalid){totalValue.setText("—");if(change!=null)change.setText("—");}
     }
     private void submit(){
         try{
             JSONObject sale=quote(),buyer=chosen("people",customer,true);
-            String mode=new String[]{"cash","qris","debt"}[method.getSelectedItemPosition()];
+            String mode=new String[]{"cash","qris","debt"}[paymentMethod];
             long paid=0,total=sale.optLong("total");
             String ref=reference.getText().toString().trim();
             if("cash".equals(mode)){
@@ -164,6 +238,7 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
             sale.put("id",UUID.randomUUID().toString()).put("at",System.currentTimeMillis())
                 .put("method",mode).put("customer",buyer.optString("id")).put("customerName",buyer.optString("name","Pelanggan umum"))
                 .put("staff",isStaff()?username():chosen("staff",operator,true).optString("name","Pemilik outlet"))
+                .put("staffKey",isStaff()?"login:"+username():operator.getSelectedItemPosition()==0?"owner":"staff:"+chosen("staff",operator,true).optString("id"))
                 .put("type",chosen("types",type,false).optString("name")).put("outlet",data.optString("outlet_name"))
                 .put("cash",paid).put("reference","qris".equals(mode)?ref:"");
             setResult(RESULT_OK,new Intent().putExtra(SALE,sale.toString()).putExtra("outlet",data.optString("outlet"))
@@ -172,9 +247,9 @@ public final class MerchantPosCheckoutActivity extends MerchantBaseActivity {
     }
     @Override protected void onSaveInstanceState(Bundle state){
         super.onSaveInstanceState(state);
-        if(data==null||method==null)return;
+        if(data==null||points==null)return;
         state.putInt("type",type.getSelectedItemPosition());state.putInt("customer",customer.getSelectedItemPosition());
-        state.putInt("promo",promo.getSelectedItemPosition());state.putInt("method",method.getSelectedItemPosition());
+        state.putInt("promo",promo.getSelectedItemPosition());state.putInt("method",paymentMethod);
         if(operator!=null)state.putInt("operator",operator.getSelectedItemPosition());
         state.putString("points",points.getText().toString());state.putString("cash",cash.getText().toString());state.putString("ref",reference.getText().toString());
         boolean[] enabled=new boolean[productDiscounts.size()];

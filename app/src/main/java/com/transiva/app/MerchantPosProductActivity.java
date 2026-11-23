@@ -23,6 +23,10 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
     private static final String PREFIX="data:image/jpeg;base64,";
     private final ExecutorService images=Executors.newSingleThreadExecutor();
     private EditText name, barcode, price, stock, tax, discount;
+    private EditText cost, packSize, packs;
+    private TextView stockPreview;
+    private Spinner stockUnit, purchaseUnit;
+    private JSONObject baseProduct;
     private Switch expiryEnabled;
     private Button expiryDate;
     private String expiry="";
@@ -33,7 +37,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
 
     @Override protected EditText input(String hint,int type) {
         EditText input=super.input(hint,type);
-        input.setTextColor(0xff0b1530);
+        input.setTextColor(0xff0b1530);input.setElevation(0);input.setBackground(stroke(android.graphics.Color.WHITE,0xffd4e0ed,dp(8)));
         return input;
     }
     @Override protected void onCreate(Bundle state) {
@@ -42,6 +46,7 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         JSONObject original;
         try { original=new JSONObject(getIntent().getStringExtra(PRODUCT)); }
         catch(Exception ignored) {original=new JSONObject();}
+        baseProduct=original;
         outlet=getIntent().getStringExtra(OUTLET);
         id=original.optString("id",UUID.randomUUID().toString());
         LinearLayout form=new LinearLayout(this);
@@ -63,12 +68,14 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         photos.addView(preview,new LinearLayout.LayoutParams(dp(84),dp(84)));
         LinearLayout photoActions=column();photoActions.setPadding(dp(8),0,0,0);
         photoActions.addView(title("Foto produk"));
-        Button pick=outlineBtn("Pilih foto");pick.setOnClickListener(v->startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
-                .addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),PHOTO));
-        photoActions.addView(pick);
-        Button camera=outlineBtn("Ambil foto");camera.setOnClickListener(v->camera());photoActions.addView(camera);
-        Button remove=outlineBtn("Hapus foto");remove.setOnClickListener(v->{if (!loadingPhoto) {photo="";showPhoto();}});
-        photoActions.addView(remove);photos.addView(photoActions,new LinearLayout.LayoutParams(0,-2,1));form.addView(photos);
+        Button pick=outlineBtn("Kelola foto");pick.setOnClickListener(v->new android.app.AlertDialog.Builder(this)
+                .setTitle("Foto produk").setItems(new String[]{"Pilih dari galeri","Ambil foto","Hapus foto"},(dialog,which)->{
+                    if(loadingPhoto)return;
+                    if(which==0) startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                            .addCategory(Intent.CATEGORY_OPENABLE).setType("image/*"),PHOTO);
+                    else if(which==1) camera(); else {photo="";showPhoto();}
+                }).show());
+        photoActions.addView(pick);photos.addView(photoActions,new LinearLayout.LayoutParams(0,-2,1));form.addView(photos);
         LinearLayout details=column();details.setPadding(dp(11),dp(8),dp(11),dp(8));
         details.setBackground(round(MerchantAppSettings.isDarkMode(this)?0xff17263a:android.graphics.Color.WHITE,dp(12)));
         LinearLayout.LayoutParams detailParams=new LinearLayout.LayoutParams(-1,-2);detailParams.topMargin=dp(9);form.addView(details,detailParams);
@@ -91,12 +98,52 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         expiryEnabled.setChecked(state!=null?state.getBoolean("expiry_enabled"):!expiry.isEmpty());details.addView(expiryEnabled);
         expiryDate=outlineBtn("");expiryDate.setOnClickListener(v->chooseExpiry());details.addView(expiryDate);
         expiryEnabled.setOnCheckedChangeListener((v,enabled)->showExpiry());showExpiry();
+        LinearLayout inventory=column();inventory.setPadding(dp(11),dp(7),dp(11),dp(8));
+        inventory.setBackground(round(MerchantAppSettings.isDarkMode(this)?0xff17263a:android.graphics.Color.WHITE,dp(12)));
+        LinearLayout.LayoutParams inventoryParams=new LinearLayout.LayoutParams(-1,-2);inventoryParams.topMargin=dp(8);form.addView(inventory,inventoryParams);
+        inventory.addView(title("Modal & stok masuk"));
+        inventory.addView(sub("Stok di atas tersimpan dalam pcs. Isi stok masuk hanya saat menerima barang."));
+        packSize=field(inventory,"Isi per pack/dus (pcs)",original.optString("packSize","1"),InputType.TYPE_CLASS_NUMBER,6);
+        purchaseUnit=units(inventory,"Harga modal per");
+        stockUnit=units(inventory,"Satuan stok masuk");
+        cost=field(inventory,"Harga modal (Rp, opsional)","",InputType.TYPE_CLASS_NUMBER,10);
+        packs=field(inventory,"Jumlah stok masuk","0",InputType.TYPE_CLASS_NUMBER,6);
+        stockPreview=sub("");inventory.addView(stockPreview);
         photo=state==null?original.optString("photo"):state.getString("photo","");
         if (state!=null) {
             name.setText(state.getString("name"));barcode.setText(state.getString("barcode"));
             price.setText(state.getString("price"));stock.setText(state.getString("stock"));tax.setText(state.getString("tax"));discount.setText(state.getString("discount","0"));
         }
-        showPhoto();save.setOnClickListener(v->submit());
+        if(state!=null){
+            packSize.setText(state.getString("pack_size","1"));packs.setText(state.getString("packs","0"));cost.setText(state.getString("cost",""));
+            stockUnit.setSelection(state.getInt("stock_unit"));purchaseUnit.setSelection(state.getInt("purchase_unit"));
+        }
+        for(EditText field:new EditText[]{stock,packSize,packs})
+            field.addTextChangedListener(new android.text.TextWatcher(){
+                public void beforeTextChanged(CharSequence s,int start,int count,int after){}
+                public void onTextChanged(CharSequence s,int start,int before,int count){refreshStock();}
+                public void afterTextChanged(android.text.Editable editable){}
+            });
+        stockUnit.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+            public void onItemSelected(android.widget.AdapterView<?> parent,android.view.View row,int position,long id){refreshStock();}
+        });
+        refreshStock();showPhoto();save.setOnClickListener(v->submit());
+    }
+    private Spinner units(LinearLayout parent,String label){
+        parent.addView(sub(label));Spinner spinner=new Spinner(this);
+        spinner.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"Pcs","Pack / dus"}));
+        spinner.setMinimumHeight(dp(44));parent.addView(spinner);return spinner;
+    }
+    private long count(EditText entry){return value(entry).isEmpty()?0:Long.parseLong(value(entry));}
+    private void refreshStock(){
+        try{
+            long multiplier=stockUnit.getSelectedItemPosition()==1?count(packSize):1;
+            long extra=MerchantPosCost.incomingUnits(count(packs),multiplier);
+            java.math.BigDecimal old=MerchantPosCost.unit(baseProduct);
+            stockPreview.setText("Stok masuk "+extra+" pcs · Stok akhir "+(count(stock)+extra)+" pcs"
+                    +(old==null?"":"\nModal rata-rata tersimpan Rp "+old.stripTrailingZeros().toPlainString()+" / pcs"));
+        }catch(IllegalArgumentException|ArithmeticException error){stockPreview.setText("Periksa jumlah stok dan isi pack.");}
     }
     private LinearLayout column(){LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.VERTICAL);return row;}
     private void camera(){
@@ -138,6 +185,8 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
         state.putString("name",value(name));state.putString("barcode",value(barcode));
         state.putString("price",value(price));state.putString("stock",value(stock));state.putString("tax",value(tax));
         state.putString("discount",value(discount));state.putString("expiry",expiry);state.putBoolean("expiry_enabled",expiryEnabled.isChecked());
+        state.putString("pack_size",value(packSize));state.putString("packs",value(packs));state.putString("cost",value(cost));
+        state.putInt("stock_unit",stockUnit.getSelectedItemPosition());state.putInt("purchase_unit",purchaseUnit.getSelectedItemPosition());
         state.putString("photo",photo);super.onSaveInstanceState(state);
     }
     private void submit() {
@@ -150,9 +199,18 @@ public final class MerchantPosProductActivity extends MerchantBaseActivity {
             if (!(promo>=0&&promo<=100)) {discount.setError("Diskon harus 0–100%.");return;}
             if(expiryEnabled.isChecked()&&expiry.isEmpty()){toast("Pilih tanggal kedaluwarsa.");return;}
             if (selling<1||selling>1000000000||quantity<0||quantity>999999||!(rate>=0&&rate<=100)) throw new NumberFormatException();
+            long size=count(packSize), incoming=MerchantPosCost.incomingUnits(count(packs),stockUnit.getSelectedItemPosition()==1?size:1);
+            long enteredCost=count(cost);
+            if(size<1||size>999999||incoming<0||quantity+incoming>999999||enteredCost<0||enteredCost>1000000000){
+                toast("Periksa isi pack, stok akhir (maks. 999.999 pcs), dan modal.");return;
+            }
+            java.math.BigDecimal previous=MerchantPosCost.unit(baseProduct);
+            java.math.BigDecimal newCost=value(cost).isEmpty()?previous:
+                    MerchantPosCost.unit(enteredCost,purchaseUnit.getSelectedItemPosition()==1?size:1);
+            java.math.BigDecimal unit=incoming==0?newCost:MerchantPosCost.average(previous,quantity,newCost,incoming);
             JSONObject data=new JSONObject().put("id",id).put("name",label).put("price",selling)
-                    .put("stock",quantity).put("tax",Math.round(rate*100)/100.0).put("barcode",value(barcode)).put("photo",photo).put("expiresOn",expiryEnabled.isChecked()?expiry:"").put("posDiscount",Math.round(promo*100)/100.0);
-            setResult(RESULT_OK,new Intent().putExtra(PRODUCT,data.toString()).putExtra(OUTLET,outlet));finish();
+                    .put("stock",quantity+incoming).put("packSize",size).put("unitCost",unit==null?JSONObject.NULL:unit.toPlainString()).put("tax",Math.round(rate*100)/100.0).put("barcode",value(barcode)).put("photo",photo).put("expiresOn",expiryEnabled.isChecked()?expiry:"").put("posDiscount",Math.round(promo*100)/100.0);
+            setResult(RESULT_OK,new Intent().putExtra(PRODUCT,data.toString()).putExtra(OUTLET,outlet).putExtra("revision",getIntent().getIntExtra("revision",-1)));finish();
         } catch(Exception error){toast("Periksa harga, stok, dan pajak (0–100%).");}
     }
     @Override protected void onActivityResult(int code,int result,Intent data) {

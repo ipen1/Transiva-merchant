@@ -676,16 +676,25 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if (cart.isEmpty()||busy||pending!=null) return;
         try {
             JSONArray lines=new JSONArray();
+            int photoBudget=96000;
             for (Map.Entry<String,Integer> entry:cart.entrySet()) {
                 JSONObject product=product(book,entry.getKey());
                 if (!canSell(product,entry.getValue())) throw new IllegalArgumentException("Ketersediaan produk berubah.");
-                lines.put(record(entry.getKey(),label(product,"Produk")).put("qty",entry.getValue())
+                JSONObject line=record(entry.getKey(),label(product,"Produk")).put("qty",entry.getValue())
                         .put("price",product.optLong("price")).put("tax",product.optDouble("tax",0))
-                        .put("productPercent",product.optDouble("posDiscount",0)));
+                        .put("productPercent",product.optDouble("posDiscount",0)).put("image",product.optString("image"));
+                String photo=product.optString("photo");
+                if(photo.length()<=photoBudget){line.put("photo",photo);photoBudget-=photo.length();}
+                lines.put(line);
             }
             JSONObject data=new JSONObject().put("items",lines).put("outlet",outlet).put("revision",revision)
                     .put("outlet_name",outletName()).put("qr",book.optString("qrImage"));
-            for (String key:new String[]{"types","people","discounts","staff"}) data.put(key,array(book,key));
+            for (String key:new String[]{"types","people","discounts","staff"}) {
+                JSONArray options=new JSONArray();
+                for(JSONObject choice:rows(array(book,key))) options.put(record(choice.optString("id"),label(choice,""))
+                        .put("points",choice.optLong("points")).put("member",choice.optDouble("member",0)).put("percent",choice.optDouble("percent",0)));
+                data.put(key,options);
+            }
             String payload=data.toString();
             if(payload.getBytes(StandardCharsets.UTF_8).length>550000)
                 throw new IllegalArgumentException("Data checkout terlalu besar untuk dibuka. Kurangi jumlah produk pada keranjang.");
@@ -717,9 +726,16 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                 throw new IllegalArgumentException("Referensi QRIS sudah tercatat.");
         }
         Map<String,Long> used=new LinkedHashMap<>();
+        long cost=0; boolean costsKnown=true;
         for (JSONObject line:rows(array(sale,"items"))) {
             String id=line.optString("id");int qty=line.optInt("qty");
             JSONObject local=find(array(next,"products"),"id",id);
+            java.math.BigDecimal unit=MerchantPosCost.unit(local);
+            if(unit==null) costsKnown=false;
+            else {
+                long lineCost=MerchantPosCost.valuation(unit,qty);
+                put(line,"costOfGoods",lineCost);cost+=lineCost;
+            }
             if (local==null) continue;
             if (!canSell(local,qty)) throw new IllegalArgumentException("Stok produk tidak cukup.");
             put(local,"stock",local.optInt("stock")-qty);
@@ -740,6 +756,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if (customer!=null) {
             long earned="debt".equals(sale.optString("method"))?0:sale.optLong("total")/10000;
             put(customer,"points",customer.optLong("points")-points+earned);
+        }
+        if(costsKnown){
+            put(sale,"costOfGoods",cost);
+            put(sale,"grossProfit",sale.optLong("subtotal")-sale.optLong("discount")-sale.optLong("redeem")-cost);
         }
         array(next,"sales").put(sale);
     }
@@ -872,12 +892,22 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             place(local,action("Impor CSV",0,()->{importKind="products";pickFile(IMPORT,"*/*");},false),5);
             place(local,action("Ekspor produk CSV",0,this::exportProducts,false),5);
         }
+        long stockCost=0;int costCount=0;
+        for(JSONObject row:rows(array(book,"products"))){
+            java.math.BigDecimal unit=MerchantPosCost.unit(row);
+            if(unit!=null){stockCost+=MerchantPosCost.valuation(unit,row.optLong("stock"));costCount++;}
+        }
+        if(costCount>0)place(local,text("Total modal stok tercatat · "+rup(stockCost),13,INK,true),6);
         addProductRows(local,rows(array(book,"products")),false);place(content,local,9);
     }
     private void exportProducts() {
         List<String[]> data=new ArrayList<>();
-        for (JSONObject product:rows(array(book,"products"))) data.add(new String[]{label(product,""),product.optString("barcode"),
-                product.optString("price"),Long.toString(product.optLong("stock")),product.optString("tax")});
+        for (JSONObject product:rows(array(book,"products"))) {
+            java.math.BigDecimal cost=MerchantPosCost.unit(product);
+            data.add(new String[]{label(product,""),product.optString("barcode"),product.optString("price"),
+                    Long.toString(product.optLong("stock")),product.optString("tax"),cost==null?"":cost.toPlainString(),
+                    Integer.toString(product.optInt("packSize",1)),cost==null?"":Long.toString(MerchantPosCost.valuation(cost,product.optLong("stock")))});
+        }
         export("produk-kasir.csv",headings("products"),data);
     }
     private void divider(LinearLayout parent) {
@@ -931,6 +961,11 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if(product.optDouble("posDiscount",0)>0)
             place(details,text("Diskon Kasir "+NumberFormat.getNumberInstance(new Locale("id","ID")).format(product.optDouble("posDiscount"))+"%",12,ACCENT,true),3);
         if (manage&&!linked) {
+            java.math.BigDecimal unit=MerchantPosCost.unit(product);
+            int packUnits=product.optInt("packSize",1);
+            if(packUnits>1)place(details,text("1 pack/dus = "+packUnits+" pcs",12,0xff43526a,false),3);
+            if(unit!=null)place(details,text("Modal stok "+rup(MerchantPosCost.valuation(unit,product.optLong("stock")))+
+                    " · Rp "+unit.stripTrailingZeros().toPlainString()+"/pcs",12,0xff43526a,false),3);
             place(details,text("Pajak "+NumberFormat.getNumberInstance(new Locale("id","ID")).format(product.optDouble("tax",0))+"%",12,0xff43526a,false),3);
             LinearLayout actions=horizontal();
             weight(actions,action("Edit",0,()->openProduct(product),Color.WHITE,ACCENT,ACCENT,44),0);
@@ -942,12 +977,15 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private void openProduct(JSONObject product) {
         Intent intent=new Intent(this,MerchantPosProductActivity.class)
                 .putExtra(MerchantPosProductActivity.PRODUCT,product==null?"{}":product.toString())
-                .putExtra(MerchantPosProductActivity.OUTLET,outlet).putExtra("outlet_name",outletName());
+                .putExtra(MerchantPosProductActivity.OUTLET,outlet).putExtra("outlet_name",outletName()).putExtra("revision",revision);
         startActivityForResult(intent,PRODUCT_EDITOR);
     }
     private void receiveProduct(Intent data) {
         if (busy || book==null) {deferredProduct=data;return;}
         if (!outlet.equals(data.getStringExtra(MerchantPosProductActivity.OUTLET))) return;
+        if (data.getIntExtra("revision",-1)!=revision){
+            toast("Stok telah berubah. Buka kembali editor dari daftar produk.");return;
+        }
         try {
             JSONObject values=new JSONObject(data.getStringExtra(MerchantPosProductActivity.PRODUCT));
             String id=values.getString("id");
@@ -1125,15 +1163,24 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         },false),7);
         JSONArray sales=reportSales();
         Map<String,Long> daily=new TreeMap<>();List<String[]> export=new ArrayList<>();
-        long tax=0, discount=0;
+        long tax=0, discount=0, cost=0, profit=0; int known=0;
         for (JSONObject sale:rows(sales)) {
             String day=day(sale.optLong("at"));
             if (!day.startsWith(reportMonth)) continue;
             long total=sale.optLong("total");daily.put(day,daily.getOrDefault(day,0L)+total);tax+=sale.optLong("tax");discount+=sale.optLong("discount");
-            export.add(new String[]{day,sale.optString("id"),sale.optString("method"),sale.optString("subtotal"),sale.optString("discount"),sale.optString("tax"),sale.optString("redeem"),sale.optString("total")});
+            if(!sale.isNull("costOfGoods")&&!sale.isNull("grossProfit")){
+                cost+=sale.optLong("costOfGoods");profit+=sale.optLong("grossProfit");known++;
+            }
+            export.add(new String[]{day,sale.optString("id"),sale.optString("staff"),sale.optString("staffKey"),sale.optString("method"),
+                    sale.optString("subtotal"),sale.optString("discount"),sale.optString("tax"),sale.optString("redeem"),sale.optString("total"),
+                    sale.isNull("costOfGoods")?"":sale.optString("costOfGoods"),sale.isNull("grossProfit")?"":sale.optString("grossProfit")});
         }
         place(content,metric("Total penjualan · "+export.size()+" transaksi",rup(sum(sales,"total",reportMonth)),glyph("report")),7);
         place(content,metric("Pajak produk",rup(tax),0),7);place(content,metric("Diskon",rup(discount),0),7);
+        if(known>0){
+            place(content,metric("Modal · "+known+" transaksi",rup(cost),0),7);
+            place(content,metric("Laba kotor tercatat",rup(profit),0),7);
+        }
         place(content,text("Tren harian",17,INK,true),12);
         long peak=Math.max(1,daily.values().stream().mapToLong(Long::longValue).max().orElse(0));
         for (Map.Entry<String,Long> entry:daily.entrySet()) {
@@ -1142,7 +1189,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             bar.setMax(1000);bar.setProgress((int)Math.round(1000.0*entry.getValue()/peak));place(content,bar,2);
         }
         place(content,action("Ekspor laporan CSV",0,()->export("laporan-penjualan.csv",
-                new String[]{"tanggal","id","metode","subtotal","diskon","pajak","poin_rp","total"},export),false),8);
+                new String[]{"tanggal","id","kasir","kasir_id","metode","subtotal","diskon","pajak","poin_rp","total","modal","laba_kotor"},export),false),8);
     }
     private void outlets() {
         for (JSONObject branch:rows(branches)) item(content,label(branch,"Outlet"),
@@ -1181,6 +1228,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         weight(heading,description,0);
         heading.addView(action("Tambah",R.drawable.ic_merchant_plus,()->editEntity("staff",null),true));
         place(content,heading,13);
+        place(content,action("Lihat penjualan kasir",glyph("report"),()->openSales("","Semua kasir"),true),8);
         LinearLayout group=card();
         if (people.isEmpty()) group.addView(text("Belum ada pegawai.",13,INK,false));
         for (JSONObject person:people) {
@@ -1189,9 +1237,17 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             String subtitle=phone.isEmpty()?role:role.isEmpty()?phone:role+"\n"+phone;
             place(group,personRow(label(person,"Pegawai"),subtitle,0xff43526a,
                     action("Edit",0,()->editEntity("staff",person),Color.WHITE,ACCENT,ACCENT,44)),4);
+            place(group,action("Lihat penjualan "+label(person,"pegawai"),glyph("report"),
+                    ()->openSales("staff:"+person.optString("id"),label(person,"Pegawai")),false),4);
         }
         place(content,group,10);
+        String identity=isStaff()?username():"Pemilik outlet";
+        place(content,action("Penjualan saya",glyph("report"),()->openSales(isStaff()?"login:"+username():"owner",identity),false),8);
         place(content,action("Buka absensi",glyph("attendance"),()->go("attendance"),Color.WHITE,ACCENT,LINE,44),10);
+    }
+    private void openSales(String key,String staffName){
+        startActivity(new Intent(this,MerchantPosSalesActivity.class)
+                .putExtra("outlet",outlet).putExtra("staff_key",key).putExtra("staff_name",staffName));
     }
     private void attendance() {
         List<JSONObject> team=rows(array(book,"staff"));
@@ -1290,7 +1346,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if (notify) toast("Barcode belum terdaftar.");
     }
     private String[] headings(String kind) {
-        return "products".equals(kind)?new String[]{"nama","barcode","harga","stok","pajak"}
+        return "products".equals(kind)?new String[]{"nama","barcode","harga","stok","pajak","modal_per_pcs","isi_pack","total_modal_stok"}
                 :new String[]{"nama","telepon","diskon_anggota"};
     }
     private void controls(String kind) {
@@ -1298,12 +1354,6 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         weight(row,action("Template CSV",0,()->export("template-"+kind+".csv",headings(kind),Collections.emptyList()),false),0);
         weight(row,action("Impor CSV",0,()->{importKind=kind;pickFile(IMPORT,"*/*");},false),6);
         place(content,row,7);
-        if ("products".equals(kind)) place(content,action("Ekspor produk CSV",0,()->{
-            List<String[]> data=new ArrayList<>();
-            for (JSONObject product:rows(array(book,"products"))) data.add(new String[]{label(product,""),product.optString("barcode"),
-                    product.optString("price"),Long.toString(product.optLong("stock")),product.optString("tax")});
-            export("produk-kasir.csv",headings(kind),data);
-        },false),6);
     }
     private void pickFile(int request,String mime) {
         Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType(mime).addCategory(Intent.CATEGORY_OPENABLE);
@@ -1322,7 +1372,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         for (int i=0;i<fields.length;i++) {
             if (i>0) csv.append(',');
             String value=fields[i];
-            if (value.matches("(?s)^(\\s*[=+\\-@]|[\\t\\r\\n]).*")) value="'"+value;
+            if (value.matches("(?s)^(\\s*[=+\\-@]|[\\t\\r\\n]).*")&&!value.matches("-[0-9]+")) value="'"+value;
             csv.append('"').append(value.replace("\"","\"\"")).append('"');
         }
         csv.append("\r\n");
@@ -1363,14 +1413,18 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if (book==null || busy || pending!=null) return;
         try {
             List<List<String>> records=parseCsv(text);
-            if (records.size()<2 || records.size()>301 || !records.remove(0).equals(Arrays.asList(headings(kind))))
-                throw new IllegalArgumentException("Gunakan template CSV Kasir dengan 1–300 baris.");
-            confirm("Impor "+records.size()+" baris?","Data baru akan ditambahkan ke "+outletName()+".",()->commit(next->{
+            if (records.size()<2 || records.size()>301) throw new IllegalArgumentException("Gunakan template CSV Kasir dengan 1–300 baris.");
+            List<String> header=records.remove(0);
+            boolean products="products".equals(kind);
+            boolean legacy=products&&header.equals(Arrays.asList("nama","barcode","harga","stok","pajak"));
+            if (!legacy&&!header.equals(Arrays.asList(headings(kind)))) throw new IllegalArgumentException("Kolom CSV tidak sesuai template.");
+            String importer=username();
+            confirm("Impor "+records.size()+" baris?","Outlet "+outletName()+" · Kasir "+importer,()->commit(next->{
                 int line=1;
                 for (List<String> source:records) {
                     line++;
                     try {
-                        if (source.size()!=headings(kind).length || source.get(0).isEmpty() || source.get(0).length()>120)
+                        if (source.size()!=header.size() || source.get(0).isEmpty() || source.get(0).length()>120)
                             throw new IllegalArgumentException("Kolom atau nama tidak valid.");
                         JSONObject row=record(UUID.randomUUID().toString(),source.get(0));
                         String code=source.get(1);
@@ -1378,7 +1432,15 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                             if (code.length()>80) throw new IllegalArgumentException("Barcode terlalu panjang.");
                             uniqueBarcode(next,code,"");
                             row.put("barcode",code).put("price",(long)csvValue(source.get(2),1,1000000000,false))
-                                    .put("stock",(int)csvValue(source.get(3),0,999999,false)).put("tax",csvValue(source.get(4),0,100,true));
+                                    .put("stock",(int)csvValue(source.get(3),0,999999,false)).put("tax",csvValue(source.get(4),0,100,true))
+                                    .put("importedBy",importer);
+                            if(!legacy){
+                                String cost=source.get(5);
+                                if(!cost.isEmpty()&&MerchantPosCost.unit(new JSONObject().put("unitCost",cost))==null)
+                                    throw new IllegalArgumentException("Modal per pcs tidak valid.");
+                                if(!cost.isEmpty())row.put("unitCost",new java.math.BigDecimal(cost).toPlainString());
+                                if(!source.get(6).isEmpty())row.put("packSize",(long)csvValue(source.get(6),1,999999,false));
+                            }
                         } else {
                             if (code.length()>40) throw new IllegalArgumentException("Nomor terlalu panjang.");
                             row.put("phone",code).put("member",csvValue(source.get(2),0,100,true)).put("points",0);
