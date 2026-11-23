@@ -1,1 +1,26 @@
-
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; form-action 'none'; base-uri 'none'">
+<title>Kasir Transiva</title>
+<link rel="stylesheet" href="pos.css">
+<script src="pos.js" defer></script>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <button id="menu" aria-label="Buka menu" class="icon">☰</button>
+    <div class="brand"><span>TRANSIVA MERCHANT</span><strong>Kasir Transiva</strong></div>
+    <button id="exit" class="quiet">Merchant</button>
+  </div>
+  <div class="outlet"><label for="outlet">Outlet aktif</label><select id="outlet" disabled></select></div>
+</header>
+<main id="screen"></main>
+<nav id="dock" aria-label="Navigasi kasir"></nav>
+<aside id="drawer" hidden><div class="drawer-sheet"><button class="quiet" id="close-menu">Tutup menu</button><div id="links"></div></div></aside>
+<dialog id="dialog"></dialog>
+<div id="toast" role="status" hidden></div>
+</body>
+</html>
