@@ -75,13 +75,16 @@ public class MerchantBaseActivity extends Activity {
         sessionManager = new SessionManager(this);
         branchId = getIntent().getStringExtra(EXTRA_BRANCH);
         if (branchId == null) branchId = sessionManager.get("selected_merchant_branch");
+        if (isStaff()) branchId = sessionManager.getRestaurantId();
         if (!branchId.matches("[1-9][0-9]{0,9}")) branchId = "";
 
     }
 
+    protected final boolean isStaff() { return sessionManager.isMerchantStaff(); }
+
     final boolean isBranchChange(Intent intent) {
         String requested = intent == null ? null : intent.getStringExtra(EXTRA_BRANCH);
-        return requested != null && !requested.equals(branchId());
+        return !isStaff() && requested != null && !requested.equals(branchId());
     }
 
     @Override protected void onNewIntent(Intent intent) {

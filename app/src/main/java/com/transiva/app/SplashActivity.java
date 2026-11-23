@@ -185,6 +185,8 @@ public class SplashActivity extends Activity {
         if (!session.isLoggedIn() || !"merchant".equals(role)) {
             if (session.isLoggedIn()) session.forceLogout("merchant_app_role_mismatch");
             intent = new Intent(this, LoginActivity.class);
+        } else if (session.isMerchantStaff()) {
+            intent = new Intent(this, MerchantDashboardActivity.class);
         } else {
             intent = new Intent(this, PinActivity.class);
             intent.putExtra("native_role", "merchant");

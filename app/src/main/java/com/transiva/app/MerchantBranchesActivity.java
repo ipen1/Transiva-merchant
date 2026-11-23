@@ -30,15 +30,20 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
     private TextView listFeedback;
     private double latitude = Double.NaN, longitude = Double.NaN;
     private LinearLayout root;
-    private EditText name;
+    private EditText name, staffUsername, staffPassword;
+    private boolean premium;
+    private String premiumUntil = "";
     private TextView status, point;
     private RadioGroup copy;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        if (isStaff()) { finish(); return; }
         ui = new MerchantPremiumUi(this);
         if (state != null) {
             editing = state.getBoolean("editing");
+            premium = state.getBoolean("premium");
+            premiumUntil = state.getString("premium_until", "");
             requestKey = state.getString("request_key");
             movingId = state.getInt("moving_id");
             latitude = state.getDouble("lat", Double.NaN);
@@ -52,6 +57,8 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
 
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putBoolean("editing", editing);
+        state.putBoolean("premium", premium);
+        state.putString("premium_until", premiumUntil);
         state.putString("request_key", requestKey);
         state.putInt("moving_id", movingId);
         state.putDouble("lat", latitude);
@@ -88,6 +95,8 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
                 runOnUiThread(() -> {
                     if (!alive()) return;
                     branches = data;
+                    premium = result.optBoolean("premium");
+                    premiumUntil = result.isNull("premium_until") ? "" : result.optString("premium_until");
                     showList();
                 });
             } catch (Exception error) {
@@ -110,6 +119,7 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
     private void showList() {
         editing = false;
         show("Toko & Cabang");
+        root.addView(sub(premium ? "Pemilik · Premium sampai " + premiumUntil : "Pemilik · Free · 1 toko utama + 1 cabang"));
         root.addView(sub("Pilih toko untuk mengelola menu, stok, dan pesanan."));
         listFeedback = sub("");
         listFeedback.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
@@ -120,6 +130,10 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
             if (row != null) addOutlet(row);
         }
         Button add = btn("+ Tambah cabang");
+        if (!premium && branches.length() >= 2) {
+            add.setEnabled(false);
+            root.addView(sub("Batas cabang Free tercapai. Hubungi Admin Transiva untuk menambah cabang."));
+        }
         add.setOnClickListener(v -> {
             if (saving) return;
             requestKey = java.util.UUID.randomUUID().toString();
@@ -174,6 +188,9 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
         details.addView(name);
         details.addView(tv((main ? "Toko utama" : "Cabang") + (active ? " · Dipilih" : ""), 12,
                 active ? ui.accent() : MUTED, active));
+        if (!main && !outlet.isNull("staff_username")) {
+            details.addView(tv(outlet.optString("staff_username") + (outlet.optBoolean("staff_enabled") && premium ? "" : " · Nonaktif"), 12, MUTED, false));
+        }
         details.addView(tv(outlet.optBoolean("accepting_orders", outlet.optInt("is_open") == 1) ? "Buka" : "Tutup", 12, MUTED, false));
 
         ImageButton actions = ui.iconButton(R.drawable.ic_merchant_overflow, ui.accent(), "Kelola " + label);
@@ -188,6 +205,10 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
         menu.getMenu().add(0, 1, 0, "Edit profil & foto");
         menu.getMenu().add(0, 2, 1, "Pindah titik pickup");
         if (!main) menu.getMenu().add(0, 3, 2, "Hapus cabang");
+        if (!main && premium) {
+            menu.getMenu().add(0, 4, 2, "Atur login staf");
+            if (outlet.optBoolean("staff_enabled")) menu.getMenu().add(0, 5, 3, "Nonaktifkan staf");
+        }
         menu.setOnMenuItemClickListener(item -> {
             if (saving) return false;
             switch (item.getItemId()) {
@@ -206,6 +227,16 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
                             .setMessage("Cabang akan ditutup dan hilang dari daftar. Riwayat pesanan tetap tersimpan.")
                             .setNegativeButton("Batal", null)
                             .setPositiveButton("Hapus cabang", (d, which) -> updateOutlet("delete", id, 0, 0))
+                            .show();
+                    break;
+                case 4:
+                    showStaffForm(id, outlet.isNull("staff_username") ? "" : outlet.optString("staff_username"));
+                    break;
+                case 5:
+                    new AlertDialog.Builder(this).setTitle("Nonaktifkan akses staf?")
+                            .setMessage("Semua sesi staf pada cabang ini akan dicabut.")
+                            .setNegativeButton("Batal", null)
+                            .setPositiveButton("Nonaktifkan", (dialog, which) -> saveStaff(id, "disable_staff", "", ""))
                             .show();
                     break;
                 default:
@@ -255,6 +286,77 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
         }
     }
 
+    private void showStaffForm(int id, String username) {
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        EditText user = input("Username, contoh staff.palu", InputType.TYPE_CLASS_TEXT);
+        user.setText(username.isEmpty() ? "staff." : username);
+        EditText password = staffPasswordField();
+        fields.addView(user);
+        fields.addView(password);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Login staf cabang")
+                .setView(fields).setNegativeButton("Batal", null).setPositiveButton("Simpan", null).show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            if (!validateStaff(user, password)) return;
+            String newUsername = user.getText().toString().trim();
+            String newPassword = password.getText().toString();
+            dialog.dismiss();
+            saveStaff(id, "save_staff", newUsername, newPassword);
+        });
+    }
+
+    private EditText staffPasswordField() {
+        EditText password = input("Kata sandi staf · minimal 10 karakter",
+                InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        password.setSaveEnabled(false);
+        return password;
+    }
+
+    private boolean validateStaff(EditText user, EditText password) {
+        if (!user.getText().toString().trim().matches("(?i)^staff\\.[a-z0-9][a-z0-9._-]{2,34}$")) {
+            user.setError("Gunakan staff. diikuti 3–35 huruf, angka, titik, garis bawah atau tanda hubung.");
+            return false;
+        }
+        int length = password.getText().toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        if (length < 10 || length > 72) {
+            password.setError("Kata sandi harus 10–72 byte.");
+            return false;
+        }
+        return true;
+    }
+
+    private void saveStaff(int id, String action, String username, String password) {
+        if (saving) return;
+        saving = true;
+        boolean queued = MerchantNetworkExecutor.executeWrite("branch-staff:" + id, () -> {
+            try {
+                JSONObject payload = new JSONObject();
+                payload.put("action", action);
+                payload.put("restaurant_id", id);
+                if ("save_staff".equals(action)) {
+                    payload.put("staff_username", username);
+                    payload.put("staff_password", password);
+                }
+                JSONObject result = new JSONObject(postJson(ENDPOINT, payload));
+                runOnUiThread(() -> {
+                    saving = false;
+                    if (!alive()) return;
+                    if (result.optBoolean("success")) { toast(result.optString("message")); load(); }
+                    else showFeedback(result.optString("message"));
+                });
+            } catch (Exception error) {
+                runOnUiThread(() -> {
+                    saving = false;
+                    if (alive()) showFeedback("Akun staf belum bisa diperbarui.");
+                });
+            }
+        });
+        if (!queued) {
+            saving = false;
+            showFeedback("Permintaan sedang antre. Coba lagi.");
+        }
+    }
+
     private void showCreate(String draftName, int sourceId) {
         editing = true;
         show("Tambah Cabang");
@@ -262,6 +364,14 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
         name.setText(draftName);
         name.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(120)});
         root.addView(name);
+        if (premium) {
+            root.addView(title("Login staf cabang"));
+            staffUsername = input("Username, contoh staff.palu", InputType.TYPE_CLASS_TEXT);
+            staffUsername.setText("staff.");
+            staffPassword = staffPasswordField();
+            root.addView(staffUsername);
+            root.addView(staffPassword);
+        }
         Button map = outlineBtn("Pilih titik pickup di peta");
         map.setOnClickListener(v -> openMap());
         root.addView(map);
@@ -353,6 +463,9 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
             status.setText("Isi nama cabang dan pilih titik pickup di peta.");
             return;
         }
+        if (premium && !validateStaff(staffUsername, staffPassword)) return;
+        final String staffLogin = premium ? staffUsername.getText().toString().trim() : "";
+        final String staffSecret = premium ? staffPassword.getText().toString() : "";
         final double lat = latitude, lng = longitude;
         final int source = selectedSource();
         final String key = requestKey;
@@ -367,6 +480,10 @@ public final class MerchantBranchesActivity extends MerchantBaseActivity {
                 payload.put("longitude", lng);
                 payload.put("copy_from", source);
                 payload.put("request_key", key);
+                if (!staffLogin.isEmpty()) {
+                    payload.put("staff_username", staffLogin);
+                    payload.put("staff_password", staffSecret);
+                }
                 JSONObject result = new JSONObject(postJson(ENDPOINT, payload));
                 if (!result.optBoolean("success")) throw new IllegalStateException(result.optString("message"));
                 String id = result.getString("restaurant_id");

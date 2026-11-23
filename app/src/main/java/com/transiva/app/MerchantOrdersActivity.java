@@ -125,7 +125,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         blue.setCornerRadius(dp(17));
         banner.setBackground(blue);
         LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(tv("Aktivitas Semua Cabang",22,Color.WHITE,true),new LinearLayout.LayoutParams(0,-2,1));
+        header.addView(tv(isStaff() ? "Aktivitas Cabang" : "Aktivitas Semua Cabang",22,Color.WHITE,true),new LinearLayout.LayoutParams(0,-2,1));
         Button refresh=outlineBtn("↻");refresh.setContentDescription("Perbarui pesanan");refresh.setPadding(0,0,0,0);refresh.setElevation(0);
         refresh.setOnClickListener(v->load(false));
         header.addView(refresh,new LinearLayout.LayoutParams(dp(48),dp(48)));
@@ -194,6 +194,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
         outletSpinner = new Spinner(this);
         root.addView(outletSpinner);
+        if (isStaff()) outletSpinner.setVisibility(android.view.View.GONE);
         outletSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int pos, long id) {
                 if (pos >= outletIds.size() || outletIds.get(pos) == outletFilter) return;
@@ -294,7 +295,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
         java.util.concurrent.Future<?> readTask = MerchantNetworkExecutor.executeRead(this, "orders:"+requestGeneration, () -> {
             try {
                 long sent=android.os.SystemClock.elapsedRealtime();
-                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?outlets=all&scope=" + scope + outletParam + activeCursor + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
+                JSONObject r = new JSONObject(get(BASE + "getMerchantOrders.php?scope=" + scope + (isStaff() ? "" : "&outlets=all") + outletParam + activeCursor + (before>0?"&before_id="+before:"") + "&v=" + System.currentTimeMillis()));
                 final long received=android.os.SystemClock.elapsedRealtime();
                 if(!r.optBoolean("success",false))throw new Exception(r.optString("message","Gagal memuat pesanan"));
                 JSONArray orders = r.optJSONArray("orders");
@@ -352,7 +353,7 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
 
     private String currentAccountCacheName(){
         SessionManager session = new SessionManager(this);
-        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + "all_outlets";
+        return ORDER_CACHE_PREF + "_" + session.getId() + "_" + (isStaff() ? "staff_" + session.getRestaurantId() : "all_outlets");
     }
 
     private String orderCacheName(){

@@ -39,15 +39,16 @@ public class MerchantSettingsActivity extends MerchantBaseActivity {
         root.addView(main);
         addSection(root,"Keamanan",12);
         LinearLayout security=settingCard();
-        security.addView(actionRow("Akses akun","Username, kata sandi, dan PIN",()->PremiumDialogs.builder(this)
+        if (!isStaff()) security.addView(actionRow("Akses akun","Username, kata sandi, dan PIN",()->PremiumDialogs.builder(this)
             .setTitle("Akses akun").setItems(new String[]{"Ubah username","Ubah kata sandi","Ubah PIN"},(d,w)->{
                 if(w==0)showChangeUsername();else if(w==1)showChangePassword();else showChangePin();
             }).setNegativeButton("Batal",null).show()));
         security.addView(divider());security.addView(actionRow("Perangkat & sesi","Kelola perangkat yang masuk",()->open(MerchantDeviceSessionsActivity.class)));
-        security.addView(divider());security.addView(actionRow("Privasi & data","Kebijakan dan penghapusan akun",()->PremiumDialogs.builder(this)
+        if (!isStaff()) { security.addView(divider());security.addView(actionRow("Privasi & data","Kebijakan dan penghapusan akun",()->PremiumDialogs.builder(this)
             .setTitle("Privasi & data").setItems(new String[]{"Kebijakan & pengelolaan data","Hapus akun permanen"},(d,w)->{
                 if(w==0)open(MerchantPrivacyActivity.class);else showDeleteAccount();
-            }).setNegativeButton("Batal",null).show()));root.addView(security);
+            }).setNegativeButton("Batal",null).show())); }
+        root.addView(security);
         addSection(root,"Bantuan & aplikasi",12);
         LinearLayout tools=settingCard();
         tools.addView(actionRow("Notifikasi","Riwayat pemberitahuan",()->open(MerchantNotificationCenterActivity.class)));

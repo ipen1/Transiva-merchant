@@ -32,6 +32,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     private final java.util.Set<String> expiredIncoming=new java.util.HashSet<>();
     private boolean incomingChecked;
     private JSONArray pendingOrders=new JSONArray();
+    private boolean premium;
+    private TextView accessLabel;
     private boolean incomingVisible, incomingReading, incomingQueued, incomingUpdating, incomingStale=true, incomingMore;
     private final Runnable incomingPoll=new Runnable() {
         @Override public void run() {
@@ -92,6 +94,8 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         name.setMaxLines(2);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         identity.addView(name);
+        accessLabel = tv(isStaff() ? "Staf cabang" : "Pemilik", 11, MUTED, true);
+        identity.addView(accessLabel);
         header.addView(identity, new LinearLayout.LayoutParams(0, -2, 1));
         TextView cashier = tv("Kasir", 15, 0xFF0955B5, true);
         cashier.setGravity(Gravity.CENTER);
@@ -101,7 +105,11 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         cashier.setCompoundDrawablesRelative(receipt, null, null, null);
         cashier.setCompoundDrawablePadding(dp(5));
         cashier.setBackground(ui.touch(stroke(0xFFE4EFFF, 0xFF9BBDF4, dp(12))));
-        cashier.setOnClickListener(v -> open(MerchantPosActivity.class));
+        cashier.setOnClickListener(v -> {
+            if (!dashboardLoaded) { toast("Status Premium sedang dimuat."); loadAll(); }
+            else if (premium) open(MerchantPosActivity.class);
+            else alert("Kasir Premium", "Hubungi Admin Transiva untuk mengaktifkan Premium.");
+        });
         cashier.setFocusable(true);
         LinearLayout.LayoutParams cashierParams = new LinearLayout.LayoutParams(-2, dp(48));
         cashierParams.setMarginEnd(dp(6));
@@ -117,7 +125,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         addBlock(root,incoming,8);
         addBlock(root, storeCard(), 10);
         addBlock(root, statistics(), 10);
-        addBlock(root, branchActions(), 10);
+        if (!isStaff()) addBlock(root, branchActions(), 10);
 
         TextView section = tv("Kelola usaha", 20, NAVY, true);
         section.setLetterSpacing(-.02f);
@@ -393,7 +401,7 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         java.util.concurrent.Future<?> request=MerchantNetworkExecutor.executeRead(this,"incoming-orders",()->{
             long sent=android.os.SystemClock.elapsedRealtime();
             try {
-                JSONObject result=new JSONObject(get(BASE+"getMerchantOrders.php?outlets=all&scope=incoming"));
+                JSONObject result=new JSONObject(get(BASE+"getMerchantOrders.php?scope=incoming"+(isStaff()?"":"&outlets=all")));
                 long received=android.os.SystemClock.elapsedRealtime();
                 if (!result.optBoolean("success")) throw new IllegalStateException();
                 runOnUiThread(()->{
@@ -537,6 +545,9 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
 
     private void showDash(JSONObject d){
         try {
+            premium = d.optBoolean("premium");
+            String until = d.isNull("premium_until") ? "" : d.optString("premium_until");
+            accessLabel.setText(isStaff() ? "Staf cabang" : premium ? "Pemilik · Premium sampai " + until : "Pemilik · Free");
             boolean verified = d.optInt("is_verified", 0) == 1;
             boolean open = verified && d.optInt("is_open", 0) == 1;
             statusText.setText(!verified ? "Menunggu verifikasi" : open ? "Toko buka" : "Toko tutup");

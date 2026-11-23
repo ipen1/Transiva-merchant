@@ -351,7 +351,7 @@ public class LoginActivity extends MerchantAuthActivity {
                                 + session.getToken().length()
                 );
 
-                MerchantLoginRepository.syncFcmAfterLogin(LoginActivity.this, result.user);
+                if (!session.isMerchantStaff()) MerchantLoginRepository.syncFcmAfterLogin(LoginActivity.this, result.user);
 
                 showMessage("Login berhasil", true);
                 setLoading(true);
@@ -359,7 +359,7 @@ public class LoginActivity extends MerchantAuthActivity {
                 String finalRole = role;
 
                 mainHandler.postDelayed(
-                        () -> openPinPage(finalRole),
+                        () -> { if (session.isMerchantStaff()) openRolePage(finalRole); else openPinPage(finalRole); },
                         500
                 );
             });

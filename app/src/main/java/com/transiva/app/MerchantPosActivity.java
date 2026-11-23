@@ -114,6 +114,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
 
     private final class PosBridge {
+        @JavascriptInterface public boolean staffMode() { return isStaff(); }
+        @JavascriptInterface public String actorName() { return username(); }
         @JavascriptInterface public String selectedOutlet() { return branchId(); }
         @JavascriptInterface public void request(String id, String action, String outlet, String body) {
             if (!id.matches("[0-9]{1,9}") || !outlet.matches("[1-9][0-9]{0,9}|")
@@ -147,7 +149,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         }
 
         @JavascriptInterface public void exit() { runOnUiThread(() -> finish()); }
-        @JavascriptInterface public void branches() { runOnUiThread(() -> open(MerchantBranchesActivity.class)); }
+        @JavascriptInterface public void branches() { runOnUiThread(() -> { if (!isStaff()) open(MerchantBranchesActivity.class); }); }
         @JavascriptInterface public void scan() {
             runOnUiThread(() -> new IntentIntegrator(MerchantPosActivity.this)
                     .setPrompt("Arahkan kamera ke kode batang produk")

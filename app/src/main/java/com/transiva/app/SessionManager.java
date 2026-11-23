@@ -115,6 +115,8 @@ public class SessionManager {
             e.putString("username", clean.optString("username", ""));
             e.putString("name", clean.optString("name", ""));
             e.putString("role", role);
+            e.putString("merchant_access", clean.optString("merchant_access", "owner"));
+            e.remove("selected_merchant_branch");
             e.putString("phone", clean.optString("phone", ""));
             e.remove("token");
             e.remove("access_token");
@@ -701,6 +703,10 @@ public class SessionManager {
         } catch (Exception ignored) {
             return "";
         }
+    }
+
+    public boolean isMerchantStaff() {
+        return "staff".equals(prefs.getString("merchant_access", "owner"));
     }
 
     public String getRestaurantId() {
