@@ -2,6 +2,7 @@
 
 const screen = document.querySelector('#screen');
 const selector = document.querySelector('#outlet');
+const staffMode = Transiva.staffMode();
 const drawer = document.querySelector('#drawer');
 const dialog = document.querySelector('#dialog');
 const lists = ['products','sales','people','staff','attendance','materials','expenses','payments','surveys','discounts','types'];
@@ -108,7 +109,7 @@ async function init(refresh = true) {
   selector.value = outlet;
   const result = await request('load');
   busy = false;
-  selector.disabled = false;
+  selector.disabled = staffMode;
   if (!result.success) {
     book = null;
     screen.replaceChildren(el('p',result.message || 'Data Kasir belum bisa dimuat.'),button('Coba lagi',() => init()));
@@ -142,7 +143,7 @@ async function sendPending() {
   render();
   const result = await request('save',pending.payload);
   busy = false;
-  selector.disabled = false;
+  selector.disabled = staffMode;
   if (result.uncertain || !result.success && !result.code && /belum dapat terhubung/i.test(result.message || '')) {
     selector.disabled = true;
     render();
@@ -430,7 +431,7 @@ function checkout() {
   const fields = [
     pick('type','Tipe order',choices(book.types)),
     pick('customer','Pelanggan',[['walk','Pelanggan umum'],...choices(book.people)]),
-    pick('staff','Petugas',[['owner','Pemilik outlet'],...choices(book.staff)]),
+    ...(!staffMode ? [pick('staff','Petugas',[['owner','Pemilik outlet'],...choices(book.staff)])] : []),
     pick('discount','Diskon',[['none','Tanpa diskon'],...choices(book.discounts)]),
     number('points','Tukar poin (1 poin = Rp100)',0,100000),
     pick('method','Cara bayar',[['cash','Tunai'],['qris','QRIS · konfirmasi manual'],['debt','Utang / kasbon']])
@@ -481,7 +482,7 @@ function recordSale(selection,pay) {
     next.sales.push({
       ...amounts,id,at:Date.now(),items,method:selection.method,
       customer:person?.id || '', customerName:person?.name || 'Pelanggan umum',
-      staff:find('staff',selection.staff,next)?.name || 'Pemilik outlet',
+      staff:staffMode ? Transiva.actorName() : find('staff',selection.staff,next)?.name || 'Pemilik outlet',
       type:find('types',selection.type,next).name,outlet:branchName(),
       cash:pay.cash ?? 0,reference:pay.reference ?? ''
     });
@@ -613,8 +614,8 @@ function displayOutlets() {
       })
     ].filter(Boolean)));
   }
-  screen.append(button('Kelola cabang Merchant',() => Transiva.branches(),'primary'),
-    button('Segarkan outlet',() => init()));
+  if (!staffMode) screen.append(button('Kelola cabang Merchant',() => Transiva.branches(),'primary'));
+  screen.append(button('Segarkan outlet',() => init()));
 }
 function displaySurveys() {
   screen.append(mutator('Catat survei pelanggan',() => form('Survei pelanggan',[
@@ -641,16 +642,16 @@ function qrResult(image) {
 function displayQris() {
   screen.append(group('card stack',el('p','Pasang gambar QRIS statis resmi outlet. Pada transaksi, cocokkan nominal dan dana masuk di aplikasi penyedia sebelum mencatat referensi pembayaran.'),
     book.qrImage ? qrImage() : el('p','Gambar QRIS belum dipasang.'),
-    group('flex',mutator(book.qrImage ? 'Ganti gambar QRIS' : 'Pasang gambar QRIS',() => Transiva.pickQrImage(),'primary'),
+    !staffMode ? group('flex',mutator(book.qrImage ? 'Ganti gambar QRIS' : 'Pasang gambar QRIS',() => Transiva.pickQrImage(),'primary'),
       book.qrImage ? mutator('Hapus gambar',() => {
         if (confirm('Hapus tampilan gambar QRIS outlet ini?')) commit(next => delete next.qrImage);
-      }) : null)));
+      }) : null) : null));
 }
 function displayPlan() {
   screen.append(group('card stack',el('h2',plan ? (active ? 'Langganan aktif' : 'Di luar masa aktif') : 'Akses evaluasi'),
     el('p',plan ? plan.starts_on + ' sampai ' + plan.ends_on : 'Belum ada periode langganan untuk outlet ini.'),
     el('p',plan ? 'Laporan mengikuti tanggal paket di outlet ini. Hubungi pengelola Transiva untuk perpanjangan.'
-      : 'Pengelola Transiva dapat mengatur tanggal aktif untuk outlet ini.')));
+      : 'Pengelola Transiva dapat mengatur tanggal aktif untuk akun Merchant.')));
 }
 const pages = {
   home:displayHome, sale:displaySale, history:displayHistory, receipt:displayReceipt, products:displayProduct,
