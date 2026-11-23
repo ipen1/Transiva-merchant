@@ -37,6 +37,7 @@
         <activity android:name=".MerchantPosScanActivity" android:screenOrientation="fullSensor" android:exported="false" android:theme="@style/zxing_CaptureTheme"/>
         <activity android:name=".MerchantPosProductActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
         <activity android:name=".MerchantPosCheckoutActivity" android:exported="false" android:windowSoftInputMode="adjustResize"/>
+        <activity android:name=".MerchantPosSalesActivity" android:exported="false"/>
         <activity android:name=".MerchantPosActivity" android:configChanges="orientation|screenSize|keyboardHidden" android:exported="false"/>
         <activity android:name=".MerchantDashboardActivity" android:exported="false"/>
         <activity android:name=".MerchantAddMenuActivity" android:exported="false"/>
