@@ -30,7 +30,7 @@ import java.util.concurrent.ExecutorService;
 
 public final class MerchantPosActivity extends MerchantBaseActivity {
     private static final int INK=0xff0b1530, ACCENT=0xff0756c7, PAGE=0xfff2f6fc, LINE=0xffd6dfeb;
-    private static final int IMPORT=718, EXPORT=719, QR=720, LIMIT=300000;
+    private static final int IMPORT=718, EXPORT=719, QR=720, PRODUCT_EDITOR=721, LIMIT=300000;
     private static final String[] BOOK_LISTS={"products","sales","people","staff","attendance","materials","expenses","payments","surveys","discounts","types"};
     private static final String[][] SECTIONS={{"Kasir","home","sale","history","cash"},{"Produk","products","materials","discounts","types"},
             {"Tim & Pelanggan","staff","attendance","people","surveys"},{"Outlet","report","outlets","qris","plan"}};
@@ -46,13 +46,22 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private String outlet="", screen="home", receipt="", query="", importKind="", exportText="";
     private int revision, historyLimit=50, catalogLimit=50;
     private boolean busy;
-    private EditText barcodeTarget;
+    private View checkoutBar;
+    private String saleFilter="Semua";
+    private boolean csvExpanded;
+    private Intent deferredProduct;
+    private String deferredBarcode;
+    private LinearLayout saleResults;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (sessionManager.getToken().isEmpty()) { finish(); return; }
         if (state!=null) {
             outlet=state.getString("pos_outlet","");
+            screen=state.getString("pos_screen","home");receipt=state.getString("pos_receipt","");
+            query=state.getString("pos_query","");saleFilter=state.getString("pos_filter","Semua");
+            Bundle savedCart=state.getBundle("pos_cart");
+            if (savedCart!=null) for (String id:savedCart.keySet()) cart.put(id,savedCart.getInt(id));
             exportText=state.getString("pos_export","");
             importKind=state.getString("pos_import","");
         }
@@ -63,7 +72,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             Insets bars=insets.getInsets(WindowInsetsCompat.Type.systemBars()|WindowInsetsCompat.Type.displayCutout());
             Insets ime=insets.getInsets(WindowInsetsCompat.Type.ime());
             view.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,ime.bottom));
-            if (dock!=null) dock.setVisibility(insets.isVisible(WindowInsetsCompat.Type.ime())?View.GONE:View.VISIBLE);
+            boolean keyboard=insets.isVisible(WindowInsetsCompat.Type.ime());
+            if (dock!=null) dock.setVisibility(keyboard?View.GONE:View.VISIBLE);
+            if (checkoutBar!=null) checkoutBar.setVisibility(keyboard?View.GONE:View.VISIBLE);
             return insets;
         });
         MerchantWindowInsets.requestWhenAttached(shell);
@@ -71,6 +82,13 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putString("pos_outlet",outlet);
+        state.putString("pos_screen",screen);state.putString("pos_receipt",receipt);
+        state.putString("pos_query",query);state.putString("pos_filter",saleFilter);
+        if (cart.size()<=300) {
+            Bundle savedCart=new Bundle();
+            for (Map.Entry<String,Integer> entry:cart.entrySet()) savedCart.putInt(entry.getKey(),entry.getValue());
+            state.putBundle("pos_cart",savedCart);
+        }
         state.putString("pos_export",exportText);
         state.putString("pos_import",importKind);
         super.onSaveInstanceState(state);
@@ -102,13 +120,19 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                 runOnUiThread(()->{
                     if (!alive()) return;
                     branches=updated;
+                    if (!outlet.isEmpty()&&!outlet.equals(selected)) cart.clear();
                     outlet=selected;
                     book=normalize(result.optJSONObject("book"));
                     plan=result.optJSONObject("plan");
                     catalog=array(result,"catalog");
                     revision=result.optInt("revision");
                     busy=false;
+                    cart.entrySet().removeIf(entry->!canSell(product(book,entry.getKey()),entry.getValue()));
                     render();
+                    Intent nextProduct=deferredProduct;deferredProduct=null;
+                    if (nextProduct!=null) receiveProduct(nextProduct);
+                    String nextBarcode=deferredBarcode;deferredBarcode=null;
+                    if (nextBarcode!=null) scanResult(nextBarcode,true);
                 });
             } catch (Exception failure) {
                 runOnUiThread(()->{
@@ -289,17 +313,18 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         if ("sale".equals(next) && cart.isEmpty()) load(false); else render();
     }
     private void render() {
-        shell.removeAllViews();overlay=null;
+        shell.removeAllViews();overlay=null;checkoutBar=null;saleResults=null;
         body=vertical();
         int max=dp(600);
         FrameLayout.LayoutParams frame=new FrameLayout.LayoutParams(Math.min(shell.getWidth()>0?shell.getWidth()-shell.getPaddingLeft()-shell.getPaddingRight():dp(screenWidthDp()),max),-1,Gravity.CENTER_HORIZONTAL);
         shell.addView(body,frame);
         LinearLayout top=horizontal();
-        top.setBackgroundColor(Color.WHITE);pad(top,10,3);
-        View menu=action("",R.drawable.ic_merchant_menu,this::drawer,Color.WHITE,INK,Color.WHITE,44);
+        top.setBackgroundColor("sale".equals(screen)?INK:Color.WHITE);pad(top,10,3);
+        int topColor="sale".equals(screen)?INK:Color.WHITE, foreground="sale".equals(screen)?Color.WHITE:INK;
+        View menu=action("",R.drawable.ic_merchant_menu,this::drawer,topColor,foreground,topColor,44);
         menu.setContentDescription("Buka menu");top.addView(menu,new LinearLayout.LayoutParams(dp(44),-2));
-        weight(top,text("Kasir Transiva",20,INK,true),4);
-        top.addView(action("‹  Merchant",0,this::exit,Color.WHITE,ACCENT,0xff8ab1eb,42));
+        weight(top,text("Kasir Transiva",20,foreground,true),4);
+        top.addView(action("‹  Merchant",0,this::exit,topColor,"sale".equals(screen)?Color.WHITE:ACCENT,0xff8ab1eb,44));
         body.addView(top);
         scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);
         body.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
@@ -320,9 +345,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             place(content,text(busy?"Memproses data Kasir…":"Status penyimpanan belum pasti",16,INK,true),12);
             if (!busy) place(content,action("Periksa penyimpanan",0,this::save,true),8);
         } else if (book!=null) {
-            place(content,text(titleOf(screen),22,INK,true),13);
+            if (!"staff".equals(screen)) place(content,text(titleOf(screen),22,INK,true),13);
             renderScreen();
         }
+        if (checkoutBar!=null) body.addView(checkoutBar);
         dock=horizontal();dock.setBackgroundColor(Color.WHITE);
         for (String key:new String[]{"home","sale","history"}) {
             boolean selected=key.equals(screen);
@@ -336,6 +362,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             weight(dock,tab,0);
         }
         body.addView(dock);
+        ViewCompat.requestApplyInsets(shell);
     }
     private TextView center(TextView text) { text.setGravity(Gravity.CENTER);return text; }
     private void drawer() {
@@ -407,6 +434,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             case "cash": cash();break;
             case "report": report();break;
             case "attendance": attendance();break;
+            case "staff": employees();break;
             case "outlets": outlets();break;
             case "qris": qris();break;
             case "plan": plan();break;
@@ -498,26 +526,23 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         int amount=cart.getOrDefault(id,0)+delta;
         if (delta>0 && !canSell(product(book,id),amount)) {toast("Stok tidak mencukupi atau menu nonaktif.");return;}
         if (amount<=0) cart.remove(id); else cart.put(id,amount);
-        render();
+        if (saleResults==null || checkoutBar==null) {render();return;}
+        fillSale(saleResults);
+        int footerPosition=body.indexOfChild(checkoutBar);
+        body.removeView(checkoutBar);checkoutBar=checkoutPanel();body.addView(checkoutBar,footerPosition);
+        ViewCompat.requestApplyInsets(shell);
     }
     private void sale() {
-        LinearLayout cartCard=card();cartCard.addView(text("Keranjang",17,INK,true));
-        if (cart.isEmpty()) place(cartCard,text("Pilih produk atau scan barcode.",13,INK,false),7);
-        long preview=0;
-        for (Map.Entry<String,Integer> entry:cart.entrySet()) {
-            JSONObject product=product(book,entry.getKey());int qty=entry.getValue();
-            if (product==null) continue;
-            preview+=Math.round(product.optLong("price")*qty*(1+product.optDouble("tax",0)/100));
-            LinearLayout row=horizontal();weight(row,text(label(product,"Produk")+"  × "+qty,13,INK,true),0);
-            row.addView(action("−",0,()->add(entry.getKey(),-1),false));row.addView(action("+",0,()->add(entry.getKey(),1),false));place(cartCard,row,4);
-        }
-        if (!cart.isEmpty()) place(cartCard,action("Lanjut bayar · "+rup(preview),glyph("sale"),this::checkout,true),8);
-        place(content,cartCard,8);
         LinearLayout controls=horizontal();
         EditText search=input("Cari menu atau barcode",InputType.TYPE_CLASS_TEXT);
         search.setSingleLine(true);search.setText(query);weight(controls,search,0);
-        controls.addView(action("Scan",0,this::scan,false));place(content,controls,8);
-        LinearLayout results=vertical();content.addView(results);
+        View scan=action("Scan",R.drawable.ic_merchant_search,this::scan,Color.WHITE,ACCENT,ACCENT,44);
+        LinearLayout.LayoutParams scanParams=new LinearLayout.LayoutParams(-2,-2);scanParams.setMarginStart(dp(7));
+        controls.addView(scan,scanParams);place(content,controls,8);
+        LinearLayout filters=horizontal();
+        LinearLayout results=vertical();saleResults=results;
+        place(content,filters,6);content.addView(results);
+        showSaleFilters(filters,results);
         search.addTextChangedListener(new android.text.TextWatcher(){
             public void beforeTextChanged(CharSequence value,int start,int count,int after){}
             public void onTextChanged(CharSequence value,int start,int before,int count){query=value.toString();catalogLimit=50;fillSale(results);}
@@ -525,27 +550,80 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         });
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         search.setOnEditorActionListener((view,id,event)->{
-            if (id==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) { scanResult(search.getText().toString(),false);return true; }
+            if (id==android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {scanResult(search.getText().toString().trim(),false);return true;}
             return false;
         });
         fillSale(results);
+        checkoutBar=checkoutPanel();
+    }
+    private void showSaleFilters(LinearLayout filters,LinearLayout results) {
+        filters.removeAllViews();
+        for (String label:new String[]{"Semua","Menu Merchant","Produk Kasir"}) {
+            boolean selected=label.equals(saleFilter);
+            View button=action(label,0,()->{saleFilter=label;catalogLimit=50;showSaleFilters(filters,results);fillSale(results);},
+                    selected?ACCENT:Color.WHITE,selected?Color.WHITE:INK,selected?ACCENT:LINE,44);
+            button.setSelected(selected);weight(filters,button,filters.getChildCount()==0?0:5);
+        }
+    }
+    private View checkoutPanel() {
+        LinearLayout panel=card();panel.setElevation(dp(4));
+        int qty=0;long price=0;
+        ArrayList<String> lines=new ArrayList<>();
+        for (Map.Entry<String,Integer> entry:cart.entrySet()) {
+            JSONObject product=product(book,entry.getKey());int amount=entry.getValue();
+            if (product==null) continue;
+            qty+=amount;
+            price+=Math.round(product.optLong("price")*amount*(1+product.optDouble("tax",0)/100));
+            lines.add(label(product,"Produk")+" × "+amount);
+        }
+        LinearLayout summary=horizontal();pad(summary,3,2);
+        summary.setMinimumHeight(dp(36));
+        summary.addView(icon(R.drawable.ic_merchant_bag,ACCENT),new LinearLayout.LayoutParams(dp(21),dp(21)));
+        weight(summary,text("Keranjang · "+qty+" produk",14,INK,true),7);
+        summary.addView(text(rup(price),16,INK,true));
+        if (!lines.isEmpty()) {
+            summary.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("Keranjang")
+                    .setItems(lines.toArray(new String[0]),null).setPositiveButton("Tutup",null).show());
+            summary.setFocusable(true);
+        }
+        panel.addView(summary);
+        View pay=action("Lanjut bayar",0,this::checkout,true);
+        LinearLayout button=(LinearLayout)pay;button.setGravity(Gravity.CENTER);
+        button.getChildAt(0).setLayoutParams(new LinearLayout.LayoutParams(-2,-2));
+        pay.setEnabled(qty>0);pay.setAlpha(qty>0?1f:.48f);place(panel,pay,4);
+        return panel;
     }
     private void fillSale(LinearLayout results) {
         results.removeAllViews();
         int count=0;
         String filter=query.trim().toLowerCase(Locale.ROOT);
         for (JSONObject row:productsList()) {
+            String id=row.optString("id");boolean linked=id.startsWith("menu:");
+            if (("Menu Merchant".equals(saleFilter)&&!linked)||("Produk Kasir".equals(saleFilter)&&linked)) continue;
             String metadata=(label(row,"")+" "+row.optString("barcode")+" "+row.optString("category")).toLowerCase(Locale.ROOT);
             if (!metadata.contains(filter)) continue;
             if (++count>catalogLimit) {
                 place(results,action("Tampilkan lebih banyak",0,()->{catalogLimit+=50;fillSale(results);},false),6);break;
             }
-            String id=row.optString("id");
-            String status=row.optString("reason");
-            item(results,label(row,"Produk"),rup(row.optLong("price"))+" · "+stock(row)+(status.isEmpty()?"":" · "+status),
-                    canSell(row,1)?action("Tambah",0,()->add(id,1),false):null);
+            LinearLayout wrapper=card();LinearLayout line=productLine(row,linked,false);
+            int qty=cart.getOrDefault(id,0);
+            if (qty>0 || canSell(row,1)) {
+                LinearLayout countBox=horizontal();
+                if (qty>0) {
+                    countBox.addView(quantityButton("−","Kurangi "+label(row,"produk"),()->add(id,-1),true));
+                    TextView countLabel=text(Integer.toString(qty),13,INK,true);pad(countLabel,4,0);countBox.addView(countLabel);
+                }
+                countBox.addView(quantityButton("+","Tambah "+label(row,"produk"),()->add(id,1),canSell(row,qty+1)));
+                line.addView(countBox);
+            }
+            wrapper.addView(line);place(results,wrapper,7);
         }
         if (count==0) place(results,text("Produk belum ditemukan.",13,INK,false),9);
+    }
+    private View quantityButton(String symbol,String description,Runnable click,boolean enabled) {
+        View result=action(symbol,0,click,Color.WHITE,ACCENT,LINE,44);
+        result.setLayoutParams(new LinearLayout.LayoutParams(dp(44),-2));result.setContentDescription(description);
+        result.setEnabled(enabled);result.setAlpha(enabled?1f:.48f);return result;
     }
     private Spinner select(LinearLayout form,String title,List<JSONObject> options) {
         TextView caption=text(title,13,INK,true);place(form,caption,8);
@@ -563,7 +641,6 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private void ask(String title,LinearLayout inputs,String submit,Submit handler) {
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle(title).setView(formScroll(inputs))
                 .setNegativeButton("Batal",null).setPositiveButton(submit,null).create();
-        dialog.setOnDismissListener(d->barcodeTarget=null);
         dialog.show();
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             try { handler.apply();dialog.dismiss(); }
@@ -742,33 +819,109 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         });
     }
     private void products() {
-        place(content,text("Menu Merchant",17,INK,true),8);
-        place(content,text("Harga dasar, status dan stok mengikuti outlet Merchant.",13,INK,false),4);
-        place(content,action("Segarkan katalog",R.drawable.ic_merchant_refresh,()->load(false),false),7);
-        List<JSONObject> linked=rows(catalog);
-        showProducts(linked,true);
-        if (linked.isEmpty()) place(content,text("Belum ada menu Merchant di outlet ini.",13,INK,false),7);
-        place(content,text("Produk khusus Kasir",17,INK,true),14);
-        controls("products");
-        place(content,action("Tambah produk",R.drawable.ic_merchant_plus,()->editEntity("products",null),true),7);
-        showProducts(rows(array(book,"products")),false);
+        LinearLayout merchant=card(), header=horizontal(), info=vertical();
+        info.addView(text("Menu Merchant",17,INK,true));place(info,text("Sinkron dari Merchant",12,0xff43526a,false),3);
+        weight(header,info,0);
+        header.addView(action("Segarkan",R.drawable.ic_merchant_refresh,()->load(false),Color.WHITE,ACCENT,ACCENT,44));
+        merchant.addView(header);
+        addProductRows(merchant,rows(catalog),true);
+        place(content,merchant,8);
+        LinearLayout local=card(), localHeader=horizontal();
+        weight(localHeader,text("Produk khusus Kasir",17,INK,true),0);
+        localHeader.addView(action("Tambah",R.drawable.ic_merchant_plus,()->openProduct(null),true));
+        local.addView(localHeader);
+        place(local,action(csvExpanded?"Kelola CSV  ⌃":"Kelola CSV  ⌄",glyph("sale"),()->{csvExpanded=!csvExpanded;render();},
+                0xffeaf3ff,INK,0xffeaf3ff,44),7);
+        if (csvExpanded) {
+            place(local,action("Unduh template CSV",0,()->export("template-produk.csv",headings("products"),Collections.emptyList()),false),5);
+            place(local,action("Impor CSV",0,()->{importKind="products";pickFile(IMPORT,"*/*");},false),5);
+            place(local,action("Ekspor produk CSV",0,this::exportProducts,false),5);
+        }
+        addProductRows(local,rows(array(book,"products")),false);place(content,local,9);
     }
-    private void showProducts(List<JSONObject> records,boolean linked) {
+    private void exportProducts() {
+        List<String[]> data=new ArrayList<>();
+        for (JSONObject product:rows(array(book,"products"))) data.add(new String[]{label(product,""),product.optString("barcode"),
+                product.optString("price"),Long.toString(product.optLong("stock")),product.optString("tax")});
+        export("produk-kasir.csv",headings("products"),data);
+    }
+    private void divider(LinearLayout parent) {
+        View line=new View(this);line.setBackgroundColor(LINE);
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,dp(1));params.topMargin=dp(7);
+        parent.addView(line,params);
+    }
+    private void addProductRows(LinearLayout group,List<JSONObject> records,boolean linked) {
+        if (records.isEmpty()) place(group,text(linked?"Belum ada menu Merchant.":"Belum ada produk khusus Kasir.",13,INK,false),8);
         int count=0;
         for (JSONObject product:records) {
             if (++count>catalogLimit) {
-                place(content,action("Tampilkan lebih banyak",0,()->{catalogLimit+=50;render();},false),7);break;
+                place(group,action("Tampilkan lebih banyak",0,()->{catalogLimit+=50;render();},false),7);break;
             }
-            String detail=rup(product.optLong("price"))+" · "+stock(product);
-            if (linked) {
-                String reason=product.optString("reason");
-                item(content,label(product,"Menu"),detail+(reason.isEmpty()?"":" · "+reason),null);
-            } else {
-                LinearLayout actions=horizontal();
-                weight(actions,action("Edit",0,()->editEntity("products",product),false),0);
-                weight(actions,action("Resep",0,()->recipe(product),false),6);
-                item(content,label(product,"Produk"),detail+" · Pajak "+product.optDouble("tax",0)+"%",actions);
-            }
+            divider(group);place(group,productLine(product,linked,true),8);
+        }
+    }
+    private LinearLayout productLine(JSONObject product,boolean linked,boolean manage) {
+        LinearLayout line=horizontal();line.setGravity(Gravity.TOP);
+        ImageView image=icon(linked?R.drawable.ic_merchant_bag:R.drawable.ic_merchant_package,ACCENT);
+        image.setBackground(round(0xffe8f3ff,dp(8)));image.setClipToOutline(true);image.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int size=manage?60:51;
+        line.addView(image,new LinearLayout.LayoutParams(dp(size),dp(size)));
+        byte[] imageBytes=MerchantPosProductActivity.photoBytes(product.optString("photo"));
+        String remote=product.optString("image");
+        Object source=imageBytes;
+        if (linked && remote.startsWith("https://transiva.my.id/")) source=remote;
+        if (source!=null) {
+            image.setImageTintList(null);
+            com.bumptech.glide.Glide.with(this).load(source).centerCrop()
+                .placeholder(linked?R.drawable.ic_merchant_bag:R.drawable.ic_merchant_package)
+                .error(linked?R.drawable.ic_merchant_bag:R.drawable.ic_merchant_package).into(image);
+        }
+        LinearLayout details=vertical();
+        weight(line,details,8);
+        details.addView(text(label(product,"Produk"),15,INK,true));
+        place(details,text(rup(product.optLong("price")),14,ACCENT,true),3);
+        boolean inStock=!product.isNull("stock")&&product.optLong("stock")>0;
+        place(details,text(stock(product),12,inStock?0xff167844:0xff43526a,false),3);
+        String reason=product.optString("reason");
+        if (!reason.isEmpty()) {
+            TextView status=text(reason,11,0xff875208,true);pad(status,6,3);
+            status.setBackground(round(0xffffe6b4,dp(6)));
+            LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-2,-2);params.topMargin=dp(4);details.addView(status,params);
+        }
+        if (manage&&!linked) {
+            place(details,text("Pajak "+NumberFormat.getNumberInstance(new Locale("id","ID")).format(product.optDouble("tax",0))+"%",12,0xff43526a,false),3);
+            LinearLayout actions=horizontal();
+            weight(actions,action("Edit",0,()->openProduct(product),Color.WHITE,ACCENT,ACCENT,44),0);
+            weight(actions,action("Resep",0,()->recipe(product),Color.WHITE,ACCENT,ACCENT,44),6);
+            place(details,actions,5);
+        }
+        return line;
+    }
+    private void openProduct(JSONObject product) {
+        Intent intent=new Intent(this,MerchantPosProductActivity.class)
+                .putExtra(MerchantPosProductActivity.PRODUCT,product==null?"{}":product.toString())
+                .putExtra(MerchantPosProductActivity.OUTLET,outlet).putExtra("outlet_name",outletName());
+        startActivityForResult(intent,PRODUCT_EDITOR);
+    }
+    private void receiveProduct(Intent data) {
+        if (busy || book==null) {deferredProduct=data;return;}
+        if (!outlet.equals(data.getStringExtra(MerchantPosProductActivity.OUTLET))) return;
+        try {
+            JSONObject values=new JSONObject(data.getStringExtra(MerchantPosProductActivity.PRODUCT));
+            String id=values.getString("id");
+            uniqueBarcode(book,values.optString("barcode"),id);
+            commit(next->{
+                uniqueBarcode(next,values.optString("barcode"),id);
+                JSONObject existing=find(array(next,"products"),"id",id);
+                if (existing==null) array(next,"products").put(values);
+                else for (Iterator<String> keys=values.keys();keys.hasNext();) {
+                    String key=keys.next();put(existing,key,values.opt(key));
+                }
+            },null);
+        } catch(Exception problem) {
+            toast(message(problem,"Produk belum dapat disimpan."));
+            try {openProduct(new JSONObject(data.getStringExtra(MerchantPosProductActivity.PRODUCT)));}
+            catch(Exception ignored){}
         }
     }
     private String singular(String key) {
@@ -798,14 +951,6 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         fields.put("name",field(form,"Nama "+singular(key),old.optString("name"),InputType.TYPE_CLASS_TEXT));
         int integer=InputType.TYPE_CLASS_NUMBER, decimal=integer|InputType.TYPE_NUMBER_FLAG_DECIMAL;
         switch(key) {
-            case "products":
-                EditText barcode=field(form,"Barcode (opsional)",old.optString("barcode"),InputType.TYPE_CLASS_TEXT);
-                fields.put("barcode",barcode);
-                place(form,action("Scan barcode",0,()->{barcodeTarget=barcode;scan();},false),5);
-                fields.put("price",field(form,"Harga jual (Rp)",old.optString("price"),integer));
-                fields.put("stock",field(form,"Stok unit",old.optString("stock","0"),integer));
-                fields.put("tax",field(form,"Pajak (%)",old.optString("tax","0"),decimal));
-                break;
             case "people":
                 fields.put("phone",field(form,"Nomor telepon (opsional)",old.optString("phone"),InputType.TYPE_CLASS_PHONE));
                 fields.put("member",field(form,"Diskon anggota (%)",old.optString("member","0"),decimal));break;
@@ -947,22 +1092,89 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         String until=plan==null?"":plan.optString("ends_on");
         item(content,"Premium Merchant",until.isEmpty()?"Hubungi pengelola Transiva untuk informasi paket.":"Aktif sampai "+until,null);
     }
-    private void attendance() {
-        if (array(book,"staff").length()==0) place(content,action("Kelola pegawai",0,()->go("staff"),false),7);
-        List<JSONObject> shiftList=rows(array(book,"attendance"));Collections.reverse(shiftList);
-        for (JSONObject person:rows(array(book,"staff"))) {
-            String id=person.optString("id");
-            JSONObject shift=shiftList.stream().filter(row->id.equals(row.optString("staff"))&&!row.has("end")).findFirst().orElse(null);
-            item(content,label(person,"Pegawai"),shift==null?"Di luar shift":"Masuk "+format("dd MMM HH:mm",shift.optLong("at")),
-                    action(shift==null?"Catat masuk":"Catat pulang",0,()->commit(next->{
-                        long now=System.currentTimeMillis();
-                        if (shift==null) array(next,"attendance").put(record(UUID.randomUUID().toString(),label(person,"Pegawai")).put("staff",id).put("at",now));
-                        else put(find(array(next,"attendance"),"id",shift.optString("id")),"end",now);
-                    },null),false));
+    private LinearLayout personRow(String person,String subtitle,int statusColor,View control) {
+        LinearLayout row=horizontal();row.setMinimumHeight(dp(52));
+        String symbol=person.isEmpty()?"?":new String(Character.toChars(person.codePointAt(0))).toUpperCase(Locale.ROOT);
+        TextView initial=center(text(symbol,17,INK,true));initial.setBackground(round(0xffd5e8ff,dp(25)));
+        row.addView(initial,new LinearLayout.LayoutParams(dp(36),dp(36)));
+        LinearLayout details=vertical();details.addView(text(person,15,INK,true));
+        if (!subtitle.isEmpty()) place(details,text(subtitle,12,statusColor,false),3);
+        weight(row,details,8);
+        if (control!=null) row.addView(control);
+        return row;
+    }
+    private String maskPhone(String phone) {
+        String digits=phone.replaceAll("[^0-9]","");
+        if (digits.length()>=9) return digits.substring(0,4)+" •••• "+digits.substring(digits.length()-4);
+        return digits.isEmpty()?"":"••••";
+    }
+    private void employees() {
+        List<JSONObject> people=rows(array(book,"staff"));
+        LinearLayout heading=horizontal(), description=vertical();
+        description.addView(text("Pegawai",22,INK,true));
+        place(description,text(people.size()+" pegawai",13,0xff43526a,false),3);
+        weight(heading,description,0);
+        heading.addView(action("Tambah",R.drawable.ic_merchant_plus,()->editEntity("staff",null),true));
+        place(content,heading,13);
+        LinearLayout group=card();
+        if (people.isEmpty()) group.addView(text("Belum ada pegawai.",13,INK,false));
+        for (JSONObject person:people) {
+            if (group.getChildCount()>0) divider(group);
+            String role=person.optString("role"), phone=maskPhone(person.optString("phone"));
+            String subtitle=phone.isEmpty()?role:role.isEmpty()?phone:role+"\n"+phone;
+            place(group,personRow(label(person,"Pegawai"),subtitle,0xff43526a,
+                    action("Edit",0,()->editEntity("staff",person),Color.WHITE,ACCENT,ACCENT,44)),4);
         }
-        for (JSONObject shift:shiftList.subList(0,Math.min(60,shiftList.size())))
-            item(content,label(shift,"Pegawai"),format("dd MMM HH:mm",shift.optLong("at"))+
-                    (shift.has("end")?" → "+format("dd MMM HH:mm",shift.optLong("end")):" · Sedang bekerja"),null);
+        place(content,group,10);
+        place(content,action("Buka absensi",glyph("attendance"),()->go("attendance"),Color.WHITE,ACCENT,LINE,44),10);
+    }
+    private void attendance() {
+        List<JSONObject> team=rows(array(book,"staff"));
+        List<JSONObject> shifts=rows(array(book,"attendance"));Collections.reverse(shifts);
+        Map<String,JSONObject> active=new LinkedHashMap<>();
+        for (JSONObject item:shifts) if (item.isNull("end")) active.putIfAbsent(item.optString("staff"),item);
+        long now=System.currentTimeMillis();
+        place(content,text(format("dd MMMM yyyy",now),13,0xff43526a,false),3);
+        int working=0;for (JSONObject person:team) if (active.containsKey(person.optString("id"))) working++;
+        LinearLayout totals=horizontal();
+        weight(totals,metric("● Sedang bekerja",Integer.toString(working),0),0);
+        weight(totals,metric("● Di luar shift",Integer.toString(team.size()-working),0),6);
+        place(content,totals,8);place(content,text("Status shift",17,INK,true),11);
+        if (team.isEmpty()) place(content,action("Kelola pegawai",0,()->go("staff"),false),7);
+        else {
+            LinearLayout group=card();
+            for (JSONObject person:team) {
+                if (group.getChildCount()>0) divider(group);
+                String id=person.optString("id");
+                JSONObject shift=active.get(id);
+                String status=shift==null?"Di luar shift":"Masuk "+attendanceTime(shift.optLong("at"),now);
+                View mark=action(shift==null?"Catat masuk":"Catat pulang",0,()->commit(next->{
+                    long timestamp=System.currentTimeMillis();
+                    if (shift==null) array(next,"attendance").put(record(UUID.randomUUID().toString(),label(person,"Pegawai"))
+                            .put("staff",id).put("at",timestamp));
+                    else put(find(array(next,"attendance"),"id",shift.optString("id")),"end",timestamp);
+                },null),shift==null?ACCENT:Color.WHITE,shift==null?Color.WHITE:ACCENT,ACCENT,44);
+                place(group,personRow(label(person,"Pegawai"),status,shift==null?0xff43526a:0xff167844,mark),4);
+            }
+            place(content,group,7);
+        }
+        place(content,text("Riwayat absensi",17,INK,true),12);
+        String previous="";int shown=0;
+        for (JSONObject shift:shifts) {
+            if (shift.isNull("end")) continue;
+            if (++shown>60) break;
+            long start=shift.optLong("at"), end=shift.optLong("end");
+            String date=day(start);
+            if (!date.equals(previous)) {place(content,text(format("dd MMMM yyyy",start),13,0xff43526a,false),6);previous=date;}
+            TextView done=text("Selesai",11,0xff167844,true);pad(done,6,4);done.setBackground(round(0xffe0f5e9,dp(6)));
+            LinearLayout line=card();line.addView(personRow(label(shift,"Pegawai"),
+                    "Masuk "+format("HH.mm",start)+" · Pulang "+attendanceTime(end,start),0xff43526a,done));
+            place(content,line,6);
+        }
+        if (shown==0) place(content,text("Belum ada shift yang selesai.",13,0xff43526a,false),6);
+    }
+    private String attendanceTime(long timestamp,long reference) {
+        return format(day(timestamp).equals(day(reference))?"HH.mm":"dd MMM HH.mm",timestamp);
     }
     private void surveys() {
         place(content,action("Catat survei",0,()->{
@@ -1003,13 +1215,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     }
 
     private void scan() {
-        new IntentIntegrator(this).setPrompt("Arahkan kamera ke barcode produk")
-                .setBeepEnabled(false).setOrientationLocked(false).initiateScan();
+        MerchantPosScanActivity.launch(this);
     }
     private void scanResult(String value,boolean notify) {
-        if (barcodeTarget!=null && barcodeTarget.isShown()) {
-            barcodeTarget.setText(value.length()>80?value.substring(0,80):value);return;
-        }
         if (!"sale".equals(screen)||book==null||busy||pending!=null) return;
         for (JSONObject product:productsList()) if (!value.isEmpty()&&value.equals(product.optString("barcode"))) {
             add(product.optString("id"),1);return;
@@ -1119,8 +1327,16 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     @Override protected void onActivityResult(int code,int status,Intent data) {
         super.onActivityResult(code,status,data);
         IntentResult scan=IntentIntegrator.parseActivityResult(code,status,data);
-        if (scan!=null) {if (scan.getContents()!=null) scanResult(scan.getContents(),true);return;}
-        if (status!=RESULT_OK || data==null || data.getData()==null || !alive()) return;
+        if (scan!=null) {
+            if (scan.getContents()!=null) {
+                if (busy||book==null) deferredBarcode=scan.getContents();
+                else scanResult(scan.getContents(),true);
+            }
+            return;
+        }
+        if (status!=RESULT_OK || data==null || !alive()) return;
+        if (code==PRODUCT_EDITOR) {receiveProduct(data);return;}
+        if (data.getData()==null) return;
         if (code!=IMPORT && code!=QR && code!=EXPORT) return;
         Uri uri=data.getData();String kind=importKind,csv=exportText,selected=outlet;
         if (code==EXPORT) exportText="";
