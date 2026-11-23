@@ -42,3 +42,8 @@
 -keep class com.transiva.app.WebRtcNativeRuntime { *; }
 -keep class com.transiva.app.WebRtcSessionEngine { *; }
 -keep class com.transiva.app.WebRtcSessionEngine$* { *; }
+
+# Local POS WebView bridge is invoked by its bundled JavaScript.
+-keepclassmembers class com.transiva.app.MerchantPosActivity$PosBridge {
+    @android.webkit.JavascriptInterface public *;
+}
