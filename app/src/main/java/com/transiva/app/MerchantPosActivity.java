@@ -30,7 +30,7 @@ import java.util.concurrent.ExecutorService;
 
 public final class MerchantPosActivity extends MerchantBaseActivity {
     private static final int INK=0xff0b1530, ACCENT=0xff0756c7, PAGE=0xfff2f6fc, LINE=0xffd6dfeb;
-    private static final int IMPORT=718, EXPORT=719, QR=720, PRODUCT_EDITOR=721, LIMIT=300000;
+    private static final int IMPORT=718, EXPORT=719, QR=720, PRODUCT_EDITOR=721, CHECKOUT=722, LIMIT=300000;
     private static final String[] BOOK_LISTS={"products","sales","people","staff","attendance","materials","expenses","payments","surveys","discounts","types"};
     private static final String[][] SECTIONS={{"Kasir","home","sale","history","cash"},{"Produk","products","materials","discounts","types"},
             {"Tim & Pelanggan","staff","attendance","people","surveys"},{"Outlet","report","outlets","qris","plan"}};
@@ -49,7 +49,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private View checkoutBar;
     private String saleFilter="Semua";
     private boolean csvExpanded;
-    private Intent deferredProduct;
+    private Intent deferredProduct, deferredCheckout;
+    private final MerchantPosPrinters printers=new MerchantPosPrinters(this);
     private String deferredBarcode;
     private LinearLayout saleResults;
 
@@ -97,7 +98,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         super.onConfigurationChanged(configuration);
         if (shell!=null) shell.post(()->{if (alive()) render();});
     }
-    @Override protected void onDestroy() { worker.shutdown(); super.onDestroy(); }
+    @Override protected void onDestroy() { printers.close(); worker.shutdown(); super.onDestroy(); }
     private boolean alive() { return !isDestroyed() && !isFinishing(); }
 
     private void load(boolean refreshOutlets) {
@@ -131,6 +132,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                     render();
                     Intent nextProduct=deferredProduct;deferredProduct=null;
                     if (nextProduct!=null) receiveProduct(nextProduct);
+                    Intent nextCheckout=deferredCheckout;deferredCheckout=null;
+                    if (nextCheckout!=null) receiveCheckout(nextCheckout);
                     String nextBarcode=deferredBarcode;deferredBarcode=null;
                     if (nextBarcode!=null) scanResult(nextBarcode,true);
                 });
@@ -244,7 +247,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private LinearLayout vertical() { LinearLayout view=new LinearLayout(this);view.setOrientation(LinearLayout.VERTICAL);return view; }
     private LinearLayout horizontal() { LinearLayout view=new LinearLayout(this);view.setGravity(Gravity.CENTER_VERTICAL);return view; }
     private TextView text(String value,int size,int color,boolean bold) {
-        TextView t=tv(value,size,color,bold);t.setIncludeFontPadding(false);return t;
+        TextView t=tv(value,size,color,bold);t.setTextColor(color);t.setIncludeFontPadding(false);return t;
     }
     private void pad(View view,int h,int v) { view.setPadding(dp(h),dp(v),dp(h),dp(v)); }
     private void place(LinearLayout host,View child,int gap) {
@@ -573,7 +576,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             JSONObject product=product(book,entry.getKey());int amount=entry.getValue();
             if (product==null) continue;
             qty+=amount;
-            price+=Math.round(product.optLong("price")*amount*(1+product.optDouble("tax",0)/100));
+            long base=product.optLong("price")*amount;
+            long net=base-Math.round(base*product.optDouble("posDiscount",0)/100);
+            price+=net+Math.round(net*product.optDouble("tax",0)/100);
             lines.add(label(product,"Produk")+" × "+amount);
         }
         LinearLayout summary=horizontal();pad(summary,3,2);
@@ -668,57 +673,34 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         throw new IllegalArgumentException("Isi angka dari 0 sampai "+maximum+".");
     }
     private void checkout() {
-        LinearLayout form=formBody();
-        List<JSONObject> types=rows(array(book,"types")), people=rows(array(book,"people")), promos=rows(array(book,"discounts")), staff=rows(array(book,"staff"));
-        people.add(0,record("","Pelanggan umum"));promos.add(0,record("","Tanpa diskon"));staff.add(0,record("","Pemilik outlet"));
-        List<JSONObject> methods=Arrays.asList(record("cash","Tunai"),record("qris","QRIS · konfirmasi manual"),record("debt","Kasbon"));
-        Spinner type=select(form,"Tipe order",types),person=select(form,"Pelanggan",people),promo=select(form,"Diskon",promos);
-        Spinner operator=isStaff()?null:select(form,"Petugas",staff);
-        EditText points=field(form,"Tukar poin (1 poin = Rp100)","0",InputType.TYPE_CLASS_NUMBER);
-        Spinner method=select(form,"Cara bayar",methods);
-        ask("Rincian transaksi",form,"Lihat total",()->{
-            JSONObject customer=selected(people,person);
-            String mode=selected(methods,method).optString("id");
-            long count=integer(points,0,Math.min(100000,customer.optLong("points")));
-            if ("debt".equals(mode) && customer.optString("id").isEmpty()) throw new IllegalArgumentException("Pilih pelanggan untuk kasbon.");
+        if (cart.isEmpty()||busy||pending!=null) return;
+        try {
             JSONArray lines=new JSONArray();
             for (Map.Entry<String,Integer> entry:cart.entrySet()) {
                 JSONObject product=product(book,entry.getKey());
                 if (!canSell(product,entry.getValue())) throw new IllegalArgumentException("Ketersediaan produk berubah.");
                 lines.put(record(entry.getKey(),label(product,"Produk")).put("qty",entry.getValue())
-                        .put("price",product.optLong("price")).put("tax",product.optDouble("tax",0)));
+                        .put("price",product.optLong("price")).put("tax",product.optDouble("tax",0))
+                        .put("productPercent",product.optDouble("posDiscount",0)));
             }
-            double rate=Math.min(100,customer.optDouble("member",0)+selected(promos,promo).optDouble("percent",0));
-            long subtotal=0,tax=0;
-            for (JSONObject line:rows(lines)) {
-                long amount=line.optInt("qty")*line.optLong("price");subtotal+=amount;
-                tax+=Math.round(amount*(1-rate/100)*line.optDouble("tax",0)/100);
-            }
-            long discount=Math.round(subtotal*rate/100), total=subtotal-discount+tax-count*100;
-            if (total<0) throw new IllegalArgumentException("Nilai poin melebihi tagihan.");
-            String operatorName=isStaff()?username():label(selected(staff,operator),"Pemilik outlet");
-            JSONObject order=new JSONObject().put("id",UUID.randomUUID().toString()).put("at",System.currentTimeMillis())
-                    .put("items",lines).put("method",mode).put("customer",customer.optString("id")).put("customerName",label(customer,"Pelanggan"))
-                    .put("staff",operatorName).put("type",label(selected(types,type),"")).put("outlet",outletName())
-                    .put("subtotal",subtotal).put("discount",discount).put("tax",tax).put("redeem",count*100).put("total",total);
-            pay(order,count);
-        });
+            JSONObject data=new JSONObject().put("items",lines).put("outlet",outlet).put("revision",revision)
+                    .put("outlet_name",outletName()).put("qr",book.optString("qrImage"));
+            for (String key:new String[]{"types","people","discounts","staff"}) data.put(key,array(book,key));
+            String payload=data.toString();
+            if(payload.getBytes(StandardCharsets.UTF_8).length>550000)
+                throw new IllegalArgumentException("Data checkout terlalu besar untuk dibuka. Kurangi jumlah produk pada keranjang.");
+            startActivityForResult(new Intent(this,MerchantPosCheckoutActivity.class)
+                    .putExtra(MerchantPosCheckoutActivity.DATA,payload),CHECKOUT);
+        } catch(Exception failure){toast(message(failure,"Checkout belum dapat dibuka."));}
     }
-    private void pay(JSONObject sale,long points) {
-        LinearLayout form=formBody();long total=sale.optLong("total");String method=sale.optString("method");
-        form.addView(text(rup(total),26,ACCENT,true));
-        place(form,text("Subtotal "+rup(sale.optLong("subtotal"))+" · Diskon "+rup(sale.optLong("discount"))+
-                " · Pajak "+rup(sale.optLong("tax"))+" · Poin "+rup(sale.optLong("redeem")),13,INK,false),6);
-        if ("qris".equals(method)) {
-            showQr(form);
-            place(form,text("Cocokkan nominal dan dana masuk pada aplikasi penyedia QRIS outlet.",13,INK,false),6);
+    private void receiveCheckout(Intent result) {
+        if (busy||book==null){deferredCheckout=result;return;}
+        if (pending!=null||!outlet.equals(result.getStringExtra("outlet"))||revision!=result.getIntExtra("revision",-1)){
+            toast("Data outlet berubah. Periksa keranjang sebelum melanjutkan.");return;
         }
-        EditText cash="cash".equals(method)?field(form,"Uang diterima (Rp)",Long.toString(total),InputType.TYPE_CLASS_NUMBER):null;
-        EditText ref="qris".equals(method)?field(form,"Referensi QRIS yang sudah dikonfirmasi","",InputType.TYPE_CLASS_TEXT):null;
-        ask("Konfirmasi pembayaran",form,"Simpan "+rup(total),()->{
-            put(sale,"cash",cash==null?0:integer(cash,total,100000000000L));
-            put(sale,"reference",ref==null?"":required(ref));
-            commit(next->applySale(next,sale,points),()->{
+        try {
+            JSONObject sale=new JSONObject(result.getStringExtra(MerchantPosCheckoutActivity.SALE));
+            commit(next->applySale(next,sale,sale.optLong("redeem")/100),()->{
                 for (JSONObject line:rows(array(sale,"items"))) {
                     JSONObject linked=find(catalog,"id",line.optString("id"));
                     if (linked==null || linked.isNull("stock")) continue;
@@ -727,7 +709,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
                 }
                 cart.clear();receipt=sale.optString("id");screen="receipt";
             });
-        });
+        }catch(Exception failure){toast("Rincian checkout belum dapat disimpan.");}
     }
     private void applySale(JSONObject next,JSONObject sale,long points) {
         if (!sale.optString("reference").isEmpty()) {
@@ -778,7 +760,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         lines.add("TRANSIVA · "+sale.optString("outlet"));lines.add("No. "+sale.optString("id"));
         lines.add(format("dd MMM yyyy HH:mm",sale.optLong("at")));lines.add(sale.optString("customerName")+" · "+sale.optString("type"));
         lines.add("Petugas "+sale.optString("staff"));lines.add(" ");
-        for (JSONObject line:rows(array(sale,"items"))) lines.add(line.optInt("qty")+" × "+label(line,"Produk")+"   "+rup(line.optInt("qty")*line.optLong("price")));
+        for (JSONObject line:rows(array(sale,"items"))) {
+            lines.add(line.optInt("qty")+" × "+label(line,"Produk")+"   "+rup(line.optInt("qty")*line.optLong("price")));
+            if (line.optLong("productDiscount")>0) lines.add("  Diskon produk -"+rup(line.optLong("productDiscount")));
+        }
         lines.add("Subtotal "+rup(sale.optLong("subtotal")));lines.add("Diskon "+rup(sale.optLong("discount")));
         lines.add("Pajak "+rup(sale.optLong("tax")));lines.add("Tukar poin "+rup(sale.optLong("redeem")));lines.add("Total "+rup(sale.optLong("total")));
         lines.add("Metode "+sale.optString("method").toUpperCase(Locale.ROOT));
@@ -792,15 +777,65 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
     private void receipt() {
         JSONObject sale=find(array(book,"sales"),"id",receipt);
         if (sale==null) return;
-        LinearLayout card=card();
-        List<String> lines=receiptLines(sale);
-        for (int i=0;i<lines.size();i++) place(card,text(lines.get(i),i==0?17:13,INK,i==0),4);
-        place(content,card,8);
-        place(content,action("Cetak struk",glyph("sale"),()->{
-            android.print.PrintManager manager=getSystemService(android.print.PrintManager.class);
-            if (manager!=null) manager.print("Struk Transiva",new MerchantPosPrintAdapter(this,lines),null);
-        },true),8);
+        LinearLayout paper=card(), hero=horizontal(), summary=vertical();
+        hero.setBackground(round(0xffe7f1ff,dp(10)));pad(hero,12,10);
+        summary.addView(text("Total pembayaran",13,0xff43526a,false));
+        place(summary,text(rup(sale.optLong("total")),28,INK,true),4);
+        weight(hero,summary,0);
+        String mode=sale.optString("method");
+        TextView method=text("cash".equals(mode)?"Tunai":"debt".equals(mode)?"Kasbon":"QRIS",13,Color.WHITE,true);
+        pad(method,9,5);method.setBackground(round(ACCENT,dp(20)));hero.addView(method);
+        paper.addView(hero);
+        place(paper,text(sale.optString("outlet"),18,INK,true),10);
+        place(paper,text(format("dd MMM yyyy · HH:mm",sale.optLong("at")),13,INK,false),4);
+        String id=sale.optString("id");
+        String shortId=id.length()>15?id.substring(0,8)+"…"+id.substring(id.length()-5):id;
+        LinearLayout identity=horizontal();
+        weight(identity,text("No. "+shortId.toUpperCase(Locale.ROOT),12,0xff43526a,false),0);
+        identity.addView(action("Salin",0,()->{
+            android.content.ClipboardManager clipboard=getSystemService(android.content.ClipboardManager.class);
+            if(clipboard!=null){clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Nomor struk",id));toast("Nomor struk disalin.");}
+        },Color.WHITE,ACCENT,LINE,44));
+        place(paper,identity,1);
+        place(paper,text(sale.optString("customerName")+" · "+sale.optString("type"),13,INK,false),3);
+        place(paper,text("Petugas: "+sale.optString("staff"),13,INK,false),3);
+        divider(paper);
+        for (JSONObject line:rows(array(sale,"items"))) {
+            long gross=line.optInt("qty")*line.optLong("price"), off=line.optLong("productDiscount");
+            receiptRow(paper,label(line,"Produk"),rup(gross),true);
+            place(paper,text(line.optInt("qty")+" × "+rup(line.optLong("price")),12,0xff43526a,false),2);
+            if(off>0)receiptRow(paper,"Diskon produk","−"+rup(off),false);
+        }
+        divider(paper);
+        receiptRow(paper,"Subtotal",rup(sale.optLong("subtotal")),false);
+        long discount=sale.optLong("discount"), tax=sale.optLong("tax"), points=sale.optLong("redeem");
+        if(discount==0&&tax==0&&points==0) receiptRow(paper,"Diskon, pajak & poin",rup(0),false);
+        else {
+            if(discount>0)receiptRow(paper,"Total diskon","−"+rup(discount),false);
+            if(tax>0)receiptRow(paper,"Pajak",rup(tax),false);
+            if(points>0)receiptRow(paper,"Tukar poin","−"+rup(points),false);
+        }
+        divider(paper);
+        if("cash".equals(mode)){
+            receiptRow(paper,"Uang diterima",rup(sale.optLong("cash")),false);
+            receiptRow(paper,"Kembalian",rup(sale.optLong("cash")-sale.optLong("total")),true);
+        } else if("debt".equals(mode)) receiptRow(paper,"Sisa kasbon",rup(due(sale,book)),true);
+        else if(!sale.optString("reference").isEmpty()) receiptRow(paper,"Ref. QRIS",sale.optString("reference"),false);
+        place(content,paper,8);
+        place(content,action("Cetak struk",glyph("sale"),()->printers.choose(receiptLines(sale)),true),8);
         if (due(sale,book)>0) place(content,action("Catat pembayaran kasbon",0,()->payDebt(sale),false),7);
+    }
+    private void receiptRow(LinearLayout target,String label,String value,boolean bold){
+        LinearLayout row=horizontal();
+        weight(row,text(label,13,INK,bold),0);
+        TextView amount=text(value,13,INK,bold);amount.setGravity(Gravity.END);
+        amount.setMaxWidth(dp(140));row.addView(amount);
+        place(target,row,5);
+    }
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] result){
+        super.onRequestPermissionsResult(request,permissions,result);
+        if(request==MerchantPosPrinters.BLUETOOTH_PERMISSION)
+            printers.permission(result.length>0&&result[0]==android.content.pm.PackageManager.PERMISSION_GRANTED);
     }
     private void payDebt(JSONObject sale) {
         long outstanding=due(sale,book);
@@ -888,6 +923,13 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             status.setBackground(round(0xffffe6b4,dp(6)));
             LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-2,-2);params.topMargin=dp(4);details.addView(status,params);
         }
+        String expiry=product.optString("expiresOn");
+        if (!expiry.isEmpty()){
+            boolean expired=expiry.compareTo(day(System.currentTimeMillis()))<0;
+            place(details,text((expired?"Kedaluwarsa · ":"Kedaluwarsa ")+expiry,12,expired?0xffa33224:0xff43526a,expired),3);
+        }
+        if(product.optDouble("posDiscount",0)>0)
+            place(details,text("Diskon Kasir "+NumberFormat.getNumberInstance(new Locale("id","ID")).format(product.optDouble("posDiscount"))+"%",12,ACCENT,true),3);
         if (manage&&!linked) {
             place(details,text("Pajak "+NumberFormat.getNumberInstance(new Locale("id","ID")).format(product.optDouble("tax",0))+"%",12,0xff43526a,false),3);
             LinearLayout actions=horizontal();
@@ -931,6 +973,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         }
     }
     private void entities(String key) {
+        if ("types".equals(key)||"discounts".equals(key)){compactOptions(key);return;}
         if ("people".equals(key)) controls(key);
         place(content,action("Tambah "+singular(key),R.drawable.ic_merchant_plus,()->editEntity(key,null),true),8);
         for (JSONObject row:rows(array(book,key))) {
@@ -944,6 +987,28 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
             }
             item(content,label(row,""),detail,action("Edit",0,()->editEntity(key,row),false));
         }
+    }
+    private void compactOptions(String key){
+        boolean discount="discounts".equals(key);
+        LinearLayout heading=horizontal();
+        weight(heading,text(discount?"Diskon transaksi":"Pilihan saat checkout",15,INK,true),0);
+        heading.addView(action("Tambah",R.drawable.ic_merchant_plus,()->editEntity(key,null),true));
+        place(content,heading,8);
+        LinearLayout group=card();
+        List<JSONObject> options=rows(array(book,key));
+        if(options.isEmpty())group.addView(text("Belum ada "+singular(key)+".",13,INK,false));
+        for(JSONObject option:options){
+            if(group.getChildCount()>0)divider(group);
+            String pct=NumberFormat.getNumberInstance(new Locale("id","ID")).format(option.optDouble("percent",0));
+            LinearLayout row=horizontal();row.setMinimumHeight(dp(53));
+            row.addView(icon(glyph(key),ACCENT),new LinearLayout.LayoutParams(dp(24),dp(24)));
+            LinearLayout labels=vertical();labels.addView(text(label(option,""),15,INK,true));
+            if(discount)place(labels,text(pct+"% potongan",13,ACCENT,true),3);
+            weight(row,labels,9);
+            row.addView(action("Edit",0,()->editEntity(key,option),Color.WHITE,ACCENT,LINE,44));
+            place(group,row,5);
+        }
+        place(content,group,8);
     }
     private void editEntity(String key,JSONObject original) {
         JSONObject old=original==null?new JSONObject():original;
@@ -1336,6 +1401,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity {
         }
         if (status!=RESULT_OK || data==null || !alive()) return;
         if (code==PRODUCT_EDITOR) {receiveProduct(data);return;}
+        if (code==CHECKOUT) {receiveCheckout(data);return;}
         if (data.getData()==null) return;
         if (code!=IMPORT && code!=QR && code!=EXPORT) return;
         Uri uri=data.getData();String kind=importKind,csv=exportText,selected=outlet;
