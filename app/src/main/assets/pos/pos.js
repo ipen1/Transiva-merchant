@@ -22,6 +22,7 @@ function date(value = Date.now()) {
 function displayDate(value) {
   return new Intl.DateTimeFormat('id-ID', {dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Makassar'}).format(value);
 }
+let catalog = [];
 let branches = [], outlet = '', book, revision, plan, active, busy = false, pending = null;
 let current = 'home', cart = new Map(), query = '', selectedReceipt, reportMonth = date().slice(0,7);
 let historyLimit = 50;
@@ -34,6 +35,47 @@ function el(tag, text = '', style = '') {
   if (style) node.className = style;
   return node;
 }
+const iconPaths = {
+  menu:'M3 6h18M3 12h18M3 18h18', close:'m5 5 14 14M19 5 5 19', down:'m6 9 6 6 6-6',
+  right:'m9 6 6 6-6 6', back:'M20 12H4m7-7-7 7 7 7',
+  home:'m3 11 9-8 9 8v10h-7v-6h-4v6H3z',
+  sale:'M5 3h14v18l-3-2-4 2-4-2-3 2zm3 5h8m-8 4h8m-8 4h5',
+  history:'M12 7v5l4 2M3 10a9 9 0 1 1 1 7M3 5v5h5',
+  cash:'M5 8h14l3 12H2zM8 8V3h8v5m-9 5h2m2 0h2m2 0h2m-11 3h12',
+  products:'m12 2 9 5v10l-9 5-9-5V7zm0 10v10M3 7l9 5 9-5',
+  materials:'m12 3 9 5-9 5-9-5zm-9 9 9 5 9-5M3 16l9 5 9-5',
+  discounts:'M3 13 13 3h7v7L10 20zm13-6h.01',
+  types:'M3 18h18M5 15a7 7 0 0 1 14 0zM12 5V3',
+  staff:'M3 6h18v14H3zm6 0V3h6v3m0 5h3m-3 4h3m-9-4h.01m-2 5c0-3 4-3 4 0',
+  attendance:'M3 5h18v16H3zm4-2v4m10-4v4M3 9h18m-13 6 3 3 5-5',
+  people:'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-6 9v-2a6 6 0 0 1 12 0v2m1-15a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2',
+  surveys:'M3 4h18v13H9l-6 4zm4 5h10M7 13h7',
+  report:'M3 21h18M4 18v-5h4v5zm6 0V9h4v9zm6 0V4h4v14z',
+  outlets:'M4 11v10h16V11M2 8l3-5h14l3 5v3h-5l-2-2-3 2-3-2-2 2H2z',
+  qris:'M3 3h6v6H3zm12 0h6v6h-6zM3 15h6v6H3zm12 0h3v3h3m-6 3h1m5 0h.01',
+  plan:'m3 7 5 4 4-7 4 7 5-4-2 13H5z',
+  coins:'M3 7c0-4 13-4 13 0s-13 4-13 0zm0 0v8c0 3 8 4 13 1V7M3 11c0 3 9 4 13 1m-4 7c3 3 9 1 9-1v-8'
+};
+function icon(key) {
+  const ns='http://www.w3.org/2000/svg';
+  const svg=document.createElementNS(ns,'svg');
+  svg.setAttribute('viewBox','0 0 24 24');
+  svg.setAttribute('aria-hidden','true');
+  svg.classList.add('pos-icon');
+  const path=document.createElementNS(ns,'path');
+  path.setAttribute('d',iconPaths[key]);
+  svg.append(path);
+  return svg;
+}
+function iconButton(label,key,event,style='') {
+  const node=button(label,event,style);
+  node.prepend(icon(key));
+  return node;
+}
+const sections=[
+  ['Kasir',['home','sale','history','cash']],['Produk',['products','materials','discounts','types']],
+  ['Tim & pelanggan',['staff','attendance','people','surveys']],['Outlet',['report','outlets','qris','plan']]
+];
 function group(style, ...children) {
   const node = el('div','',style);
   node.append(...children.filter(Boolean));
@@ -107,6 +149,8 @@ async function init(refresh = true) {
     selector.replaceChildren(...branches.map(item => new Option(item.name,String(item.id))));
   }
   selector.value = outlet;
+  document.querySelector('#outlet-name').textContent=branchName();
+  document.querySelector('#drawer-outlet').textContent=branchName();
   const result = await request('load');
   busy = false;
   selector.disabled = staffMode;
@@ -117,6 +161,7 @@ async function init(refresh = true) {
   }
   revision = result.revision;
   book = normalize(result.book);
+  catalog = result.catalog || [];
   plan = result.plan;
   active = result.active;
   render();
@@ -153,7 +198,7 @@ async function sendPending() {
   pending = null;
   if (!result.success) {
     notice(result.message || 'Data belum tersimpan.');
-    if (result.code === 'POS_CONFLICT') {
+    if (['POS_CONFLICT','POS_CATALOG_CHANGED'].includes(result.code)) {
       cart.clear();
       await init(false);
       return;
@@ -172,8 +217,9 @@ function go(page) {
   if (!book || busy || pending) return;
   drawer.hidden = true;
   current = page;
-  render();
   window.scrollTo(0,0);
+  if (page === 'sale' && !cart.size) init(false);
+  else render();
 }
 function back() {
   if (busy || pending) { notice('Selesaikan penyimpanan sebelum keluar.'); return; }
@@ -200,13 +246,18 @@ document.querySelector('#exit').onclick = () => {
   if (busy || pending) { notice('Selesaikan penyimpanan sebelum keluar.'); return; }
   if (!cart.size || confirm('Keluar dan kosongkan keranjang?')) Transiva.exit();
 };
+function navItem(key,label) {
+  const node=iconButton(label,key,()=>go(key),current===key?'selected':'');
+  if (current===key) node.setAttribute('aria-current','page');
+  return node;
+}
 function render() {
   if (!book) return;
   const fast = ['home','sale','history'];
   document.querySelector('#dock').replaceChildren(group('', ...fast.map(key =>
-    button(titles[key],() => go(key),current === key ? 'selected' : ''))));
-  document.querySelector('#links').replaceChildren(...Object.entries(titles).map(([key,label]) =>
-    button(label,() => go(key),current === key ? 'selected' : 'quiet')));
+    navItem(key,key === 'history' ? 'Riwayat' : titles[key]))));
+  document.querySelector('#links').replaceChildren(...sections.map(([title,keys]) =>
+    group('drawer-group',el('h2',title),...keys.map(key=>navItem(key,titles[key])))));
   screen.className = 'stack';
   if (busy || pending) {
     screen.replaceChildren(el('h1',busy ? 'Menyimpan data' : 'Status penyimpanan belum pasti'),
@@ -317,20 +368,36 @@ function reportSales() {
   });
 }
 function displayHome() {
-  const sales = reportSales();
-  const today = date();
-  const openDebt = book.sales.reduce((sum,sale) => sum + outstanding(sale),0);
-  screen.append(group('hero',el('div','PENCATATAN TOKO','eyebrow'),el('h2',branchName()),
-    el('p','Mulai transaksi, cek stok, dan pantau penjualan outlet dari satu tempat.'),
-    mutator('Buka transaksi',() => go('sale'))));
-  screen.append(group('metrics',
-    metric('Penjualan hari ini',money(total(sales.filter(s => date(s.at) === today)))),
-    metric('Penjualan bulan ini',money(total(sales.filter(s => date(s.at).startsWith(today.slice(0,7)))))),
-    metric('Kasbon belum lunas',money(openDebt)),metric('Produk stok rendah',String(book.products.filter(p => p.stock <= 5).length))));
-  screen.append(el('h2','Kelola outlet','section'),group('grid',
-    ...['products','cash','report','people','staff','outlets'].map(key => button(titles[key],() => go(key)))));
+  const sales=reportSales(), today=date();
+  const openDebt=book.sales.reduce((sum,sale)=>sum+outstanding(sale),0);
+  const monthSales=sales.filter(s=>date(s.at).startsWith(today.slice(0,7)));
+  const low=allProducts().filter(p=>p.stock!==null && p.stock<=5).length;
+  const action=mutator('Mulai transaksi',()=>go('sale'));
+  action.prepend(icon('sale'));
+  const stat=(label,value,image)=>group('card home-metric',icon(image),
+    group('',el('p',label),el('strong',value)));
+  const stock=iconButton('Stok rendah','products',()=>go('products'),'stock-link');
+  stock.append(el('span',low+' produk','stock-count'),icon('right'));
+  screen.append(group('hero summary-hero',el('p','Penjualan hari ini'),
+    el('strong',money(total(sales.filter(s=>date(s.at)===today)))),action),
+    group('metrics',
+      stat('Penjualan bulan ini',money(total(monthSales)),'coins'),
+      stat('Kasbon belum lunas',money(openDebt),'sale')),
+    stock,el('h2','Kelola outlet','section'),
+    group('grid home-grid',...['products','cash','report','people','staff','outlets'].map(key=>navItem(key,titles[key]))));
+}
+function allProducts() { return [...catalog,...book.products]; }
+function stockLabel(product) { return product.stock===null ? 'Stok tidak dilacak' : 'Stok '+product.stock; }
+function canSell(product,qty) {
+  return product && !product.reason && (product.stock===null || product.stock>=qty);
 }
 function displayProduct() {
+  screen.append(el('h2','Menu Merchant'),el('p','Nama, harga dasar, status dan stok mengikuti Menu Merchant.'),
+    button('Segarkan katalog',()=>init(false),'quiet'));
+  empty(catalog,'Belum ada menu Merchant di outlet ini.');
+  for (const product of catalog) screen.append(row(product.name,money(product.price)+' · '+stockLabel(product)
+    +(product.reason?' · '+product.reason:'')));
+  screen.append(el('h2','Produk khusus Kasir','section'));
   list('products','Produk',p => money(p.price) + ' · Stok ' + p.stock + ' · Pajak ' + p.tax + '%'
     + (p.barcode ? ' · ' + p.barcode : ''),productFields,{
       validate:(next,values,item) => codeUnique(next,values.barcode,item?.id),
@@ -369,17 +436,17 @@ function scanResult(code) {
   else notice('Barcode belum terdaftar.');
 }
 function addToCart(id, amount) {
-  const product = find('products',id);
+  const product = allProducts().find(p=>p.id===id);
   const qty = (cart.get(id) || 0) + amount;
-  if (!product || qty > product.stock) { notice('Stok produk tidak mencukupi.'); return; }
+  if (amount > 0 && !canSell(product,qty)) { notice('Stok produk tidak mencukupi.'); return; }
   if (qty <= 0) cart.delete(id);
   else cart.set(id,qty);
   render();
 }
 function cartItems(data = book) {
   return Array.from(cart,([id,qty]) => {
-    const product = find('products',id,data);
-    if (!product || product.stock < qty) throw new Error('Stok produk berubah. Periksa keranjang.');
+    const product = find('products',id,data) || catalog.find(p=>p.id===id);
+    if (!canSell(product,qty)) throw new Error('Stok produk berubah. Periksa keranjang.');
     return {id,name:product.name,qty,price:product.price,tax:product.tax};
   });
 }
@@ -399,10 +466,10 @@ function displaySale() {
   input.value = query;
   const results = group('stack');
   function catalog() {
-    const matching = book.products.filter(p => (p.name + ' ' + p.barcode).toLowerCase().includes(query.trim().toLowerCase()));
+    const matching = allProducts().filter(p => (p.name + ' ' + p.barcode + ' ' + (p.category || '')).toLowerCase().includes(query.trim().toLowerCase()));
     results.replaceChildren(...matching.slice(0,60).map(product =>
-      row(product.name,money(product.price) + ' · Stok ' + product.stock + ' · Pajak ' + product.tax + '%',[
-        mutator('Tambah',() => addToCart(product.id,1),'quiet')
+      row(product.name,money(product.price) + ' · ' + stockLabel(product) + (product.reason ? ' · ' + product.reason : ''),[
+        canSell(product,1) ? mutator('Tambah',() => addToCart(product.id,1),'quiet') : null
       ])));
     if (!matching.length) results.append(el('p','Produk belum ditemukan.'));
     if (matching.length > 60) results.append(el('p','Persempit pencarian untuk melihat produk lainnya.'));
@@ -464,6 +531,7 @@ function recordSale(selection,pay) {
     const used = new Map();
     for (const item of items) {
       const product = find('products',item.id,next);
+      if (!product) continue;
       product.stock -= item.qty;
       for (const [material,qty] of Object.entries(product.recipe || {})) {
         used.set(material,(used.get(material) || 0) + Math.round(qty * 1000) * item.qty);
@@ -486,7 +554,14 @@ function recordSale(selection,pay) {
       type:find('types',selection.type,next).name,outlet:branchName(),
       cash:pay.cash ?? 0,reference:pay.reference ?? ''
     });
-  },() => { cart.clear(); selectedReceipt = id; current = 'receipt'; });
+  },() => {
+    for (const product of catalog) {
+      if (product.stock===null || !cart.has(product.id)) continue;
+      product.stock-=cart.get(product.id);
+      if (!product.stock) product.reason='Stok habis';
+    }
+    cart.clear(); selectedReceipt = id; current = 'receipt';
+  });
 }
 
 function outstanding(sale, data = book) {
@@ -741,4 +816,9 @@ function importResult(content) {
   }));
 }
 
+document.querySelector('#menu').append(icon('menu'));
+document.querySelector('#exit').prepend(icon('back'));
+document.querySelector('#close-menu').append(icon('close'));
+document.querySelector('#outlet-icon').append(icon('outlets'));
+document.querySelector('#outlet-chevron').append(icon('down'));
 init();

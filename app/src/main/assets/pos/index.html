@@ -11,15 +11,18 @@
 <body>
 <header>
   <div class="bar">
-    <button id="menu" aria-label="Buka menu" class="icon">☰</button>
-    <div class="brand"><span>TRANSIVA MERCHANT</span><strong>Kasir Transiva</strong></div>
+    <button id="menu" aria-label="Buka menu" class="icon"></button>
+    <div class="brand"><strong>Kasir Transiva</strong></div>
     <button id="exit" class="quiet">Merchant</button>
   </div>
-  <div class="outlet"><label for="outlet">Outlet aktif</label><select id="outlet" disabled></select></div>
+  <div class="outlet"><div class="outlet-card"><span id="outlet-icon"></span><div class="outlet-copy">
+  <strong id="outlet-name">Memuat outlet…</strong><span><i></i>Outlet aktif</span></div>
+  <span id="outlet-chevron"></span><select id="outlet" aria-label="Outlet aktif" disabled></select>
+  </div></div>
 </header>
 <main id="screen"></main>
 <nav id="dock" aria-label="Navigasi kasir"></nav>
-<aside id="drawer" hidden><div class="drawer-sheet"><button class="quiet" id="close-menu">Tutup menu</button><div id="links"></div></div></aside>
+<aside id="drawer" hidden><div class="drawer-sheet"><div class="drawer-head"><div><strong>Kasir Transiva</strong><span id="drawer-outlet"></span></div><button class="icon" id="close-menu" aria-label="Tutup menu"></button></div><div id="links"></div></div></aside>
 <dialog id="dialog"></dialog>
 <div id="toast" role="status" hidden></div>
 </body>

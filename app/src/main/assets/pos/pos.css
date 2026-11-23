@@ -57,3 +57,52 @@ progress{width:100%;height:10px;accent-color:var(--blue)}
 @media(max-width:345px){.bar,.outlet,main,nav>div{padding-inline:10px}.brand span{letter-spacing:0}.bar{gap:7px}}
 @media print{header,nav,#drawer,#toast,button,.no-print{display:none!important} body,main,.receipt{display:block;background:white;color:#000;margin:0;padding:0;border:0;width:100%;max-width:none}.receipt p{color:#000}}
 .merchant-qr{display:block;width:min(100%,18rem);max-height:32vh;object-fit:contain;margin:8px auto}
+
+/* Kasir summary and navigation. */
+:root{--navy:#0b1530;--line:#d6dfeb;--muted:#43526a;--pale:#edf4ff;background:#f2f6fc}
+.pos-icon{height:1.35rem;width:1.35rem;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round;stroke-linecap:round;vertical-align:middle}
+header{background:#fdfdff}
+.bar{gap:8px;min-height:54px;padding-block:6px}
+.bar .icon,#close-menu{display:grid;place-items:center;background:transparent;border:0;color:var(--navy);padding:0}
+.brand strong{font-size:clamp(1.02rem,5vw,1.36rem);letter-spacing:-.03em}
+#exit{display:flex;align-items:center;gap:5px;background:white;border:1px solid #94b4df;font-size:.82rem;padding-inline:8px;color:#0644a3}
+#exit .pos-icon{width:1rem}
+.outlet{padding-block:9px 0}
+.outlet-card{position:relative;width:100%;display:flex;gap:10px;align-items:center;border:1px solid var(--line);background:#fff;border-radius:10px;min-height:54px;padding:5px 11px}
+.outlet-card:focus-within{outline:2px solid #2286ff}
+.outlet-copy{flex:1;min-width:0;display:grid;gap:1px}
+.outlet-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.outlet-copy span{font-size:.75rem;color:var(--muted)}
+.outlet-copy i{display:inline-block;width:8px;height:8px;border-radius:50%;background:#18a87a;margin-right:5px}
+#outlet-icon{color:var(--blue)}
+#outlet{position:absolute;inset:0;opacity:0;height:100%;cursor:pointer}
+main{padding-block:12px 14px}
+main.stack{gap:9px}
+h1{font-size:1.39rem}
+.summary-hero{padding:10px 13px 12px;border-radius:12px;gap:3px;background:radial-gradient(ellipse at 100% 0%,#0879ed 0%,transparent 65%),linear-gradient(125deg,#041841,#094fc8)}
+.summary-hero p{font-size:.87rem;font-weight:650;color:white}
+.summary-hero>strong{font-size:clamp(1.9rem,9vw,2.6rem);line-height:1.08;letter-spacing:-.045em;overflow-wrap:anywhere}
+.summary-hero button{display:flex;align-items:center;justify-content:center;gap:7px;width:100%;margin-top:8px;background:#fff;color:#073e9b}
+.home-metric{display:flex;align-items:center;gap:7px;padding:8px;color:var(--blue);border-radius:10px}
+.home-metric p{color:var(--navy);font-size:.72rem;line-height:1.25}
+.home-metric strong{color:var(--navy);font-size:.99rem;overflow-wrap:anywhere}
+.stock-link,.home-grid button{display:flex;align-items:center;gap:8px;color:var(--navy);font-size:.84rem;border-radius:10px;text-align:left}
+.stock-link .stock-count{margin-left:auto;font-weight:500;color:var(--muted)}
+.home-grid{gap:7px}
+.home-grid button{min-height:44px;padding:7px 8px}
+.home-grid .pos-icon{color:var(--blue)}
+nav>div{padding-block:0;gap:0}
+#dock button{display:grid;justify-items:center;align-content:center;gap:2px;border:0;border-top:2px solid transparent;border-radius:0;min-height:52px;padding:4px;color:#38465c;font-size:.75rem;background:white}
+#dock .selected{color:#0758cd;border-color:#0758cd}
+#drawer{background:#0c2246b5}
+.drawer-sheet{width:min(82%,24rem);border-radius:0 8px 8px 0;padding:0 11px;background:#fff;overscroll-behavior:contain}
+.drawer-head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:6px;background:#fff;padding:7px 1px;z-index:1;border-bottom:1px solid var(--line)}
+.drawer-head strong{display:block;font-size:1.25rem;letter-spacing:-.04em}
+.drawer-head span{font-size:.8rem;color:var(--muted)}
+#links{margin:0;gap:0}
+.drawer-group{padding:5px 0;border-bottom:1px solid var(--line)}
+.drawer-group:last-child{border:0}
+.drawer-group h2{font-size:.68rem;font-weight:750;color:var(--muted);text-transform:uppercase;padding:4px 6px}
+#links button{width:100%;min-height:40px;display:flex;align-items:center;gap:8px;padding:4px 7px;border:0;border-radius:7px;color:var(--navy);font-weight:550;font-size:.86rem}
+#links button.selected{background:linear-gradient(110deg,#eef5ff,#cadeff);color:#0648ac;font-weight:750}
+@media(max-width:345px){.bar,.outlet,main,nav>div{padding-inline:9px}.home-grid .pos-icon,.home-metric .pos-icon{width:1.1rem}}
