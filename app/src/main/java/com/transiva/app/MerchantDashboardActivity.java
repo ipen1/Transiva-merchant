@@ -20,7 +20,12 @@ import org.json.JSONArray;
 public class MerchantDashboardActivity extends MerchantBaseActivity {
     private LinearLayout ordersTile;
     private MerchantPremiumUi ui;
-    private View storeDot;
+    private LinearLayout storeHero;
+    private ImageView storeIllustration;
+    private TextView storeSubtitle;
+    private Boolean storeOpen;
+    private boolean storeVerified, storePaused, storeNeedsRefresh;
+    private int storeStatusGeneration;
     private TextView statusText, descText, networkText, clusterText, todayText, ratingText, reviewText, revenueText, orderBadgeText, orderTileTitle, orderTileSub;
     private Button storeStatusBtn;
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -159,57 +164,89 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
     }
 
     private LinearLayout storeCard() {
-        LinearLayout hero = column();
-        GradientDrawable gradient = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF052C68, 0xFF084596, 0xFF0759C6});
-        gradient.setCornerRadius(dp(16));
-        hero.setBackground(gradient);
-        hero.setPadding(dp(14), dp(10), dp(12), dp(11));
+        storeHero = column();
+        storeHero.setMinimumHeight(dp(84));
+        storeHero.setPadding(dp(10), dp(9), dp(10), dp(9));
 
-        LinearLayout top = actions();
+        boolean stacked = screenWidthDp() < 340 || getResources().getConfiguration().fontScale > 1.2f;
+        LinearLayout top = stacked ? column() : row();
         top.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout info = column();
-        LinearLayout heading = row();
-        heading.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        heading.setPadding(0, 0, 0, 0);
-        storeDot = new View(this);
-        storeDot.setBackground(round(0xFFC5D7EC, dp(8)));
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(10), dp(10));
-        dotParams.rightMargin = dp(8);
-        heading.addView(storeDot, dotParams);
-        statusText = tv("Memuat toko…", 19, Color.WHITE, true);
-        heading.addView(statusText, new LinearLayout.LayoutParams(0, -2, 1));
-        info.addView(heading);
-        networkText = tv("Menghubungkan…", 12, 0xFFE4EFFF, false);
-        info.addView(networkText);
-        boolean stacked = top.getOrientation() == LinearLayout.VERTICAL;
-        top.addView(info, new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
-        storeStatusBtn = outlineBtn("Memuat…");
-        GradientDrawable outline = round(0x18FFFFFF, dp(10));
-        outline.setStroke(dp(1), 0xFFE4EFFF);
-        storeStatusBtn.setBackground(ui.touch(outline));
-        storeStatusBtn.setElevation(0);
-        storeStatusBtn.setTextColor(Color.WHITE);
-        storeStatusBtn.setTextSize(13);
-        storeStatusBtn.setOnClickListener(v -> toggleStore());
-        storeStatusBtn.setEnabled(false);
-        LinearLayout.LayoutParams storeParams = new LinearLayout.LayoutParams(stacked ? -1 : -2, -2);
-        storeParams.leftMargin = stacked ? 0 : dp(8);
-        storeParams.topMargin = stacked ? dp(5) : 0;
-        top.addView(storeStatusBtn, storeParams);
-        hero.addView(top);
+        LinearLayout identity = row();
+        identity.setGravity(Gravity.CENTER_VERTICAL);
 
-        LinearLayout location = row();
-        location.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-        location.setPadding(0, dp(3), 0, 0);
-        addIcon(location, R.drawable.ic_merchant_pin, 0xFFE4EFFF, 15);
-        clusterText = tv("Memuat area…", 12, 0xFFE4EFFF, false);
-        location.addView(clusterText, new LinearLayout.LayoutParams(0, -2, 1));
-        hero.addView(location);
-        descText = tv("", 12, 0xFFE4EFFF, false);
+        storeIllustration = new ImageView(this);
+        storeIllustration.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        storeIllustration.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        LinearLayout.LayoutParams artParams = new LinearLayout.LayoutParams(dp(52), dp(52));
+        artParams.setMarginEnd(dp(8));
+        identity.addView(storeIllustration, artParams);
+
+        LinearLayout info = column();
+        statusText = tv("", 20, NAVY, true);
+        statusText.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        storeSubtitle = tv("", 12, NAVY, true);
+        clusterText = tv("Memuat area…", 11, MUTED, false);
+        clusterText.setCompoundDrawablePadding(dp(4));
+        info.addView(statusText);
+        info.addView(storeSubtitle);
+        info.addView(clusterText);
+        identity.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+        top.addView(identity, new LinearLayout.LayoutParams(stacked ? -1 : 0, -2, stacked ? 0 : 1));
+
+        storeStatusBtn = btn("");
+        storeStatusBtn.setTextSize(12);
+        storeStatusBtn.setOnClickListener(v -> { if (storeNeedsRefresh) loadAll(); else toggleStore(); });
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(stacked ? -1 : -2, -2);
+        actionParams.setMarginStart(stacked ? 0 : dp(8));
+        actionParams.topMargin = stacked ? dp(6) : 0;
+        top.addView(storeStatusBtn, actionParams);
+        storeHero.addView(top, new LinearLayout.LayoutParams(-1, -2));
+
+        networkText = tv("Menghubungkan…", 11, MUTED, false);
+        descText = tv("", 11, MUTED, false);
         descText.setVisibility(View.GONE);
-        hero.addView(descText);
-        return hero;
+        storeHero.addView(networkText);
+        storeHero.addView(descText);
+        renderStoreStatus();
+        return storeHero;
+    }
+
+    private void renderStoreStatus() {
+        boolean open = storeVerified && Boolean.TRUE.equals(storeOpen);
+        boolean dark = ui.dark();
+        int primary = open || dark ? Color.WHITE : 0xFF233144;
+        int secondary = open ? 0xFFEAF4FF : dark ? 0xFFD7E2EE : 0xFF3B485C;
+        GradientDrawable background = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                open ? new int[]{0xFF07316B, 0xFF084AA8, 0xFF0763DC}
+                        : dark ? new int[]{0xFF243141, 0xFF303E50}
+                        : new int[]{0xFFECF0F5, 0xFFDDE4ED});
+        background.setCornerRadius(dp(13));
+        if (!open) background.setStroke(dp(1), dark ? 0xFF637388 : 0xFF9BA9BA);
+        storeHero.setBackground(background);
+        storeIllustration.setImageResource(open ? R.drawable.ic_merchant_store_open : R.drawable.ic_merchant_store_closed);
+        statusText.setTextColor(primary);
+        storeSubtitle.setTextColor(primary);
+        clusterText.setTextColor(secondary);
+        clusterText.setCompoundDrawablesRelative(ui.iconDrawable(R.drawable.ic_merchant_pin, secondary, 14), null, null, null);
+        networkText.setTextColor(secondary);
+        descText.setTextColor(secondary);
+
+        statusText.setText(storeOpen == null ? "Memuat status toko…" :
+                !storeVerified ? "Menunggu verifikasi" : open ? "Toko buka" : "Toko tutup");
+        storeSubtitle.setText(storeNeedsRefresh ? "Status sedang diperiksa" :
+                open && !storePaused ? "Menerima pesanan baru" : "Pesanan baru dijeda");
+        storeSubtitle.setVisibility(storeOpen != null && storeVerified ? View.VISIBLE : View.GONE);
+
+        boolean canToggle = storeOpen != null && storeVerified && !storeUpdating && !storeNeedsRefresh;
+        storeStatusBtn.setText(storeUpdating ? "Memproses…" : storeNeedsRefresh ? "Perbarui status" :
+                storeOpen == null ? "Memuat…" : !storeVerified ? "Menunggu admin" : open ? "Tutup toko" : "Buka toko");
+        int actionColor = storeOpen == null || !storeVerified || storeNeedsRefresh ? 0xFF536174 :
+                open ? 0xFFC51F34 : 0xFF08754C;
+        GradientDrawable actionBackground = round(actionColor, dp(9));
+        if (open && !storeNeedsRefresh) actionBackground.setStroke(dp(1), 0xFFFBE4E8);
+        storeStatusBtn.setBackground(ui.touch(actionBackground));
+        storeStatusBtn.setAlpha(storeUpdating ? .75f : 1f);
+        storeStatusBtn.setEnabled(canToggle || storeNeedsRefresh && !storeUpdating);
     }
 
     private View statistics() {
@@ -521,21 +558,24 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
         if(u.isEmpty()){ alert("Sesi", "Silakan login ulang."); return; }
         boolean online = MerchantConnectivity.isOnline(this);
         if (!online || !dashboardLoaded) {
+            networkText.setVisibility(View.VISIBLE);
             networkText.setText(online ? "Menghubungkan…" : "Tidak ada koneksi");
         }
-        MerchantNetworkExecutor.executeRead(this, "dashboard", () -> {
+        final int generation = storeStatusGeneration;
+        MerchantNetworkExecutor.executeRead(this, "dashboard:" + generation, () -> {
             try {
                 JSONObject dashboard = new JSONObject(get(BASE + "getMerchantDashboard.php?v=" + System.currentTimeMillis()));
                 if (!dashboard.optBoolean("success")) throw new IllegalStateException();
                 runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
+                    if (isFinishing() || isDestroyed() || generation != storeStatusGeneration || storeUpdating) return;
                     dashboardLoaded = true;
-                    networkText.setText("Terhubung");
+                    networkText.setVisibility(View.GONE);
                     showDash(dashboard);
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
+                    if (isFinishing() || isDestroyed() || generation != storeStatusGeneration || storeUpdating) return;
+                    networkText.setVisibility(View.VISIBLE);
                     boolean connected = MerchantConnectivity.isOnline(this);
                     networkText.setText(connected ? "Ringkasan belum diperbarui" : "Tidak ada koneksi");
                 });
@@ -548,12 +588,13 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             premium = d.optBoolean("premium");
             String until = d.isNull("premium_until") ? "" : d.optString("premium_until");
             accessLabel.setText(isStaff() ? "Staf cabang" : premium ? "Pemilik · Premium sampai " + until : "Pemilik · Free");
-            boolean verified = d.optInt("is_verified", 0) == 1;
-            boolean open = verified && d.optInt("is_open", 0) == 1;
-            statusText.setText(!verified ? "Menunggu verifikasi" : open ? "Toko buka" : "Toko tutup");
-            storeDot.setBackground(round(open ? 0xFF3DEA9E : 0xFFFFC477, dp(8)));
-            descText.setText(!verified ? "Toko dapat dibuka setelah diverifikasi admin." : "");
-            descText.setVisibility(!verified ? android.view.View.VISIBLE : android.view.View.GONE);
+            storeVerified = d.optInt("is_verified", 0) == 1;
+            storeOpen = storeVerified && d.optInt("is_open", 0) == 1;
+            storePaused = d.optBoolean("is_paused");
+            storeNeedsRefresh = false;
+            renderStoreStatus();
+            descText.setText(!storeVerified ? "Toko dapat dibuka setelah diverifikasi admin." : "");
+            descText.setVisibility(storeVerified ? View.GONE : View.VISIBLE);
             todayText.setText(String.valueOf(d.optInt("today_orders", 0)));
             SpannableString rating = new SpannableString(String.format(new java.util.Locale("id", "ID"),
                     "%.1f ★", d.optDouble("rating", 0)));
@@ -576,36 +617,56 @@ public class MerchantDashboardActivity extends MerchantBaseActivity {
             int activeOrders = d.optInt("active_orders", 0);
             setOrderTileActive(d.optInt("pending_orders", 0));
             if(activeOrders > 0 && descText != null){
-                descText.setText((!verified ? "Menunggu verifikasi • " : "")+activeOrders+" pesanan aktif");
+                descText.setText((!storeVerified ? "Menunggu verifikasi • " : "")+activeOrders+" pesanan aktif");
                 descText.setVisibility(android.view.View.VISIBLE);
             }
-            storeStatusBtn.setText(storeUpdating ? "Memproses…" : !verified ? "Menunggu admin" : (open ? "Tutup toko" : "Buka toko"));
-            storeStatusBtn.setEnabled(verified && !storeUpdating);
-            storeStatusBtn.setTag(open ? "1" : "0");
         } catch(Exception e){ descText.setVisibility(android.view.View.VISIBLE);descText.setText("Ringkasan belum terbaca. Coba perbarui."); }
     }
 
-    private void toggleStore(){
-        if(storeUpdating || storeStatusBtn.getTag()==null) return;
-        storeUpdating=true;
-        final int current = "1".equals(String.valueOf(storeStatusBtn.getTag())) ? 1 : 0;
-        final int next = current == 1 ? 0 : 1;
-        storeStatusBtn.setEnabled(false);
-        storeStatusBtn.setText("Memproses...");
-        boolean accepted=MerchantNetworkExecutor.executeWrite("restaurant-open-toggle", () -> {
+    private void toggleStore() {
+        if (storeUpdating || storeNeedsRefresh || !storeVerified || storeOpen == null) return;
+        final int next = storeOpen ? 0 : 1;
+        storeUpdating = true;
+        storeStatusGeneration++;
+        renderStoreStatus();
+
+        boolean accepted = MerchantNetworkExecutor.executeWrite("restaurant-open-toggle", () -> {
             try {
-                JSONObject p = new JSONObject();
-                p.put("is_open", next);
-                JSONObject r = new JSONObject(postJson(BASE + "updateRestaurantStatus.php", p));
-                runOnUiThread(() -> {
-                    if(isFinishing()||isDestroyed()) return;
-                    storeUpdating=false;
-                    toast(r.optString("message", r.optBoolean("success") ? "Berhasil" : "Gagal"));
-                    storeStatusBtn.setEnabled(true);
-                    loadAll();
-                });
-            } catch(Exception e){ runOnUiThread(() -> { if(isFinishing()||isDestroyed())return;storeUpdating=false;storeStatusBtn.setEnabled(true); alert("Error","Koneksi gagal"); loadAll(); }); }
+                JSONObject payload = new JSONObject();
+                payload.put("is_open", next);
+                JSONObject response = new JSONObject(postJson(BASE + "updateRestaurantStatus.php", payload));
+                runOnUiThread(() -> finishStoreUpdate(response, next));
+            } catch (Exception error) {
+                runOnUiThread(() -> finishStoreUpdate(null, next));
+            }
         });
-        if(!accepted){storeUpdating=false;storeStatusBtn.setEnabled(true);loadAll();}
+        if (!accepted) {
+            storeUpdating = false;
+            renderStoreStatus();
+            toast("Perubahan status belum dikirim. Coba lagi.");
+            loadAll();
+        }
+    }
+
+    private void finishStoreUpdate(JSONObject response, int requestedStatus) {
+        if (isFinishing() || isDestroyed()) return;
+        // Only a response sent after this write can refresh the confirmed status.
+        storeStatusGeneration++;
+        storeUpdating = false;
+        if (response == null) {
+            storeNeedsRefresh = true;
+            networkText.setText("Status belum terkonfirmasi. Memeriksa ulang…");
+            networkText.setVisibility(View.VISIBLE);
+        } else if (response.optBoolean("success")) {
+            storeOpen = response.optInt("is_open", requestedStatus) == 1;
+            networkText.setVisibility(View.GONE);
+            toast(response.optString("message", "Status toko diperbarui."));
+        } else {
+            if (response.has("is_verified")) storeVerified = response.optInt("is_verified") == 1;
+            if (response.has("is_open")) storeOpen = response.optInt("is_open") == 1;
+            toast(response.optString("message", "Status toko belum berubah."));
+        }
+        renderStoreStatus();
+        loadAll();
     }
 }
