@@ -22,6 +22,9 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
     private String outlet, filterKey, filterName, method="all", export="";
     private int days=1, shown=40;
     private JSONObject book;
+    private Long nextBefore;
+    private int loadGeneration;
+    private boolean loadingPage;
     private String grant="";
     private final android.os.Handler expiryHandler=new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable expiry=()->{if(alive()){book=null;load();}};
@@ -45,24 +48,66 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
     @Override protected void onDestroy(){expiryHandler.removeCallbacks(expiry);work.shutdown();super.onDestroy();}
     private boolean alive(){return !isFinishing()&&!isDestroyed();}
     private void load(){
-        layout();body.addView(sub("Memuat penjualan outlet…"));
+        book=null;
+        nextBefore=null;
+        loadPage(null);
+    }
+
+    private void loadPage(Long before){
+        final int generation=++loadGeneration;
+        final int period=days;
+        loadingPage=true;
+        if(before==null){
+            layout();
+            body.addView(sub("Memuat penjualan outlet…"));
+        } else {
+            draw();
+        }
         work.execute(()->{
             try{
-                JSONObject result=new JSONObject(get(BASE+"merchant_pos.php?outlet="+outlet+"&report=sales"));
+                String url=BASE+"merchant_pos.php?outlet="+outlet+"&report=sales&paged=1&days="+period;
+                if(before!=null)url+="&before="+before;
+                JSONObject result=new JSONObject(get(url));
                 if(!result.optBoolean("success"))throw new java.io.IOException(result.optString("message"));
                 JSONArray locks=result.optJSONArray("locked_menus");
                 if(!result.optBoolean("pin_unlocked",true)&&locks!=null)
                     for(int i=0;i<locks.length();i++)if("finance".equals(locks.optString(i)))
                         throw new java.io.IOException("Laporan terkunci. Kembali ke Kasir dan masukkan PIN Pemilik.");
-                runOnUiThread(()->{if(alive()){
-                    try{book=result.optJSONObject("book");draw();}
-                    catch(RuntimeException renderError){layout();body.addView(sub("Laporan belum bisa ditampilkan. Coba lagi."));Button retry=outlineBtn("Muat ulang");retry.setOnClickListener(v->load());body.addView(retry);}
-                }});
-            }catch(Exception error){runOnUiThread(()->{if(alive()){
-                layout();body.addView(sub(error instanceof java.io.IOException?error.getMessage():"Laporan belum bisa dimuat."));
-                Button retry=outlineBtn("Coba lagi");retry.setOnClickListener(v->load());body.addView(retry);
-            }});}
+                runOnUiThread(()->{
+                    if(!alive()||generation!=loadGeneration)return;
+                    loadingPage=false;
+                    try{
+                        JSONObject page=result.optJSONObject("book");
+                        if(page==null)page=new JSONObject();
+                        if(book==null)book=page;
+                        else for(String key:new String[]{"sales","payments"}){
+                            JSONArray entries=page.optJSONArray(key);
+                            if(entries==null)continue;
+                            JSONArray current=book.optJSONArray(key);
+                            if(current==null){current=new JSONArray();book.put(key,current);}
+                            for(int i=0;i<entries.length();i++)current.put(entries.get(i));
+                        }
+                        nextBefore=result.isNull("next_before")?null:result.optLong("next_before");
+                        if (before!=null) shown+=40;
+                        draw();
+                    }catch(Exception error){showLoadError(before,"Laporan belum bisa ditampilkan.");}
+                });
+            }catch(Exception error){
+                runOnUiThread(()->{
+                    if(!alive()||generation!=loadGeneration)return;
+                    loadingPage=false;
+                    showLoadError(before,error instanceof java.io.IOException?error.getMessage():"Laporan belum bisa dimuat.");
+                });
+            }
         });
+    }
+
+    private void showLoadError(Long before,String error){
+        layout();
+        body.addView(sub(error));
+        Button retry=outlineBtn("Coba lagi");
+        retry.setOnClickListener(v->loadPage(before));
+        body.addView(retry);
     }
     private void layout(){
         body=new LinearLayout(this);
@@ -117,7 +162,7 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
     private void draw(){
         layout();
         LinearLayout periods=new LinearLayout(this);body.addView(periods);
-        for(int value:new int[]{1,7,30})button(periods,value+" hari",value==days,()->{days=value;shown=40;draw();});
+        for(int value:new int[]{1,7,30})button(periods,value+" hari",value==days,()->{if(days!=value){days=value;shown=40;load();}});
         long start=nowStart();
         List<JSONObject> selected=new ArrayList<>();
         Map<String,Long> payments=new HashMap<>();
@@ -131,6 +176,7 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
             if(!sale.isNull("costOfGoods")&&!sale.isNull("grossProfit")){cost+=sale.optLong("costOfGoods");profit+=sale.optLong("grossProfit");known++;}
             if("all".equals(method)||method.equals(how))selected.add(sale);
         }
+        if(nextBefore!=null)body.addView(sub("Ringkasan sementara dari transaksi yang sudah dimuat."));
         metric("Total penjualan",money(total));metric("Sudah diterima dari penjualan ini",money(paid));
         metric("Sisa kasbon",money(total-paid));
         metric("Tunai",money(sums.getOrDefault("cash",0L)));metric("QRIS",money(sums.getOrDefault("qris",0L)));
@@ -142,13 +188,23 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
         String[] keys={"all","cash","qris","debt"}, labels={"Semua","Tunai","QRIS","Kasbon"};
         for(int i=0;i<keys.length;i++){String value=keys[i];button(filters,labels[i],method.equals(value),()->{method=value;shown=40;draw();});}
         selected.sort((a,b)->Long.compare(b.optLong("at"),a.optLong("at")));
-        Button csv=outlineBtn("Ekspor penjualan CSV");csv.setOnClickListener(v->saveCsv(selected,payments));body.addView(csv);
+        Button csv=outlineBtn("Ekspor penjualan CSV");
+        csv.setEnabled(nextBefore==null && !loadingPage);
+        csv.setOnClickListener(v->saveCsv(selected,payments));body.addView(csv);
         if(selected.isEmpty())body.addView(sub("Belum ada transaksi pada filter ini."));
         for(int i=0;i<Math.min(shown,selected.size());i++){
             JSONObject sale=selected.get(i);Button detail=outlineBtn(date(sale.optLong("at"),"dd MMM · HH:mm")+" · "+money(sale.optLong("total"))+" · "+sale.optString("staff")+" · Lihat selengkapnya");
             detail.setOnClickListener(v->detail(sale,payments));body.addView(detail);
         }
-        if(selected.size()>shown){Button more=outlineBtn("Tampilkan lebih banyak");more.setOnClickListener(v->{shown+=40;draw();});body.addView(more);}
+        if(selected.size()>shown){
+            Button more=outlineBtn("Tampilkan lebih banyak");
+            more.setOnClickListener(v->{shown+=40;draw();});body.addView(more);
+        }
+        if(nextBefore!=null){
+            Button more=outlineBtn(loadingPage?"Memuat transaksi…":"Muat transaksi berikutnya");
+            more.setEnabled(!loadingPage);
+            more.setOnClickListener(v->loadPage(nextBefore));body.addView(more);
+        }
     }
     private long remainder(JSONObject sale,Map<String,Long> payments){
         return "debt".equals(sale.optString("method"))?Math.max(0,sale.optLong("total")-payments.getOrDefault(sale.optString("id"),0L)):0;
