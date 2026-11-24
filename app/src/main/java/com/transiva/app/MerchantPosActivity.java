@@ -35,7 +35,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
     private static final String[][] SECTIONS={{"Kasir","home","sale","history","cash"},{"Produk","products","materials","discounts","types"},
             {"Tim & Pelanggan","staff","attendance","people","surveys"},{"Outlet","report","outlets","qris","plan"}};
     private final ExecutorService worker=Executors.newSingleThreadExecutor();
-    private final LinkedHashMap<String,Integer> cart=new LinkedHashMap<>();
+    private final MerchantPosBasket cart=new MerchantPosBasket();
     private final NumberFormat numbers=NumberFormat.getIntegerInstance(new Locale("id","ID"));
     private FrameLayout shell, overlay;
     private LinearLayout body, content, dock;
@@ -43,6 +43,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
     private JSONArray branches=new JSONArray(), catalog=new JSONArray();
     private JSONObject book, plan, pending;
     private Runnable afterSave;
+    private MerchantPosPending pendingStore;
+    private boolean torchRequested;
     private String outlet="", screen="home", receipt="", query="", importKind="", exportText="";
     private int revision, historyLimit=50, catalogLimit=50;
     private boolean busy;
@@ -53,11 +55,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         grant="";
         if(book!=null&&!busy&&pending==null&&alive()){
             if(requiresPin(screen))screen="home";
-            if(!"sale".equals(screen))load(false);
-            else if(this.lockedMenus.contains("finance")){
-                book.remove("cashOpening");
-                put(book,"sales",new JSONArray());put(book,"payments",new JSONArray());put(book,"expenses",new JSONArray());
-            }
+            load(false);
         }
     };
     private String deferredMenu="", deferredSalesKey, deferredSalesName;
@@ -67,8 +65,8 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
     @Override public String posGrant(){return grant;}
     private com.journeyapps.barcodescanner.DecoratedBarcodeView cameraScanner;
     private android.media.ToneGenerator scanTone;
-    private String scanMode="", lastCameraCode="";
-    private long lastCameraTime;
+    private String scanMode="";
+    private final MerchantPosCamera scanCamera=new MerchantPosCamera();
     private boolean foreground;
     private final StringBuilder externalCode=new StringBuilder();
     private String saleFilter="Semua";
@@ -86,7 +84,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
             screen=state.getString("pos_screen","home");receipt=state.getString("pos_receipt","");
             query=state.getString("pos_query","");saleFilter=state.getString("pos_filter","Semua");
             Bundle savedCart=state.getBundle("pos_cart");
-            if (savedCart!=null) for (String id:savedCart.keySet()) cart.put(id,savedCart.getInt(id));
+            if (savedCart!=null) for (String id:savedCart.keySet()) cart.change(id,savedCart.getInt(id),qty->true);
             exportText=state.getString("pos_export","");
             importKind=state.getString("pos_import","");
         }
@@ -103,15 +101,40 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
             return insets;
         });
         MerchantWindowInsets.requestWhenAttached(shell);
+        pendingStore=new MerchantPosPending(this,sessionManager.getUserId(),username(),isStaff());
+        try {
+            JSONObject recovery=pendingStore.read();
+            if (recovery!=null) {
+                outlet=recovery.getString("outlet");
+                pending=recovery.getJSONObject("payload");
+                cart.restore(recovery.optJSONObject("cart"));
+                screen="sale";
+                save();
+                return;
+            }
+        } catch (Exception error) {
+            alert("Kasir","Pemulihan transaksi gagal dibaca. Periksa riwayat penjualan.");
+            return;
+        }
         load(true);
+    }
+
+    private boolean clearPending() {
+        try { pendingStore.clear(); }
+        catch(IOException failure) {
+            alert("Kasir","Penyimpanan perangkat belum bisa diperbarui. Coba lagi.");
+            return false;
+        }
+        pending=null;
+        return true;
     }
     @Override protected void onSaveInstanceState(Bundle state) {
         state.putString("pos_outlet",outlet);
         state.putString("pos_screen",screen);state.putString("pos_receipt",receipt);
         state.putString("pos_query",query);state.putString("pos_filter",saleFilter);
-        if (cart.size()<=300) {
+        if (cart.items().size()<=300) {
             Bundle savedCart=new Bundle();
-            for (Map.Entry<String,Integer> entry:cart.entrySet()) savedCart.putInt(entry.getKey(),entry.getValue());
+            for (Map.Entry<String,Integer> entry:cart.items().entrySet()) savedCart.putInt(entry.getKey(),entry.getValue());
             state.putBundle("pos_cart",savedCart);
         }
         state.putString("pos_export",exportText);
@@ -146,7 +169,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                 JSONObject match=find(available,"id",chosen);
                 String selected=(match==null?available.getJSONObject(0):match).getString("id");
                 JSONObject result=checked(get(endpoint(selected)));
-                if (!result.has("catalog")) throw new IOException("Pasang pembaruan server untuk sinkronisasi menu.");
+                if (result.optInt("pos_protocol")<2) throw new IOException("Pasang pembaruan server Kasir sebelum melanjutkan.");
                 JSONArray updated=available;
                 runOnUiThread(()->{
                     if (!alive()) return;
@@ -163,7 +186,6 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                     catalog=array(result,"catalog");
                     revision=result.optInt("revision");
                     busy=false;
-                    cart.entrySet().removeIf(entry->!canSell(product(book,entry.getKey()),entry.getValue()));
                     if(requiresPin(screen))screen="home";
                     if(!deferredMenu.isEmpty()){
                         if(!requiresPin(deferredMenu))screen=deferredMenu;
@@ -200,12 +222,27 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
     }
     private interface Edit { void apply(JSONObject target) throws Exception; }
     private void commit(Edit edit,Runnable success) {
+        commit(edit,success,null);
+    }
+    private void commit(Edit edit,Runnable success,JSONObject sale) {
         if (busy || pending!=null || book==null) return;
         try {
-            JSONObject next=new JSONObject(book.toString());
-            edit.apply(next);
-            JSONObject payload=new JSONObject().put("revision",revision).put("request",UUID.randomUUID().toString()).put("book",next);
+            JSONObject payload=new JSONObject().put("revision",revision).put("request",UUID.randomUUID().toString());
+            if(sale==null){
+                JSONObject next=new JSONObject(book.toString());
+                edit.apply(next);
+                next.remove("sales");
+                for (JSONObject product:rows(array(next,"products"))) {
+                    JSONObject original=find(array(book,"products"),"id",product.optString("id"));
+                    if (original!=null&&!original.optString("photo").isEmpty()
+                            &&original.optString("photo").equals(product.optString("photo")))product.remove("photo");
+                }
+                payload.put("book",next).put("compact",true);
+            }else payload.put("sale",sale);
             if (payload.toString().getBytes(StandardCharsets.UTF_8).length>1950000) throw new IllegalArgumentException("Kapasitas data outlet tercapai.");
+            JSONObject recovery=new JSONObject().put("outlet",outlet).put("payload",payload)
+                    .put("cart",cart.snapshot());
+            pendingStore.write(recovery);
             pending=payload;
             afterSave=success;
             save();
@@ -225,23 +262,35 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                     busy=false;
                     String code=result.optString("code");
                     if (!result.optBoolean("success")) {
-                        if (code.isEmpty() && result.optString("message").contains("belum dapat terhubung")) { render(); return; }
-                        pending=null; afterSave=null;
+                        String detail=result.optString("message");
+                        if ((code.isEmpty()&&detail.contains("belum dapat terhubung"))
+                                ||"PREMIUM_REQUIRED".equals(code)||"SESSION_REVOKED".equals(code)
+                                ||"UNAUTHORIZED".equals(code)||"SESSION_EXPIRED".equals(code)
+                                ||"INVALID_TOKEN".equals(code)) {
+                            render();toast(detail);return;
+                        }
+                        if(!clearPending()){render();return;} afterSave=null;
                         toast(result.optString("message","Data ditolak server."));
-                        if ("POS_PIN_REQUIRED".equals(code)){grant="";load(false);return;}
-                        if ("POS_CONFLICT".equals(code)||"POS_CATALOG_CHANGED".equals(code)||"PREMIUM_REQUIRED".equals(code)) {
-                            cart.clear(); load(false);
+                        if ("POS_PIN_REQUIRED".equals(code)){grant="";load(true);return;}
+                        if ("POS_CONFLICT".equals(code)||"POS_CATALOG_CHANGED".equals(code)||branches.length()==0) {
+                            load(true);
                         } else render();
                         return;
                     }
                     recentReceipt=result.optJSONObject("receipt");
                     JSONObject authoritative=result.optJSONObject("book");
-                    book=authoritative==null?sent.optJSONObject("book"):normalize(authoritative);
+                    book=authoritative==null?book:normalize(authoritative);
                     revision=result.optInt("revision");
-                    pending=null;
+                    if(!clearPending()){render();return;}
                     Runnable done=afterSave;
                     afterSave=null;
                     if (done!=null) done.run();
+                    else if(recentReceipt!=null) {
+                        cart.clear();
+                        receipt=recentReceipt.optString("id");
+                        screen="receipt";
+                    }
+                    if(branches.length()==0||result.optBoolean("replayed")){load(true);return;}
                     render();
                     toast("Data tersimpan.");
                 });
@@ -367,7 +416,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
     private void render() {
         if(cameraScanner!=null){cameraScanner.pause();cameraScanner=null;}
         shell.removeAllViews();overlay=null;checkoutBar=null;saleResults=null;
-        if(!"sale".equals(screen))scanMode="";
+        if(!"sale".equals(screen)){scanMode="";torchRequested=false;}
         body=vertical();
         int max=dp(600);
         FrameLayout.LayoutParams frame=new FrameLayout.LayoutParams(Math.min(shell.getWidth()>0?shell.getWidth()-shell.getPaddingLeft()-shell.getPaddingRight():dp(screenWidthDp()),max),-1,Gravity.CENTER_HORIZONTAL);
@@ -579,9 +628,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         return product.isNull("stock")?"Stok tidak dilacak":"Stok "+product.optLong("stock");
     }
     private void add(String id,int delta) {
-        int amount=cart.getOrDefault(id,0)+delta;
-        if (delta>0 && !canSell(product(book,id),amount)) {toast("Stok tidak mencukupi atau menu nonaktif.");return;}
-        if (amount<=0) cart.remove(id); else cart.put(id,amount);
+        if(!cart.change(id,delta,quantity->canSell(product(book,id),quantity))){
+            toast("Stok tidak mencukupi atau menu nonaktif.");
+            return;
+        }
         if (saleResults==null || checkoutBar==null) {render();return;}
         if(scanMode.isEmpty())fillSale(saleResults);else fillScanned(saleResults);
         int footerPosition=body.indexOfChild(checkoutBar);
@@ -626,7 +676,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         LinearLayout panel=card();panel.setElevation(dp(4));
         int qty=0;long price=0;
         ArrayList<String> lines=new ArrayList<>();
-        for (Map.Entry<String,Integer> entry:cart.entrySet()) {
+        for (Map.Entry<String,Integer> entry:cart.items().entrySet()) {
             JSONObject product=product(book,entry.getKey());int amount=entry.getValue();
             if (product==null) continue;
             qty+=amount;
@@ -652,8 +702,16 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         pay.setEnabled(qty>0);pay.setAlpha(qty>0?1f:.48f);place(panel,pay,4);
         return panel;
     }
+    private void showMissingProducts(LinearLayout list) {
+        for(String id:new ArrayList<>(cart.items().keySet())) {
+            if(product(book,id)!=null)continue;
+            item(list,"Produk tidak tersedia","ID produk "+id,
+                    action("Hapus dari keranjang",0,()->add(id,-cart.quantity(id)),false));
+        }
+    }
     private void fillSale(LinearLayout results) {
         results.removeAllViews();
+        showMissingProducts(results);
         int count=0;
         String filter=query.trim().toLowerCase(Locale.ROOT);
         for (JSONObject row:productsList()) {
@@ -665,7 +723,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                 place(results,action("Tampilkan lebih banyak",0,()->{catalogLimit+=50;fillSale(results);},false),6);break;
             }
             LinearLayout wrapper=card();LinearLayout line=productLine(row,linked,false);
-            int qty=cart.getOrDefault(id,0);
+            int qty=cart.quantity(id);
             if (qty>0 || canSell(row,1)) {
                 LinearLayout countBox=horizontal();
                 if (qty>0) {
@@ -733,7 +791,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         try {
             JSONArray lines=new JSONArray();
             int photoBudget=96000;
-            for (Map.Entry<String,Integer> entry:cart.entrySet()) {
+            for (Map.Entry<String,Integer> entry:cart.items().entrySet()) {
                 JSONObject product=product(book,entry.getKey());
                 if (!canSell(product,entry.getValue())) throw new IllegalArgumentException("Ketersediaan produk berubah.");
                 JSONObject line=record(entry.getKey(),label(product,"Produk")).put("qty",entry.getValue())
@@ -765,7 +823,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         }
         try {
             JSONObject sale=new JSONObject(result.getStringExtra(MerchantPosCheckoutActivity.SALE));
-            commit(next->applySale(next,sale,sale.optLong("redeem")/100),()->{
+            commit(null,()->{
                 for (JSONObject line:rows(array(sale,"items"))) {
                     JSONObject linked=find(catalog,"id",line.optString("id"));
                     if (linked==null || linked.isNull("stock")) continue;
@@ -773,53 +831,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                     if (stock==0) put(linked,"reason","Stok habis");
                 }
                 cart.clear();receipt=sale.optString("id");screen="receipt";
-            });
+            },sale);
         }catch(Exception failure){toast("Rincian checkout belum dapat disimpan.");}
     }
-    private void applySale(JSONObject next,JSONObject sale,long points) {
-        if (!sale.optString("reference").isEmpty()) {
-            for (JSONObject older:rows(array(next,"sales"))) if (sale.optString("reference").equalsIgnoreCase(older.optString("reference")))
-                throw new IllegalArgumentException("Referensi QRIS sudah tercatat.");
-        }
-        Map<String,Long> used=new LinkedHashMap<>();
-        long cost=0; boolean costsKnown=true;
-        for (JSONObject line:rows(array(sale,"items"))) {
-            String id=line.optString("id");int qty=line.optInt("qty");
-            JSONObject local=find(array(next,"products"),"id",id);
-            java.math.BigDecimal unit=MerchantPosCost.unit(local);
-            if(unit==null) costsKnown=false;
-            else {
-                long lineCost=MerchantPosCost.valuation(unit,qty);
-                put(line,"costOfGoods",lineCost);cost+=lineCost;
-            }
-            if (local==null) continue;
-            if (!canSell(local,qty)) throw new IllegalArgumentException("Stok produk tidak cukup.");
-            put(local,"stock",local.optInt("stock")-qty);
-            JSONObject recipe=local.optJSONObject("recipe");
-            if (recipe==null) continue;
-            for (Iterator<String> keys=recipe.keys();keys.hasNext();) {
-                String key=keys.next();long amount=Math.round(recipe.optDouble(key,0)*1000)*qty;
-                used.put(key,used.getOrDefault(key,0L)+amount);
-            }
-        }
-        for (Map.Entry<String,Long> use:used.entrySet()) {
-            JSONObject material=find(array(next,"materials"),"id",use.getKey());
-            long available=material==null?0:Math.round(material.optDouble("stock",0)*1000);
-            if (material==null || available<use.getValue()) throw new IllegalArgumentException("Stok bahan "+label(material,"resep")+" tidak cukup.");
-            put(material,"stock",(available-use.getValue())/1000.0);
-        }
-        JSONObject customer=find(array(next,"people"),"id",sale.optString("customer"));
-        if (customer!=null) {
-            long earned="debt".equals(sale.optString("method"))?0:sale.optLong("total")/10000;
-            put(customer,"points",customer.optLong("points")-points+earned);
-        }
-        if(costsKnown){
-            put(sale,"costOfGoods",cost);
-            put(sale,"grossProfit",sale.optLong("subtotal")-sale.optLong("discount")-sale.optLong("redeem")-cost);
-        }
-        array(next,"sales").put(sale);
-    }
-
     private void history() {
         List<JSONObject> list=rows(array(book,"sales"));Collections.reverse(list);
         if (list.isEmpty()) place(content,text("Belum ada transaksi.",14,INK,false),8);
@@ -916,7 +930,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         super.onRequestPermissionsResult(request,permissions,result);
         if(request==731){
             if(result.length>0&&result[0]==android.content.pm.PackageManager.PERMISSION_GRANTED&&"sale".equals(screen)){
-                scanMode="camera";lastCameraCode="";render();
+                scanMode="camera";scanCamera.reset();render();
             }else toast("Izinkan kamera atau gunakan scanner eksternal.");
         }
         if(request==MerchantPosPrinters.BLUETOOTH_PERMISSION)
@@ -1124,6 +1138,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                 fields.put("phone",field(form,"Nomor telepon (opsional)",old.optString("phone"),InputType.TYPE_CLASS_PHONE));
                 fields.put("member",field(form,"Diskon anggota (%)",old.optString("member","0"),decimal));break;
             case "staff":
+                fields.put("loginUsername",field(form,"Username login kasir (opsional)",old.optString("loginUsername"),InputType.TYPE_CLASS_TEXT));
                 fields.put("role",field(form,"Jabatan",old.optString("role"),InputType.TYPE_CLASS_TEXT));
                 fields.put("phone",field(form,"Nomor telepon (opsional)",old.optString("phone"),InputType.TYPE_CLASS_PHONE));break;
             case "materials":
@@ -1143,6 +1158,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
                     case "price":put(values,name,integer(input,1,1000000000));break;
                     case "stock":put(values,name,"products".equals(key)?integer(input,0,999999):decimal(input,999999));break;
                     case "tax":case "member":case "percent":put(values,name,decimal(input,100));break;
+                    case "loginUsername":
+                        String login=entered(input);
+                        if(login.length()>50)throw new IllegalArgumentException("Username melebihi 50 karakter.");
+                        put(values,name,login);break;
                     case "barcode":case "phone":
                         String value=entered(input);
                         if (value.length()>("barcode".equals(name)?80:40)) throw new IllegalArgumentException("Isian terlalu panjang.");
@@ -1152,6 +1171,10 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
             }
             commit(next->{
                 if ("products".equals(key)) uniqueBarcode(next,values.optString("barcode"),id);
+                if("staff".equals(key)&&!values.optString("loginUsername").isEmpty())
+                    for(JSONObject person:rows(array(next,"staff")))
+                        if(!id.equals(person.optString("id"))&&values.optString("loginUsername").equalsIgnoreCase(person.optString("loginUsername")))
+                            throw new IllegalArgumentException("Username login sudah ditautkan ke pegawai lain.");
                 JSONObject target=find(array(next,key),"id",id);
                 if (target==null) array(next,key).put(values);
                 else for (Iterator<String> keys=values.keys();keys.hasNext();) {
@@ -1459,7 +1482,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
             if(which==0&&checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
                 requestPermissions(new String[]{android.Manifest.permission.CAMERA},731);return;
             }
-            scanMode=which==0?"camera":"external";lastCameraCode="";externalCode.setLength(0);render();
+            scanMode=which==0?"camera":"external";torchRequested=false;scanCamera.reset();externalCode.setLength(0);render();
         }).show();
     }
     private void scanSale(){
@@ -1467,29 +1490,31 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         details.addView(text("camera".equals(scanMode)?"Scan dengan kamera":"Scanner eksternal",16,INK,true));
         place(details,text("camera".equals(scanMode)?"Arahkan kamera ke barcode.":"Gunakan scanner USB OTG atau Bluetooth yang terhubung sebagai keyboard.",12,INK,false),4);
         place(details,action("Ganti mode",0,this::scan,false),5);
-        place(details,action("Kembali ke katalog",0,()->{scanMode="";render();},false),5);
+        place(details,action("Kembali ke katalog",0,()->{scanMode="";torchRequested=false;render();},false),5);
         if("external".equals(scanMode))place(details,action("Pengaturan Bluetooth",0,()->{
             try{startActivity(new Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS));}
             catch(android.content.ActivityNotFoundException error){toast("Buka Pengaturan Bluetooth Android.");}
         },false),5);
         weight(row,details,0);
         if("camera".equals(scanMode)){
+            if(MerchantPosCamera.hasFlash(this))
+                place(details,MerchantPosCamera.flashButton(this,()->torchRequested,on->{
+                    if(cameraScanner==null)return;
+                    torchRequested=on;
+                    MerchantPosCamera.setFlash(cameraScanner,on);
+                }),5);
             if(checkSelfPermission(android.Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED){
                 scanMode="";sale();return;
             }
             cameraScanner=new com.journeyapps.barcodescanner.DecoratedBarcodeView(this);
             cameraScanner.setStatusText("");
+            if(torchRequested)cameraScanner.setTorchOn();
             row.addView(cameraScanner,new LinearLayout.LayoutParams(dp(screenWidthDp()<360?115:153),dp(115)));
             cameraScanner.decodeContinuous(new com.journeyapps.barcodescanner.BarcodeCallback(){
                 public void barcodeResult(com.journeyapps.barcodescanner.BarcodeResult result){
                     if(!foreground||busy||pending!=null||!"camera".equals(scanMode))return;
                     String value=result.getText();
-                    long now=android.os.SystemClock.elapsedRealtime();
-                    if(value==null)return;
-                    boolean held=value.equals(lastCameraCode)&&now-lastCameraTime<950;
-                    lastCameraCode=value;lastCameraTime=now;
-                    if(held)return;
-                    scanResult(value,true);
+                    if(scanCamera.accepts(value,android.os.SystemClock.elapsedRealtime()))scanResult(value,true);
                 }
             });
         }
@@ -1502,8 +1527,9 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
     }
     private void fillScanned(LinearLayout list){
         list.removeAllViews();
+        showMissingProducts(list);
         if(cart.isEmpty())list.addView(text("Belum ada barang. Scan barcode untuk menambahkan.",13,INK,false));
-        for(Map.Entry<String,Integer> entry:cart.entrySet()){
+        for(Map.Entry<String,Integer> entry:cart.items().entrySet()){
             String id=entry.getKey();int quantity=entry.getValue();JSONObject product=product(book,id);if(product==null)continue;
             LinearLayout card=card(), row=productLine(product,id.startsWith("menu:"),false);
             LinearLayout controls=horizontal();
@@ -1552,7 +1578,7 @@ public final class MerchantPosActivity extends MerchantBaseActivity implements M
         if (!"sale".equals(screen)||book==null||busy||pending!=null) return;
         for (JSONObject product:productsList()) if (!value.isEmpty()&&value.equals(product.optString("barcode"))) {
             String id=product.optString("id");
-            if(canSell(product,cart.getOrDefault(id,0)+1)&&!scanMode.isEmpty())scanSound();
+            if(canSell(product,cart.quantity(id)+1)&&!scanMode.isEmpty())scanSound();
             add(id,1);return;
         }
         if (notify) toast("Barcode belum terdaftar.");

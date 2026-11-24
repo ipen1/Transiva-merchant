@@ -21,7 +21,7 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
     private final TimeZone zone=TimeZone.getTimeZone("Asia/Makassar");
     private String outlet, filterKey, filterName, method="all", export="";
     private int days=1, shown=40;
-    private JSONObject book,plan;
+    private JSONObject book;
     private String grant="";
     private final android.os.Handler expiryHandler=new android.os.Handler(android.os.Looper.getMainLooper());
     private final Runnable expiry=()->{if(alive()){book=null;load();}};
@@ -48,14 +48,14 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
         layout();body.addView(sub("Memuat penjualan outlet…"));
         work.execute(()->{
             try{
-                JSONObject result=new JSONObject(get(BASE+"merchant_pos.php?outlet="+outlet));
+                JSONObject result=new JSONObject(get(BASE+"merchant_pos.php?outlet="+outlet+"&report=sales"));
                 if(!result.optBoolean("success"))throw new java.io.IOException(result.optString("message"));
                 JSONArray locks=result.optJSONArray("locked_menus");
                 if(!result.optBoolean("pin_unlocked",true)&&locks!=null)
                     for(int i=0;i<locks.length();i++)if("finance".equals(locks.optString(i)))
                         throw new java.io.IOException("Laporan terkunci. Kembali ke Kasir dan masukkan PIN Pemilik.");
                 runOnUiThread(()->{if(alive()){
-                    try{book=result.optJSONObject("book");plan=result.optJSONObject("plan");draw();}
+                    try{book=result.optJSONObject("book");draw();}
                     catch(RuntimeException renderError){layout();body.addView(sub("Laporan belum bisa ditampilkan. Coba lagi."));Button retry=outlineBtn("Muat ulang");retry.setOnClickListener(v->load());body.addView(retry);}
                 }});
             }catch(Exception error){runOnUiThread(()->{if(alive()){
@@ -89,7 +89,16 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
     }
     private boolean matches(JSONObject sale){
         if(filterKey.isEmpty())return true;
-        if(sale.has("staffKey"))return filterKey.equals(sale.optString("staffKey"));
+        if(sale.has("staffKey")){
+            String key=sale.optString("staffKey");
+            if(filterKey.equals(key)||filterKey.equals(sale.optString("operatorAccount")))return true;
+            if(filterKey.startsWith("staff:")&&key.startsWith("login:")){
+                String login=key.substring(6);
+                return records("staff").stream().anyMatch(row->filterKey.equals("staff:"+row.optString("id"))
+                        &&login.equalsIgnoreCase(row.optString("loginUsername")));
+            }
+            return false;
+        }
         if(!Objects.equals(filterName,sale.optString("staff")))return false;
         if(filterKey.startsWith("owner"))return records("staff").stream().noneMatch(row->filterName.equals(row.optString("name")));
         if(filterKey.startsWith("staff:"))return !"Pemilik outlet".equals(filterName)&&records("staff").stream().filter(row->filterName.equals(row.optString("name"))).count()==1;
@@ -116,8 +125,6 @@ public final class MerchantPosSalesActivity extends MerchantBaseActivity impleme
         Map<String,Long> sums=new HashMap<>();long total=0,paid=0,cost=0,profit=0,known=0;
         for(JSONObject sale:records("sales")){
             long time=sale.optLong("at");if(time<start||time>System.currentTimeMillis()||!matches(sale))continue;
-            String date=date(time,"yyyy-MM-dd");
-            if(plan!=null&&(date.compareTo(plan.optString("starts_on"))<0||date.compareTo(plan.optString("ends_on"))>0))continue;
             long amount=sale.optLong("total");String how=sale.optString("method");
             sums.merge(how,amount,Long::sum);total+=amount;
             paid+="debt".equals(how)?Math.min(amount,payments.getOrDefault(sale.optString("id"),0L)):amount;
