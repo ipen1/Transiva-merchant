@@ -70,7 +70,8 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         boolean sessionBound = callUpdate || "merchant_driver_chat".equalsIgnoreCase(type)
                 || "merchant_driver_arrived_pickup".equalsIgnoreCase(type)
                 || "merchant_food_cancel_request".equalsIgnoreCase(type)
-                || "merchant_food_driver_timeout".equalsIgnoreCase(type);
+                || "merchant_food_driver_timeout".equalsIgnoreCase(type)
+                || "merchant_waiting_status".equalsIgnoreCase(type);
         if (sessionBound && (targetUser.isEmpty() || targetSession.isEmpty()
                 || !"merchant".equals(value(data, "target_app_scope", "")))) return;
         try {
@@ -105,8 +106,9 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
         if ("merchant_driver_chat".equalsIgnoreCase(type)) body = value(data, "chat_preview", body);
         String signal = (type + " " + event + " " + status + " " + title
                 + (merchantDriverChat ? "" : " " + body)).toLowerCase(Locale.US);
-        boolean incomingOrder = !merchantDriverChat && isIncomingOrder(signal);
-        boolean driverArrived = !merchantDriverChat && isDriverArrived(signal);
+        boolean waitingStatus = "merchant_waiting_status".equalsIgnoreCase(type);
+        boolean incomingOrder = !waitingStatus && !merchantDriverChat && isIncomingOrder(signal);
+        boolean driverArrived = !waitingStatus && !merchantDriverChat && isDriverArrived(signal);
         boolean urgent = incomingOrder || driverArrived || merchantDriverChat;
 
         if (incomingOrder && (title.equals("Transiva Merchant") || title.isEmpty())) {
@@ -133,13 +135,14 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
 
 
         String dedupeKey = (targetSession + "|" + orderId + "|" + type + "|" + status + "|"
-                + value(data, "chat_id", "") + "|" + title).toLowerCase(Locale.US);
+                + value(data, "chat_id", "") + "|" + title + "|"
+                + value(data,"waiting_started_at","") + "|" + value(data,"waiting_ended_at","")).toLowerCase(Locale.US);
         if (isDuplicate(dedupeKey)) return;
         MerchantNotificationStore.add(this, title, body, type, orderId);
 
         createChannels();
 
-        Intent target = targetIntent(type, status, signal);
+        Intent target = waitingStatus ? new Intent(this,MerchantOrdersActivity.class) : targetIntent(type, status, signal);
         target.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
         target.putExtra("notification_type", type);
         target.putExtra("notification_status", status);
@@ -183,6 +186,16 @@ public class TransivaFirebaseService extends FirebaseMessagingService {
                 .setSound(sound)
                 .setVibrate(urgent ? new long[]{0, 450, 180, 450, 180, 700} : new long[]{0, 250});
 
+        if (waitingStatus && "waiting_started".equals(event)) {
+            try {
+                long start=Long.parseLong(value(data,"waiting_started_at","0"));
+                long free=Long.parseLong(value(data,"waiting_free_seconds","0"));
+                long deadline=(start+free)*1000;
+                if (deadline>System.currentTimeMillis()) {
+                    b.setWhen(deadline).setUsesChronometer(true).setChronometerCountDown(true);
+                }
+            } catch (NumberFormatException ignored) { }
+        }
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm == null) return;
         try {
