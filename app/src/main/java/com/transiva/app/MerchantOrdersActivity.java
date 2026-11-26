@@ -546,6 +546,16 @@ public class MerchantOrdersActivity extends MerchantBaseActivity {
             noteBox.addView(tv(note, 13, TEXT, false));
             box.addView(noteBox);
         }
+        if (!driver.isEmpty()) {
+            String vehicle = s(o,"driver_vehicle_model");
+            if (vehicle.isEmpty()) {
+                String type = s(o,"driver_vehicle_type");
+                vehicle = "car".equalsIgnoreCase(type) ? "Mobil" : "bike".equalsIgnoreCase(type) ? "Motor" : "";
+            }
+            String plate = s(o,"driver_plate");
+            if (!vehicle.isEmpty() || !plate.isEmpty()) box.addView(tv(
+                    String.join(" · ",java.util.Arrays.asList(vehicle,plate)).replaceAll("^ · | · $",""),12,TEXT,false));
+        }
         MerchantOrderFinanceView.attach(this,box,o);
         // Transaction buttons stay above secondary information and never depend on disclosure state.
         if(!historyMode){

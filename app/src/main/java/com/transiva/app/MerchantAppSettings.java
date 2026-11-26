@@ -190,7 +190,7 @@ public final class MerchantAppSettings {
         if (!dark || view == null) return;
 
         transformBackground(view, depth);
-        transformText(view);
+        DarkTextContrast.apply(view);
         transformControls(view);
 
         if (view instanceof ViewGroup) {
@@ -258,27 +258,6 @@ public final class MerchantAppSettings {
             return DARK_BORDER;
         }
         return null;
-    }
-
-    private static void transformText(View view) {
-        if (!(view instanceof TextView)) return;
-
-        TextView text = (TextView) view;
-        int current = text.getCurrentTextColor();
-
-        // Tulisan putih di atas kartu biru tetap putih.
-        if (isNearWhite(current)) return;
-
-        if (isDarkText(current)) {
-            text.setTextColor(DARK_TEXT);
-        } else if (isMutedText(current)) {
-            text.setTextColor(DARK_MUTED);
-        }
-
-        if (text instanceof EditText) {
-            EditText edit = (EditText) text;
-            edit.setHintTextColor(Color.rgb(132, 153, 178));
-        }
     }
 
     private static void transformControls(View view) {
